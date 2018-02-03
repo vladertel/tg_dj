@@ -3,6 +3,8 @@
 
 import datetime
 from collections import namedtuple
+from queue import Queue
+from threading import Thread
 
 class UserQuotaReached(Exception):
     pass
@@ -10,11 +12,14 @@ class UserQuotaReached(Exception):
 class UserRequestQuotaReached(UserQuotaReached):
     pass
    
-Request = namedtuple("Request", ['user', 'url', 'time'])
+Request = namedtuple("Request", ['user', 'text', 'time'])
 
 class User():
 
-    limits = {}
+    limits = {
+        'max_request_number': 10,
+        'max_request_check_interval': 600,
+        }
     id = None
     past_requests = []
     recent_requests = []
@@ -44,33 +49,40 @@ class DJ_Brain():
     
     limits = {}
     users = {}
-    frontends = []
+    frontend = None
     downloader = None
-    backends = []
-    request_callbacks = {}
+    backend = None
+    frontend_thread = None
+    downloader_thread = None
+    backend_thread = None
     
-    def __init__(self, frontend_list, downloader, backend_list):
-        for frontend in frontend_list:
-            self.frontends.append(frontend(self))
+    def __init__(self, frontend, downloader, backend):
+        self.frontend = frontend
         self.downloader = downloader(self)
-        for backend in backend_list:
-            self.backends.append(backend(self))
+        self.backend = backend
+        
+        self.frontend_thread = Thread(daemon=True, action=)
     
-    def add_request(self, user, url, callback):
+    def frontend_listener(self):
+        while True:
+            task = self.frontend.output_queue.get()
+            action = task['action']
+            if action == 'download':
+                text = task['text']
+                user = task['user']
+                if self.add_request(user, text):
+                    self.downloader.input_queue.put(task)
+    
+    def add_request(self, user, text):
         if user not in users:
             self.add_user(user)
         time = datetime.now()
-        request = Request(user, url, time)
+        request = Request(user, text, time)
         try:
             self.users[user].add_request(request)
         except UserQuotaReached:
-            raise
-        
-        self.request_calbcacks[request] = callback
-        self.downloader.add_request(self, request, self.cb_done_downloading(request))
+            return False
+        return True
         
     def add_user(self, user):
         self.users[user] = User(user)
-    
-    def cb_done_downloading(self, request):
-        return lambda: self.request_callbacks[request]()
