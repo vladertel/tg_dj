@@ -65,6 +65,12 @@ class MasterDownloader():
                         "user": task["user"],
                         "message": "Not Implemented"
                     })
+                else:
+                    self.output_queue.put({
+                        "action": "error",
+                        "user": task["user"],
+                        "message": "WRONG ARGUMENT"
+                    })
             elif task["action"] == "user_confirmed":
                 if task["user"] in self.users_to_vk_songs:
                     song = self.users_to_vk_songs[task["user"]]
