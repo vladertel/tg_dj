@@ -1,9 +1,9 @@
 from .AbstractDownloader import AbstractDownloader
 from pytube import YouTube
 import os
-from .config import mediaDir, youtubePrefix, _DEBUG_
-import re
-
+from .config import mediaDir, youtubePrefix, _DEBUG_, duplicates
+if duplicates:
+    import glob
 class UrlOrNetworkProblem(Exception):
     pass
 
@@ -11,24 +11,19 @@ class UrlProblem(Exception):
     pass
 
 class YoutubeDownloader(AbstractDownloader):
-    def get_video_id(self, url):
-        match = re.search(r'[a-zA-Z0-9]{11}', url)
-        if match is not None:
-            if _DEBUG_:
-                print("Matched - id: {}, in url: {}".format(match.group(0), url))
-            return match.group(0)
-        return None
-
     def schedule_link(self, url, callback):
         if _DEBUG_:
             print("Getting url: " + url)
-        video_id = self.get_video_id(url)
-        if video_id is None:
-            raise UrlProblem()
+
         try:
-            streams = YouTube(url).streams.filter(only_audio=True)
+            yt = YouTube(url)
+            streams = yt.streams.filter(only_audio=True)
         except Exception as e:
             raise UrlOrNetworkProblem()
+        video_id = yt.video_id
+        video_title = yt.title
+        if video_id is None:
+            raise UrlProblem()
         if _DEBUG_:
             for stream in streams.all():
                 print(stream)
@@ -36,8 +31,16 @@ class YoutubeDownloader(AbstractDownloader):
         # 	if stream.mime_type == "audio/mp4":
         # exit(1)
         file_dir = os.path.join(os.getcwd(), mediaDir)
-        file_path = file_dir + youtubePrefix + video_id
-        streams.first().download(output_path=, filename=youtubePrefix + video_id)
+        if duplicates:
+            t = len(glob.glob(os.path.join(file_dir,video_title) + "*"))
+            if t > 0:
+                file_name = video_title + " (" + str(t) + ")"
+            else:
+                file_name = video_title
+        else:
+            file_name = video_title
+        file_path = os.path.join(file_dir,file_name)
+        streams.first().download(output_path=file_dir, filename=file_name)
         if _DEBUG_:
-            print("check file at path - " + os.path.join(os.getcwd(), mediaDir))
-        callback(os.path.join(os.getcwd(), mediaDir))
+            print("check file at path - " + file_path)
+        callback(file_path)
