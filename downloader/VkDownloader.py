@@ -11,7 +11,7 @@ import json
 class BadReturnStatus(Exception):
     pass
 
-class VKDownloader(AbstractDownloader):
+class VkDownloader(AbstractDownloader):
     def get_headers(self):
         return {
             "User-Agent": generate_user_agent(),
@@ -28,7 +28,7 @@ class VKDownloader(AbstractDownloader):
             "page":0
         }
 
-    def search_with_query(self, search_query, c):
+    def search_with_query(self, search_query):
         if _DEBUG_:
             print("Trying to get data from "+ DATMUSIC_API_ENDPOINT + " with query " + search_query)
         headers = self.get_headers()
@@ -43,7 +43,10 @@ class VKDownloader(AbstractDownloader):
             raise e
         if _DEBUG_:
             print("Got: " + str(data[0]))
-        song = data[0]
+        try:
+            song = data[0]
+        except (KeyError, IndexError) as e:
+            return None
         song["headers"] = headers
         return song
 
@@ -54,6 +57,8 @@ class VKDownloader(AbstractDownloader):
         file_path = os.path.join(os.getcwd(), mediaDir, song["artist"] + " - " + song["title"])
         with open(file_path, 'wb') as f:
             f.write(downloaded.content)
+        if _DEBUG_:
+            print("Check file at path: "+ file_path)
         return file_path
             # downloaded.raw.decode_content = True
             # shutil.copyfileobj(downloaded.raw, f)

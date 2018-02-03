@@ -4,6 +4,8 @@ import os
 from .config import mediaDir, youtubePrefix, _DEBUG_, duplicates
 if duplicates:
     import glob
+
+
 class UrlOrNetworkProblem(Exception):
     pass
 
@@ -11,7 +13,7 @@ class UrlProblem(Exception):
     pass
 
 class YoutubeDownloader(AbstractDownloader):
-    def schedule_link(self, url, callback):
+    def schedule_link(self, url):
         if _DEBUG_:
             print("Getting url: " + url)
 
@@ -43,4 +45,4 @@ class YoutubeDownloader(AbstractDownloader):
         streams.first().download(output_path=file_dir, filename=file_name)
         if _DEBUG_:
             print("check file at path - " + file_path)
-        callback(file_path)
+        return (file_path, video_title)
