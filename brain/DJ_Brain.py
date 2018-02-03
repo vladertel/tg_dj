@@ -6,6 +6,8 @@ from collections import namedtuple
 from queue import Queue
 from threading import Thread
 
+from .config import *
+
 class UserQuotaReached(Exception):
     pass
 
@@ -16,10 +18,6 @@ Request = namedtuple("Request", ['user', 'text', 'time'])
 
 class User():
 
-    limits = {
-        'max_request_number': 10,
-        'max_request_check_interval': 600,
-        }
     id = None
     past_requests = []
     recent_requests = []
@@ -29,7 +27,7 @@ class User():
     
     def add_request(self, request):
         self.expire_requests()
-        if len(self.recent_requests) == self.limits['max_request_number']:
+        if len(self.recent_requests) == user_max_request_number:
             raise UserRequestQuotaReached()
         self.recent_requests.append(request)
         
@@ -38,7 +36,7 @@ class User():
         outdated = -1
         for i, request in enumerate(recent_requests):
             delta = time - request.time
-            if delta.seconds > self.limits['max_request_check_interval']:
+            if delta.seconds > user_max_request_check_interval:
                 outdated = i
             else:
                 break
@@ -49,19 +47,19 @@ class DJ_Brain():
     
     limits = {}
     users = {}
-    frontend = None
-    downloader = None
-    backend = None
-    frontend_thread = None
-    downloader_thread = None
-    backend_thread = None
     
     def __init__(self, frontend, downloader, backend):
         self.frontend = frontend
-        self.downloader = downloader(self)
+        self.downloader = downloader
         self.backend = backend
         
-        self.frontend_thread = Thread(daemon=True, action=)
+        self.frontend_thread = Thread(daemon=True, action=frontend_listener)
+        self.downloader_thread = Thread(daemon=True, action=downloader_listener)
+        self.backend_thread = Thread(daemon=True, action=backend_listener)
+        
+        self.frontend_thread.start()
+        self.downloader_thread.start()
+        self.backend_thread.start()
     
     def frontend_listener(self):
         while True:
@@ -72,6 +70,32 @@ class DJ_Brain():
                 user = task['user']
                 if self.add_request(user, text):
                     self.downloader.input_queue.put(task)
+                else:
+                    self.frontent.input_queue.put({
+                        'action': 'error',
+                        'user': user,
+                        'message': 'Request quota reached. Try again later'
+                        })
+            elif action == 'user_confirmed':
+                self.downloader.input_queue.put(task)
+    
+    def downoader_listener(self):
+        while True:
+            task = self.downloader.output_queue.get()
+            action = task['action']
+            if action == 'download_done':
+                path = task['path'][2:]
+                self.backend.input_queue.put({
+                    'action': 'add_song',
+                    'uri': path
+                    })
+            elif action == 'user_message' or action == 'user_ask':
+                self.frontend.input_queue.put(task)
+    
+    def backend_listener(self):
+        while True:
+            task = self.backend.output_queue.get()
+            action = task['action']
     
     def add_request(self, user, text):
         if user not in users:
