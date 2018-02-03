@@ -44,8 +44,10 @@ class LiquidStreamer():
             if action == 'add_song':
                 uri = task['uri']
                 self.telnet.readwrite(''.join(['queue.push ', uri, '\n']))
-            if action == 'skip_song':
+            elif action == 'skip_song':
                 self.telnet.readwrite('ao.skip\n')
+            else:
+                print('Message not found:', task)
      
     def liquidsoap_reader(self):
         for line in self.liquidsoap.stdout:

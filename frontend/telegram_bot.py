@@ -2,7 +2,7 @@ import telebot
 import threading
 from queue import Queue
 
-from config import token
+from .config import token
 
 def generate_markup():
     markup = telebot.types.ReplyKeyboardMarkup(one_time_keyboard=True)
@@ -14,17 +14,17 @@ class TgFrontend():
 
     def __init__(self):
         self.bot = telebot.TeleBot(token)
-        self.botThread = threading.Thread(target=self.bot.polling, kwargs={"none_stop":True})
+        self.botThread = threading.Thread(daemon=True, target=self.bot.polling, kwargs={"none_stop":True})
         self.botThread.start()
         self.input_queue = Queue()
         self.output_queue = Queue()
-        self.brainThread = threading.Thread(target=self.brain_listener)
+        self.brainThread = threading.Thread(daemon=True, target=self.brain_listener)
         self.brainThread.start()
         self.init_handlers()
 
     def init_handlers(self):
         self.bot.message_handler(commands=['start'])(self.start_handler)
-        self.bot.message_handler(ccontent_types=['text'])(self.text_message_handler)
+        self.bot.message_handler(content_types=['text'])(self.text_message_handler)
         # self.bot.message_handlers.append(self.bot._build_handler_dict)
 
     def brain_listener(self):
@@ -57,5 +57,3 @@ class TgFrontend():
                 "action":"download"
             }
         self.output_queue.put(request)
-
-TgFrontend()

@@ -41,6 +41,7 @@ class YoutubeDownloader(AbstractDownloader):
                 file_name = video_title
         else:
             file_name = video_title
+        file_name += ".mp4"
         file_path = os.path.join(file_dir,file_name)
         streams.first().download(output_path=file_dir, filename=file_name)
         if _DEBUG_:

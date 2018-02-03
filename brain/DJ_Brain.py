@@ -32,15 +32,15 @@ class User():
         self.recent_requests.append(request)
         
     def expire_requests(self):
-        time = datetime.dateteme.now()
+        time = datetime.datetime.now()
         outdated = -1
-        for i, request in enumerate(recent_requests):
+        for i, request in enumerate(self.recent_requests):
             delta = time - request.time
             if delta.seconds > user_max_request_check_interval:
                 outdated = i
             else:
                 break
-        self.path_requests += self.recent_requests[0:outdated+1]
+        self.past_requests += self.recent_requests[0:outdated+1]
         self.recent_requests = self.recent_requests[outdated+1:]
 
 class DJ_Brain():
@@ -53,9 +53,9 @@ class DJ_Brain():
         self.downloader = downloader
         self.backend = backend
         
-        self.frontend_thread = Thread(daemon=True, action=frontend_listener)
-        self.downloader_thread = Thread(daemon=True, action=downloader_listener)
-        self.backend_thread = Thread(daemon=True, action=backend_listener)
+        self.frontend_thread = Thread(daemon=True, target=self.frontend_listener)
+        self.downloader_thread = Thread(daemon=True, target=self.downloader_listener)
+        self.backend_thread = Thread(daemon=True, target=self.backend_listener)
         
         self.frontend_thread.start()
         self.downloader_thread.start()
@@ -71,15 +71,17 @@ class DJ_Brain():
                 if self.add_request(user, text):
                     self.downloader.input_queue.put(task)
                 else:
-                    self.frontent.input_queue.put({
+                    self.frontend.input_queue.put({
                         'action': 'error',
                         'user': user,
                         'message': 'Request quota reached. Try again later'
                         })
             elif action == 'user_confirmed':
                 self.downloader.input_queue.put(task)
+            else:
+                print('Message not found:', task)
     
-    def downoader_listener(self):
+    def downloader_listener(self):
         while True:
             task = self.downloader.output_queue.get()
             action = task['action']
@@ -89,18 +91,24 @@ class DJ_Brain():
                     'action': 'add_song',
                     'uri': path
                     })
-            elif action == 'user_message' or action == 'user_ask':
+            elif action == 'user_message' or action == 'ask_user':
                 self.frontend.input_queue.put(task)
+            else:
+                print('Message not found:', task)
     
     def backend_listener(self):
         while True:
             task = self.backend.output_queue.get()
             action = task['action']
+            if False:
+                ...
+            else:
+                print('Message not found:', task)
     
     def add_request(self, user, text):
-        if user not in users:
+        if user not in self.users:
             self.add_user(user)
-        time = datetime.now()
+        time = datetime.datetime.now()
         request = Request(user, text, time)
         try:
             self.users[user].add_request(request)

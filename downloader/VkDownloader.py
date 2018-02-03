@@ -54,7 +54,7 @@ class VkDownloader(AbstractDownloader):
         downloaded = requests.get(song["download"], headers=song["headers"], stream=True)
         if downloaded.status_code != 200:
             raise BadReturnStatus(downloaded.status_code)
-        file_path = os.path.join(os.getcwd(), mediaDir, song["artist"] + " - " + song["title"])
+        file_path = os.path.join(os.getcwd(), mediaDir, song["artist"] + " - " + song["title"] + '.mp3')
         with open(file_path, 'wb') as f:
             f.write(downloaded.content)
         if _DEBUG_:
