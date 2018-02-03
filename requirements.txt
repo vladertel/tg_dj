@@ -2,3 +2,4 @@ pytube
 mutagen
 user_agent
 pytelegrambotapi
+unidecode

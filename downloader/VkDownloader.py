@@ -4,6 +4,7 @@ from user_agent import generate_user_agent
 from .config import mediaDir, _DEBUG_, DATMUSIC_API_ENDPOINT, INLINE_QUERY_CACHE_TIME
 import requests
 import json
+from unidecode import unidecode
 # logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
                 # level=logging.INFO)
 # logger = logging.getLogger(__name__)
@@ -54,7 +55,9 @@ class VkDownloader(AbstractDownloader):
         downloaded = requests.get(song["download"], headers=song["headers"], stream=True)
         if downloaded.status_code != 200:
             raise BadReturnStatus(downloaded.status_code)
-        file_path = os.path.join(os.getcwd(), mediaDir, song["artist"] + " - " + song["title"] + '.mp3')
+        file_name = song["artist"] + " - " + song["title"] + '.mp3'
+        file_name = unidecode(file_name)
+        file_path = os.path.join(os.getcwd(), mediaDir, file_name)
         with open(file_path, 'wb') as f:
             f.write(downloaded.content)
         if _DEBUG_:

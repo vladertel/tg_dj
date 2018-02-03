@@ -2,6 +2,7 @@ from .AbstractDownloader import AbstractDownloader
 from pytube import YouTube
 import os
 from .config import mediaDir, youtubePrefix, _DEBUG_, duplicates
+from unidecode import unidecode
 if duplicates:
     import glob
 
@@ -42,6 +43,7 @@ class YoutubeDownloader(AbstractDownloader):
         else:
             file_name = video_title
         file_name += ".mp4"
+        file_name = unidecode(file_name)
         file_path = os.path.join(file_dir,file_name)
         streams.first().download(output_path=file_dir, filename=file_name)
         if _DEBUG_:
