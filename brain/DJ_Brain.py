@@ -95,7 +95,7 @@ class DJ_Brain():
                 if self.isWindows:
                     path = path[2:]
                 self.backend.input_queue.put({
-                    'action': 'add_song',
+                    'action': 'play_song',
                     'uri': path
                     })
                 self.frontend.input_queue.put(task)

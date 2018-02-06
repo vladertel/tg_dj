@@ -1,16 +1,13 @@
-from .AbstractDownloader import AbstractDownloader
 import os
-from user_agent import generate_user_agent
-from .config import mediaDir, _DEBUG_, DATMUSIC_API_ENDPOINT, INLINE_QUERY_CACHE_TIME
 import requests
 import json
-from unidecode import unidecode
-# logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-                # level=logging.INFO)
-# logger = logging.getLogger(__name__)
 
-class BadReturnStatus(Exception):
-    pass
+from unidecode import unidecode
+from user_agent import generate_user_agent
+
+from .AbstractDownloader import AbstractDownloader
+from .config import mediaDir, _DEBUG_, DATMUSIC_API_ENDPOINT
+from .exceptions import *
 
 class VkDownloader(AbstractDownloader):
     def get_headers(self):
@@ -43,16 +40,24 @@ class VkDownloader(AbstractDownloader):
             print(songs.text)
             raise e
         if _DEBUG_:
-            print("Got: " + str(data[0]))
-        try:
-            song = data[0]
-        except (KeyError, IndexError) as e:
-            return None
-        song["headers"] = headers
-        return song
+            print("Got: " + str(data))
+        # try:
+        length = len(data)
+        if length > 10:
+            songs = data[0:10]
+        elif length == 0:
+            raise NothingFound()
+        elif length == 1:
+            raise OnlyOneFound(data[0], headers)
+        else:
+            songs = data[0:length]
+        # except (KeyError, IndexError) as e:
+        #     return None
+        # song["headers"] = headers
+        return (songs, headers)
 
-    def schedule_link(self, song):
-        downloaded = requests.get(song["download"], headers=song["headers"], stream=True)
+    def schedule_link(self, song, headers):
+        downloaded = requests.get(song["download"], headers=headers, stream=True)
         if downloaded.status_code != 200:
             raise BadReturnStatus(downloaded.status_code)
         file_name = song["artist"] + " - " + song["title"] + '.mp3'
@@ -62,6 +67,6 @@ class VkDownloader(AbstractDownloader):
             f.write(downloaded.content)
         if _DEBUG_:
             print("Check file at path: "+ file_path)
-        return file_path
+        return (file_path, song["artist"] + " - " + song["title"], song["duration"])
             # downloaded.raw.decode_content = True
             # shutil.copyfileobj(downloaded.raw, f)
