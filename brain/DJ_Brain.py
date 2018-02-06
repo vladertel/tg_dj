@@ -5,6 +5,7 @@ import datetime
 from collections import namedtuple
 from queue import Queue
 from threading import Thread
+import platform
 
 from .config import *
 
@@ -49,6 +50,9 @@ class DJ_Brain():
     users = {}
     
     def __init__(self, frontend, downloader, backend):
+        self.isWindows = False
+        if platform.system() == "Windows":
+            self.isWindows = True
         self.frontend = frontend
         self.downloader = downloader
         self.backend = backend
@@ -87,11 +91,14 @@ class DJ_Brain():
             task = self.downloader.output_queue.get()
             action = task['action']
             if action == 'download_done':
-                path = task['path'][2:]
+                path = task['path']
+                if self.isWindows:
+                    path = path[2:]
                 self.backend.input_queue.put({
-                    'action': 'add_song',
+                    'action': 'play_song',
                     'uri': path
                     })
+                self.frontend.input_queue.put(task)
             elif action == 'user_message' or action == 'ask_user':
                 self.frontend.input_queue.put(task)
             else:

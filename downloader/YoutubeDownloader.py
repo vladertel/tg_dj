@@ -1,17 +1,20 @@
-from .AbstractDownloader import AbstractDownloader
-from pytube import YouTube
+import urllib.request
+import json
+import re
 import os
-from .config import mediaDir, youtubePrefix, _DEBUG_, duplicates
+
+from pytube import YouTube
 from unidecode import unidecode
+
+from .AbstractDownloader import AbstractDownloader
+from .config import mediaDir, youtubePrefix, _DEBUG_, duplicates, MAXIMUM_DURATION
+from .private_config import YT_API_KEY
+from .exceptions import *
 if duplicates:
     import glob
 
 
-class UrlOrNetworkProblem(Exception):
-    pass
 
-class UrlProblem(Exception):
-    pass
 
 class YoutubeDownloader(AbstractDownloader):
     def schedule_link(self, url):
@@ -42,10 +45,25 @@ class YoutubeDownloader(AbstractDownloader):
                 file_name = video_title
         else:
             file_name = video_title
+        searchUrl = "https://www.googleapis.com/youtube/v3/videos?id="+video_id+"&key="+YT_API_KEY+"&part=contentDetails"
+        try:
+            response = urllib.request.urlopen(searchUrl).read()
+        except Exception as e:
+            raise UrlOrNetworkProblem()
+        data = json.loads(response)
+        duration = data['items'][0]['contentDetails']['duration']
+        m = re.findall(r"\d+", duration)[::-1]
+        multip = 1
+        seconds = 0
+        for match in m:
+            seconds += (int(match) * multip)
+            multip *= 60
+        if seconds > MAXIMUM_DURATION:
+            raise MediaIsTooLong()
+        streams.first().download(output_path=file_dir, filename=file_name)
         file_name += ".mp4"
         file_name = unidecode(file_name)
         file_path = os.path.join(file_dir,file_name)
-        streams.first().download(output_path=file_dir, filename=file_name)
         if _DEBUG_:
             print("check file at path - " + file_path)
-        return (file_path, video_title)
+        return (file_path, video_title, seconds)
