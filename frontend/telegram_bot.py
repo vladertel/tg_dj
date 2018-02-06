@@ -30,8 +30,10 @@ class TgFrontend():
     def brain_listener(self):
         while True:
             task = self.input_queue.get(block=True)
-            if task["action"] == "ask_user" or task["action"] == "user_message":
+            if task["action"] == "ask_user":
                 self.bot.send_message(task["user"], task["message"], reply_markup=generate_markup())
+            elif task["action"] == "user_message":
+                self.bot.send_message(task["user"], task["message"])
             else:
                 self.bot.send_message(task["user"], "DEBUG:\n" + str(task))
 
@@ -50,6 +52,7 @@ class TgFrontend():
             }
         elif text == "No":
             self.bot.send_message(user,"Then ask me something else!")
+            return
         else:
             request = {
                 "user":user,

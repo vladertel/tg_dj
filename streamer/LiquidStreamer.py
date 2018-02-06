@@ -48,6 +48,7 @@ class LiquidStreamer():
                 self.telnet.readwrite('ao.skip\n')
             else:
                 print('Message not found:', task)
+            self.input_queue.task_done()
      
     def liquidsoap_reader(self):
         for line in self.liquidsoap.stdout:

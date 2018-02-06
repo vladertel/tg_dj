@@ -80,6 +80,7 @@ class DJ_Brain():
                 self.downloader.input_queue.put(task)
             else:
                 print('Message not found:', task)
+            self.frontend.output_queue.task_done()
     
     def downloader_listener(self):
         while True:
@@ -95,6 +96,7 @@ class DJ_Brain():
                 self.frontend.input_queue.put(task)
             else:
                 print('Message not found:', task)
+            self.downloader.output_queue.task_done()
     
     def backend_listener(self):
         while True:
@@ -104,6 +106,7 @@ class DJ_Brain():
                 ...
             else:
                 print('Message not found:', task)
+            self.backend.output_queue.task_done()
     
     def add_request(self, user, text):
         if user not in self.users:
