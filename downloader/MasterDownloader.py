@@ -5,6 +5,7 @@ from queue import Queue
 
 from .YoutubeDownloader import YoutubeDownloader
 from .VkDownloader import VkDownloader
+from .FileDownloader import FileDownloader
 from .exceptions import *
 
 
@@ -86,7 +87,9 @@ class MasterDownloader():
                             self.ask_user(task["user"], "What you want exactly?", songs=songs_obj)
                 elif "file" in task:
                     file = task["file"]
-                    self.error(task["user"], "Error occured: Not Implemented")
+                    self.user_message(task["user"], "Processing...")
+                    file_path, title, seconds = self.file.schedule_link(task["user"], task["file"], task["duration"], task["file_info"], task["file_size"])
+                    self.download_done(file_path, title, task["user"])
                 else:
                     self.error(task["user"], "Error occured: Unsupported")
             elif task["action"] == "user_confirmed":
@@ -102,7 +105,6 @@ class MasterDownloader():
                     self.download_done(file_path, title, task["user"])
             else:
                 self.error(task["user"], "Don't know what to do with this action: " + task["action"])
-
             self.input_queue.task_done()
 
     def __init__(self):
@@ -110,7 +112,7 @@ class MasterDownloader():
         self.users_to_vk_songs={}
         self.vk = VkDownloader()
         self.yt = YoutubeDownloader()
-        # self.file = FileDownloader()
+        self.file = FileDownloader()
         self.input_queue = Queue()
         self.output_queue = Queue()
 

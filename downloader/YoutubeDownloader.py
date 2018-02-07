@@ -2,7 +2,6 @@ import urllib.request
 import json
 import re
 import os
-from pathlib import Path
 
 from pytube import YouTube
 from unidecode import unidecode
@@ -69,7 +68,7 @@ class YoutubeDownloader(AbstractDownloader):
         file_name += ".mp4"
         file_name = unidecode(file_name)
         file_path = os.path.join(file_dir,file_name)
-        Path(file_path).touch()
+        self.touch_without_creation(file_path)
         sf.filter_storage()
         if _DEBUG_:
             print("check file at path - " + file_path)

@@ -1,7 +1,7 @@
 import os
 from datetime import datetime
 
-from .config import mediaDir, MAXIMUM_FILES_COUNT
+from .config import mediaDir, MAXIMUM_FILES_COUNT, _DEBUG_
 
 
 class StorageFilter():

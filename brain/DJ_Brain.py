@@ -70,13 +70,16 @@ class DJ_Brain():
             task = self.frontend.output_queue.get()
             action = task['action']
             if action == 'download':
-                text = task['text']
+                if "text" in task:
+                    text = task['text']
+                elif "file" in task:
+                    text = task['file']
                 user = task['user']
                 if self.add_request(user, text):
                     self.downloader.input_queue.put(task)
                 else:
                     self.frontend.input_queue.put({
-                        'action': 'error',
+                        'action': 'user_message',
                         'user': user,
                         'message': 'Request quota reached. Try again later'
                         })
@@ -98,7 +101,11 @@ class DJ_Brain():
                     'action': 'play_song',
                     'uri': path
                     })
-                self.frontend.input_queue.put(task)
+                self.frontend.input_queue.put({
+                        "action": "user_message",
+                        "message": "Your query is playing now",
+                        "user": task["user"]
+                    })
             elif action == 'user_message' or action == 'ask_user':
                 self.frontend.input_queue.put(task)
             else:

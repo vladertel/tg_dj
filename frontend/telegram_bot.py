@@ -36,6 +36,7 @@ class TgFrontend():
     def init_handlers(self):
         self.bot.message_handler(commands=['start'])(self.start_handler)
         self.bot.message_handler(content_types=['text'])(self.text_message_handler)
+        self.bot.message_handler(content_types=['audio'])(self.audio_handler)
         # self.bot.message_handlers.append(self.bot._build_handler_dict)
 
     def brain_listener(self):
@@ -92,3 +93,18 @@ class TgFrontend():
                         "action":"user_confirmed",
                         "number": number
                     })
+
+    def audio_handler(self, message):
+        if message.audio.mime_type == "audio/mpeg3":
+            file_info = self.bot.get_file(message.audio.file_id)
+            self.output_queue.put({
+                "user": message.from_user.id,
+                "file": message.audio.file_id,
+                "duration": message.audio.duration,
+                "action": "download",
+                "file_size": message.audio.file_size,
+                "file_info": file_info
+            })
+        else:
+            self.bot.send_message(message.from_user.id, "Unsupported audio format... for now... maybe later")
+

@@ -1,7 +1,6 @@
 import os
 import requests
 import json
-from pathlib import Path
 
 from unidecode import unidecode
 from user_agent import generate_user_agent
@@ -72,7 +71,7 @@ class VkDownloader(AbstractDownloader):
             raise BadReturnStatus(downloaded.status_code)
         with open(file_path, 'wb') as f:
             f.write(downloaded.content)
-        Path(file_path).touch()
+        self.touch_without_creation(file_path)
         sf.filter_storage()
         if _DEBUG_:
             print("Check file at path: "+ file_path)
