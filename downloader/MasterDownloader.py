@@ -62,6 +62,8 @@ class MasterDownloader():
                             file_path, title, seconds = self.yt.schedule_link(match.group(0))
                         except (UrlOrNetworkProblem, UrlProblem) as e:
                             self.error(task["user"], "UrlOrNetworkProblem or UrlProblem")
+                        except MediaIsTooLong as e:
+                            self.user_message(task["user"], "Requested video is too long")
                         else:
                             self.download_done(file_path, title, task["user"])
                     else:

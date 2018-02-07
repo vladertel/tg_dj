@@ -1,6 +1,7 @@
 import os
 import requests
 import json
+from pathlib import Path
 
 from unidecode import unidecode
 from user_agent import generate_user_agent
@@ -8,6 +9,10 @@ from user_agent import generate_user_agent
 from .AbstractDownloader import AbstractDownloader
 from .config import mediaDir, _DEBUG_, DATMUSIC_API_ENDPOINT
 from .exceptions import *
+from .storage_checker import StorageFilter
+
+
+sf = StorageFilter()
 
 class VkDownloader(AbstractDownloader):
     def get_headers(self):
@@ -57,14 +62,18 @@ class VkDownloader(AbstractDownloader):
         return (songs, headers)
 
     def schedule_link(self, song, headers):
-        downloaded = requests.get(song["download"], headers=headers, stream=True)
-        if downloaded.status_code != 200:
-            raise BadReturnStatus(downloaded.status_code)
         file_name = song["artist"] + " - " + song["title"] + '.mp3'
         file_name = unidecode(file_name)
         file_path = os.path.join(os.getcwd(), mediaDir, file_name)
+        if os.path.exists(file_path):
+            return (file_path, song["artist"] + " - " + song["title"], song["duration"])
+        downloaded = requests.get(song["download"], headers=headers, stream=True)
+        if downloaded.status_code != 200:
+            raise BadReturnStatus(downloaded.status_code)
         with open(file_path, 'wb') as f:
             f.write(downloaded.content)
+        Path(file_path).touch()
+        sf.filter_storage()
         if _DEBUG_:
             print("Check file at path: "+ file_path)
         return (file_path, song["artist"] + " - " + song["title"], song["duration"])

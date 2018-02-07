@@ -32,6 +32,8 @@ class VLCStreamer():
                 self.player.play()
             elif action == 'skip_song':
                 self.player.stop()
+            elif action == 'stop_playback':
+                self.player.stop()
             else:
                 print('Message not found:', task)
             self.input_queue.task_done()

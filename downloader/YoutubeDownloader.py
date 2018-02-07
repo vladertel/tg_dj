@@ -2,6 +2,7 @@ import urllib.request
 import json
 import re
 import os
+from pathlib import Path
 
 from pytube import YouTube
 from unidecode import unidecode
@@ -10,11 +11,12 @@ from .AbstractDownloader import AbstractDownloader
 from .config import mediaDir, youtubePrefix, _DEBUG_, duplicates, MAXIMUM_DURATION
 from .private_config import YT_API_KEY
 from .exceptions import *
+from .storage_checker import StorageFilter
 if duplicates:
     import glob
 
 
-
+sf = StorageFilter()
 
 class YoutubeDownloader(AbstractDownloader):
     def schedule_link(self, url):
@@ -60,10 +62,16 @@ class YoutubeDownloader(AbstractDownloader):
             multip *= 60
         if seconds > MAXIMUM_DURATION:
             raise MediaIsTooLong()
+        check_path = os.path.join(file_dir, unidecode(file_name)) + ".mp4"
+        if os.path.exists(check_path):
+            return (check_path, video_title , seconds)
         streams.first().download(output_path=file_dir, filename=file_name)
         file_name += ".mp4"
         file_name = unidecode(file_name)
         file_path = os.path.join(file_dir,file_name)
+        Path(file_path).touch()
+        sf.filter_storage()
         if _DEBUG_:
             print("check file at path - " + file_path)
+
         return (file_path, video_title, seconds)
