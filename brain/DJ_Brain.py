@@ -76,6 +76,7 @@ class DJ_Brain():
                     text = task['file']
                 user = task['user']
                 if self.add_request(user, text):
+                    print("pushed task to downloader: " + str(task))
                     self.downloader.input_queue.put(task)
                 else:
                     self.frontend.input_queue.put({
@@ -84,6 +85,7 @@ class DJ_Brain():
                         'message': 'Request quota reached. Try again later'
                         })
             elif action == 'user_confirmed':
+                print("pushed task to downloader: " + str(task))
                 self.downloader.input_queue.put(task)
             else:
                 print('Message not found:', task)
@@ -97,6 +99,7 @@ class DJ_Brain():
                 path = task['path']
                 if self.isWindows:
                     path = path[2:]
+                print("pushed task to backend: { action: play_song, path: " + path + "}")
                 self.backend.input_queue.put({
                     'action': 'play_song',
                     'uri': path
@@ -107,6 +110,7 @@ class DJ_Brain():
                         "user": task["user"]
                     })
             elif action == 'user_message' or action == 'ask_user':
+                print("pushed task to frontend: " + str(task))
                 self.frontend.input_queue.put(task)
             else:
                 print('Message not found:', task)

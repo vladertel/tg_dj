@@ -29,6 +29,7 @@ class TgFrontend():
         # USER STATES:
         # 0 - basic
         # 1 - asked for confirmation
+        # 2 - waiting for response
         self.users_states = {}
         self.users_to_array_of_songs = {}
         self.init_handlers()
@@ -42,6 +43,7 @@ class TgFrontend():
     def brain_listener(self):
         while True:
             task = self.input_queue.get(block=True)
+            self.users_states[task["user"]] = 0
             if task["action"] == "ask_user":
                 songs = task["songs"]
                 self.users_states[task["user"]] = 1
@@ -64,27 +66,38 @@ class TgFrontend():
         text = message.text
         if user not in self.users_states:
             self.users_states[user] = 0
+
         if self.users_states[user] == 0:
+            self.users_states[user] = 2
             request = {
                 "user": user,
                 "text": text,
                 "action": "download"
             }
             self.output_queue.put(request)
-        elif self.users_states[user] == 1:
+            return
+
+        if self.users_states[user] == 1:
             if text == "No" or text == "None of these":
                 self.bot.send_message(user, "Then ask me something else!")
+                self.users_to_array_of_songs.pop(user, None)
+                self.users_states[user] = 0
                 return
             try:
                 songs = self.users_to_array_of_songs.pop(user)
-            except:
+            except KeyError:
                 self.bot.send_message(user, "You did not ask me anything before")
+                self.users_states[user] = 0
             else:
                 m = compiled_regex.search(text)
                 try:
                     number = int(m.group(0)) - 1
-                except ValueError:
+                except (ValueError, AttributeError):
                     self.bot.send_message(user, "Push any button below")
+                    return
+                print(number)
+                if len(songs) <= number or number < 0:
+                    self.bot.send_message(user, "Bad number")
                     return
                 self.users_states[user] = 0
                 self.output_queue.put({
@@ -93,6 +106,11 @@ class TgFrontend():
                         "action":"user_confirmed",
                         "number": number
                     })
+            return
+
+        if self.users_states[user] == 2:
+            self.bot.send_message(user, "Stop it. Get some halp, your request will be processed soon")
+            return
 
     def audio_handler(self, message):
         if message.audio.mime_type == "audio/mpeg3":

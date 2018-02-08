@@ -49,9 +49,11 @@ class MasterDownloader():
 
     def queue_listener(self):
         while True:
-            task = self.input_queue.get(block=True)
+            task = self.input_queue.get()
             # process task???
+            print("Downloader - task: " + str(task))
             if task["action"] == "download":
+                print("Downloading something")
                 if "text" in task:
                     # YouTube
                     # decide whether it is youtube link or something else
@@ -68,7 +70,7 @@ class MasterDownloader():
                         else:
                             self.download_done(file_path, title, task["user"])
                         self.input_queue.task_done()
-                        return
+                        continue
                     match = self.mp3_regex.search(text)
                     if match:
                         try:
@@ -80,10 +82,11 @@ class MasterDownloader():
                         else:
                             self.download_done(file_path, title, task["user"])
                         self.input_queue.task_done()
-                        return
+                        continue
                     # VK
                     # try to find in datmusic service
                     try:
+                        print("search vk: " + text)
                         songs_obj, headers = self.vk.search_with_query(text)
                     except BadReturnStatus:
                         self.error(task["user"], "Error occured: BadReturnStatus form vk wrapper")
@@ -99,7 +102,7 @@ class MasterDownloader():
                         self.users_to_vk_headers[task["user"]] = headers
                         self.ask_user(task["user"], "What you want exactly?", songs=songs_obj)
                         self.input_queue.task_done()
-                        return
+                        continue
                 elif "file" in task:
                     file = task["file"]
                     self.user_message(task["user"], "Processing...")
@@ -108,10 +111,12 @@ class MasterDownloader():
                 else:
                     self.error(task["user"], "Error occured: Unsupported")
             elif task["action"] == "user_confirmed":
+                print("user_confirmed vk: " + str(task["number"]))
                 try:
                     songs = self.users_to_vk_songs.pop(task["user"])
                     headers = self.users_to_vk_headers.pop(task["user"])
                 except KeyError:
+                    print("UNEXISTENT USER IN users_to_vk_songs")
                     self.error(task["user"], "UNEXISTENT USER IN users_to_vk_songs")
                 else:
                     number = task["number"]

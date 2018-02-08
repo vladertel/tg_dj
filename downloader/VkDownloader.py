@@ -61,17 +61,19 @@ class VkDownloader(AbstractDownloader):
         return (songs, headers)
 
     def schedule_link(self, song, headers):
-        response = requests.head(url, headers=headers, allow_redirects=True)
+        if _DEBUG_:
+            print("Downloading song:" + str(song))
+        response = requests.head(song["download"], headers=headers, allow_redirects=True)
         if response.status_code != 200:
             raise BadReturnStatus(response.status_code)
         try:
             file_size = response.headers['content-length']
         except KeyError as e:
-            print("LinkDownloader: no such header: content-length")
+            print("VkDownloader: no such header: content-length")
             print(e)
             raise e
-        if file_size > MAXIMUM_FILE_SIZE:
-            raise MediaIsTooBig()
+        if int(file_size) > MAXIMUM_FILE_SIZE:
+            raise MediaIsTooBig(file_size)
         file_name = song["artist"] + " - " + song["title"] + '.mp3'
         file_name = unidecode(file_name)
         file_path = os.path.join(os.getcwd(), mediaDir, file_name)
