@@ -2,6 +2,7 @@ import os
 import requests
 
 import mutagen
+from unidecode import unidecode
 
 from .AbstractDownloader import AbstractDownloader
 from frontend.config import token as bot_token
@@ -31,12 +32,15 @@ class FileDownloader(AbstractDownloader):
         file_path = os.path.join(file_dir, file_name)
         with open(file_path, 'wb') as f:
             f.write(downloaded.content)
+        # from mutagen.mp3 import MP3
+        # audio = MP3("example.mp3")
+        # print audio.info.length
         info = mutagen.File(file_path)
         title = "Not provided"
         if "artist" in info and "title" in info:
             title = info["artist"] + " - " + info["title"]
             file_name = title + ".mp3"
-            new_file_path = os.path.join(file_dir, file_name)
+            new_file_path = unidecode(os.path.join(file_dir, file_name))
             os.rename(file_path, new_file_path)
             file_path = new_file_path
         self.touch_without_creation(file_path)
