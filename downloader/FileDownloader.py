@@ -21,6 +21,9 @@ sf = StorageFilter()
 
 class FileDownloader(AbstractDownloader):
 
+    def is_acceptable(self, task):
+        return "file" in task
+
     def schedule_link(self, user, file_id, duration, file_info, file_size=None):
         if duration > MAXIMUM_DURATION:
             raise MediaIsTooLong()
@@ -46,3 +49,8 @@ class FileDownloader(AbstractDownloader):
         self.touch_without_creation(file_path)
         sf.filter_storage()
         return (file_path, title, duration)
+
+
+    def schedule_task(self, task):
+        return self.schedule_link(task["user"], task["file"], task["duration"], task["file_info"], task["file_size"])
+

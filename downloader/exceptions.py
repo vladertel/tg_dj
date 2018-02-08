@@ -22,3 +22,6 @@ class OnlyOneFound(Exception):
 
 class UnappropriateArgument(Exception):
     pass
+
+class AskUser(Exception):
+    pass

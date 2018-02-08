@@ -16,6 +16,23 @@ from .storage_checker import StorageFilter
 sf = StorageFilter()
 
 class YoutubeDownloader(AbstractDownloader):
+    def __init__(self):
+        self.yt_regex = re.compile(r"((?:https?://)?(?:www\.)?youtube\.com/watch\?v=[a-zA-Z0-9_]{11})|((?:https?://)?(?:www\.)?youtu\.be/[a-zA-Z0-9_]{11})", flags=re.IGNORECASE)
+
+
+    def is_acceptable(self, task):
+        if "text" in task:
+            match = self.yt_regex.search(task["text"])
+            if match:
+                return match.group(0)
+        return False
+
+    def schedule_task(self, task):
+        match = self.yt_regex.search(task["text"])
+        if match:
+            return self.schedule_link(match.group(0))
+        raise UnappropriateArgument()
+
     def schedule_link(self, url):
         if _DEBUG_:
             print("Getting url: " + url)

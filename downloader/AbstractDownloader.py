@@ -11,7 +11,7 @@ class AbstractDownloader():
     def __init__(self):
         pass
 
-    def is_acceptable(self, param):
+    def is_acceptable(self, task):
         raise ShouldNotBeCalled(
             "this method should not be called from abstract class")
 

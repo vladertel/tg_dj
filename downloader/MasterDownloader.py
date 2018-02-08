@@ -74,7 +74,7 @@ class MasterDownloader():
                     match = self.mp3_regex.search(text)
                     if match:
                         try:
-                            file_path, title, seconds = self.LinkDownloader.schedule_link(match.group(0))
+                            file_path, title, seconds = self.link.schedule_link(match.group(0))
                         except BadReturnStatus as e:
                             self.error(task["user"], "BadReturnStatus")
                         except MediaIsTooLong as e:
@@ -104,7 +104,6 @@ class MasterDownloader():
                         self.input_queue.task_done()
                         continue
                 elif "file" in task:
-                    file = task["file"]
                     self.user_message(task["user"], "Processing...")
                     file_path, title, seconds = self.file.schedule_link(task["user"], task["file"], task["duration"], task["file_info"], task["file_size"])
                     self.download_done(file_path, title, task["user"])
@@ -121,15 +120,19 @@ class MasterDownloader():
                 else:
                     number = task["number"]
                     self.user_message(task["user"], "Processing...")
-                    file_path, title, seconds = self.vk.schedule_link(songs[number], headers)
-                    self.download_done(file_path, title, task["user"])
+                    try:
+                        file_path, title, seconds = self.vk.schedule_link(songs[number], headers)
+                    except Exception as e:
+                        self.error(task["user"], "error happened: " + str(e))
+                    else:
+                        self.download_done(file_path, title, task["user"])
             else:
                 self.error(task["user"], "Don't know what to do with this action: " + task["action"])
 
     def __init__(self):
             # https://youtu.be/qAeybdD5UoQ
         self.yt_regex = re.compile(r"((?:https?://)?(?:www\.)?youtube\.com/watch\?v=[a-zA-Z0-9_]{11})|((?:https?://)?(?:www\.)?youtu\.be/[a-zA-Z0-9_]{11})", flags=re.IGNORECASE)
-        self.mp3_regex = re.compile(r"(?:https?://)?(?:www\.)?[a-zA-Z0-9_-]{3,30}\.[a-zA-Z]{2,4}\/.*\.mp3", flags=re.IGNORECASE)
+        self.mp3_regex = re.compile(r"(?:https?://)?(?:www\.)?(?:[a-zA-Z0-9_-]{3,30}\.)+[a-zA-Z]{2,4}\/.*\.mp3[a-zA-Z0-9_\?\&\=\-]*", flags=re.IGNORECASE)
         self.users_to_vk_headers={}
         self.users_to_vk_songs={}
         self.vk = VkDownloader()

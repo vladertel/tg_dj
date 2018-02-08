@@ -14,6 +14,14 @@ from .storage_checker import StorageFilter
 sf = StorageFilter()
 
 class VkDownloader(AbstractDownloader):
+    def is_acceptable(self, task):
+        if "text" in task:
+            raise AskUser(self.search_with_query(task["text"]))
+        return False
+
+    def schedule_task(self, task):
+        raise Exception("Not implemented")
+
     def get_headers(self):
         return {
             "User-Agent": generate_user_agent(),
@@ -41,10 +49,11 @@ class VkDownloader(AbstractDownloader):
             data = json.loads(songs.text)["data"]
         except KeyError as e:
             print("seems like wrong result")
-            print(songs.text)
+            # print(songs.text)
             raise e
         if _DEBUG_:
-            print("Got: " + str(data))
+            pass
+            # print("Got: " + str(data))
         # try:
         length = len(data)
         if length > 10:
