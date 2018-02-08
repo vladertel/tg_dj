@@ -8,6 +8,9 @@ class UrlProblem(Exception):
 class MediaIsTooLong(Exception):
     pass
 
+class MediaIsTooBig(Exception):
+    pass
+
 class BadReturnStatus(Exception):
     pass
 
@@ -15,4 +18,7 @@ class NothingFound(Exception):
     pass
 
 class OnlyOneFound(Exception):
+    pass
+
+class UnappropriateArgument(Exception):
     pass

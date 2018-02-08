@@ -6,7 +6,7 @@ from unidecode import unidecode
 from user_agent import generate_user_agent
 
 from .AbstractDownloader import AbstractDownloader
-from .config import mediaDir, _DEBUG_, DATMUSIC_API_ENDPOINT
+from .config import mediaDir, _DEBUG_, DATMUSIC_API_ENDPOINT, MAXIMUM_FILE_SIZE
 from .exceptions import *
 from .storage_checker import StorageFilter
 
@@ -61,6 +61,17 @@ class VkDownloader(AbstractDownloader):
         return (songs, headers)
 
     def schedule_link(self, song, headers):
+        response = requests.head(url, headers=headers, allow_redirects=True)
+        if response.status_code != 200:
+            raise BadReturnStatus(response.status_code)
+        try:
+            file_size = response.headers['content-length']
+        except KeyError as e:
+            print("LinkDownloader: no such header: content-length")
+            print(e)
+            raise e
+        if file_size > MAXIMUM_FILE_SIZE:
+            raise MediaIsTooBig()
         file_name = song["artist"] + " - " + song["title"] + '.mp3'
         file_name = unidecode(file_name)
         file_path = os.path.join(os.getcwd(), mediaDir, file_name)

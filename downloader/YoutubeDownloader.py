@@ -7,12 +7,10 @@ from pytube import YouTube
 from unidecode import unidecode
 
 from .AbstractDownloader import AbstractDownloader
-from .config import mediaDir, youtubePrefix, _DEBUG_, duplicates, MAXIMUM_DURATION
+from .config import mediaDir, _DEBUG_, MAXIMUM_DURATION
 from .private_config import YT_API_KEY
 from .exceptions import *
 from .storage_checker import StorageFilter
-if duplicates:
-    import glob
 
 
 sf = StorageFilter()
@@ -31,26 +29,19 @@ class YoutubeDownloader(AbstractDownloader):
         video_title = yt.title
         if video_id is None:
             raise UrlProblem()
-        if _DEBUG_:
-            for stream in streams.all():
-                print(stream)
+        # if _DEBUG_:
+        #     for stream in streams.all():
+        #         print(stream)
         # for stream in streams.all():
         # 	if stream.mime_type == "audio/mp4":
         # exit(1)
         file_dir = os.path.join(os.getcwd(), mediaDir)
-        if duplicates:
-            t = len(glob.glob(os.path.join(file_dir,video_title) + "*"))
-            if t > 0:
-                file_name = video_title + " (" + str(t) + ")"
-            else:
-                file_name = video_title
-        else:
-            file_name = video_title
+        file_name = video_title
         searchUrl = "https://www.googleapis.com/youtube/v3/videos?id="+video_id+"&key="+YT_API_KEY+"&part=contentDetails"
         try:
             response = urllib.request.urlopen(searchUrl).read()
         except Exception as e:
-            raise UrlOrNetworkProblem()
+            raise UrlOrNetworkProblem("google")
         data = json.loads(response)
         duration = data['items'][0]['contentDetails']['duration']
         m = re.findall(r"\d+", duration)[::-1]
