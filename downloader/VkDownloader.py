@@ -1,6 +1,7 @@
 import os
 import requests
 import json
+from time import sleep
 
 from unidecode import unidecode
 from user_agent import generate_user_agent
@@ -14,6 +15,23 @@ from .storage_checker import StorageFilter
 sf = StorageFilter()
 
 class VkDownloader(AbstractDownloader):
+    name = "vk downloader"
+
+    def is_acceptable(self, task):
+        if "text" in task:
+            try:
+                songs, headers = self.search_with_query(task["text"])
+            except OnlyOneFound as e:
+                args = e.args
+                # self.user_message(task["user"], "Processing...")
+                file_path, title, seconds = self.vk.schedule_link(args[0], args[1])
+                # self.download_done(file_path, title, task["user"])
+            raise AskUser((songs, headers))
+        return False
+
+    def schedule_task(self, task):
+        return self.schedule_link(task["song"], task["headers"])
+
     def get_headers(self):
         return {
             "User-Agent": generate_user_agent(),
@@ -41,10 +59,11 @@ class VkDownloader(AbstractDownloader):
             data = json.loads(songs.text)["data"]
         except KeyError as e:
             print("seems like wrong result")
-            print(songs.text)
+            # print(songs.text)
             raise e
         if _DEBUG_:
-            print("Got: " + str(data))
+            pass
+            print("Got " + str(len(data)) + "results")
         # try:
         length = len(data)
         if length > 10:
@@ -55,9 +74,6 @@ class VkDownloader(AbstractDownloader):
             raise OnlyOneFound(data[0], headers)
         else:
             songs = data[0:length]
-        # except (KeyError, IndexError) as e:
-        #     return None
-        # song["headers"] = headers
         return (songs, headers)
 
     def schedule_link(self, song, headers):
@@ -77,8 +93,9 @@ class VkDownloader(AbstractDownloader):
         file_name = song["artist"] + " - " + song["title"] + '.mp3'
         file_name = unidecode(file_name)
         file_path = os.path.join(os.getcwd(), mediaDir, file_name)
-        if os.path.exists(file_path):
+        if self.is_in_cache(file_path):
             return (file_path, song["artist"] + " - " + song["title"], song["duration"])
+        sleep(1)
         downloaded = requests.get(song["download"], headers=headers, stream=True)
         if downloaded.status_code != 200:
             raise BadReturnStatus(downloaded.status_code)

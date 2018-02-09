@@ -11,7 +11,7 @@ class AbstractDownloader():
     def __init__(self):
         pass
 
-    def is_acceptable(self, param):
+    def is_acceptable(self, task):
         raise ShouldNotBeCalled(
             "this method should not be called from abstract class")
 
@@ -28,3 +28,6 @@ class AbstractDownloader():
     def schedule_task(self, task):
         raise ShouldNotBeCalled(
             "this method should not be called from abstract class")
+
+    def is_in_cache(self, file_path):
+        return os.path.exists(file_path) and os.path.getsize(file_path) > 0
