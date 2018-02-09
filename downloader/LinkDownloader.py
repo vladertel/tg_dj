@@ -22,7 +22,7 @@ def get_mp3_title_and_duration(path):
 class LinkDownloader(AbstractDownloader):
     def __init__(self):
         self.mp3_regex = re.compile(r"(?:https?://)?(?:www\.)?(?:[a-zA-Z0-9_-]{3,30}\.)+[a-zA-Z]{2,4}\/.*\.mp3[a-zA-Z0-9_\?\&\=\-]*", flags=re.IGNORECASE)
-
+        self.name = "links downloader"
 
     def is_acceptable(self, task):
         if "text" in task:
@@ -55,7 +55,7 @@ class LinkDownloader(AbstractDownloader):
         file_name = unidecode(url.split("/")[-1] + ".mp3")
         file_path = os.path.join(file_dir, file_name)
 
-        if os.path.exists(file_path):
+        if os.path.exists(file_path) and os.path.getsize(file_path) > 0:
             title, duration = get_mp3_title_and_duration(file_path)
             return (file_path, title, duration)
 

@@ -16,6 +16,7 @@ from .storage_checker import StorageFilter
 sf = StorageFilter()
 
 class YoutubeDownloader(AbstractDownloader):
+    name = "YouTube downloader"
     def __init__(self):
         self.yt_regex = re.compile(r"((?:https?://)?(?:www\.)?youtube\.com/watch\?v=[a-zA-Z0-9_]{11})|((?:https?://)?(?:www\.)?youtu\.be/[a-zA-Z0-9_]{11})", flags=re.IGNORECASE)
 
@@ -70,7 +71,7 @@ class YoutubeDownloader(AbstractDownloader):
         if seconds > MAXIMUM_DURATION:
             raise MediaIsTooLong()
         check_path = os.path.join(file_dir, unidecode(file_name)) + ".mp4"
-        if os.path.exists(check_path):
+        if self.is_in_cache(check_path):
             return (check_path, video_title , seconds)
         streams.first().download(output_path=file_dir, filename=file_name)
         file_name += ".mp4"
