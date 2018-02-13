@@ -1,27 +1,29 @@
 import os
 import requests
-import re 
+import re
 
 from unidecode import unidecode
 from mutagen.mp3 import MP3
 
 from .AbstractDownloader import AbstractDownloader
 from .config import mediaDir, _DEBUG_, MAXIMUM_DURATION, MAXIMUM_FILE_SIZE
-from .exceptions import BadReturnStatus, MediaIsTooLong, UrlOrNetworkProblem, MediaIsTooBig
-from .storage_checker import StorageFilter
+from .exceptions import BadReturnStatus, MediaIsTooLong, MediaIsTooBig, UnappropriateArgument
+from .storage_checker import filter_storage
 
-sf = StorageFilter()
 
 def get_mp3_title_and_duration(path):
     audio = MP3(path)
     title = "Not provided"
     if "artist" in audio and "title" in audio:
-        title = info["artist"] + " - " + info["title"]
+        title = audio.info["artist"] + " - " + audio.info["title"]
     return (title, audio.info.length)
+
 
 class LinkDownloader(AbstractDownloader):
     def __init__(self):
-        self.mp3_regex = re.compile(r"(?:https?://)?(?:www\.)?(?:[a-zA-Z0-9_-]{3,30}\.)+[a-zA-Z]{2,4}\/.*\.mp3[a-zA-Z0-9_\?\&\=\-]*", flags=re.IGNORECASE)
+        self.mp3_regex = re.compile(
+            r"(?:https?://)?(?:www\.)?(?:[a-zA-Z0-9_-]{3,30}\.)+[a-zA-Z]{2,4}\/.*\.mp3[a-zA-Z0-9_\?\&\=\-]*",
+            flags=re.IGNORECASE)
         self.name = "links downloader"
 
     def is_acceptable(self, task):
@@ -36,7 +38,6 @@ class LinkDownloader(AbstractDownloader):
         if match:
             return self.schedule_link(match.group(0))
         raise UnappropriateArgument()
-
 
     def schedule_link(self, url):
         response = requests.head(url, allow_redirects=True)
@@ -72,6 +73,6 @@ class LinkDownloader(AbstractDownloader):
             raise MediaIsTooLong()
 
         self.touch_without_creation(file_path)
-        sf.filter_storage()
+        filter_storage()
 
         return (file_path, title, duration)

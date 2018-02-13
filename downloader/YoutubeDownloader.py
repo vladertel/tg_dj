@@ -10,16 +10,15 @@ from .AbstractDownloader import AbstractDownloader
 from .config import mediaDir, _DEBUG_, MAXIMUM_DURATION
 from .private_config import YT_API_KEY
 from .exceptions import *
-from .storage_checker import StorageFilter
+from .storage_checker import filter_storage
 
-
-sf = StorageFilter()
 
 class YoutubeDownloader(AbstractDownloader):
     name = "YouTube downloader"
-    def __init__(self):
-        self.yt_regex = re.compile(r"((?:https?://)?(?:www\.)?youtube\.com/watch\?v=[a-zA-Z0-9_]{11})|((?:https?://)?(?:www\.)?youtu\.be/[a-zA-Z0-9_]{11})", flags=re.IGNORECASE)
 
+    def __init__(self):
+        self.yt_regex = re.compile(r"((?:https?://)?(?:www\.)?youtube\.com/watch\?v=[a-zA-Z0-9_]{11})|\
+            ((?:https?://)?(?:www\.)?youtu\.be/[a-zA-Z0-9_]{11})", flags=re.IGNORECASE)
 
     def is_acceptable(self, task):
         if "text" in task:
@@ -41,7 +40,7 @@ class YoutubeDownloader(AbstractDownloader):
         try:
             yt = YouTube(url)
             streams = yt.streams.filter(only_audio=True)
-        except Exception as e:
+        except Exception:
             raise UrlOrNetworkProblem()
         video_id = yt.video_id
         video_title = yt.title
@@ -55,10 +54,11 @@ class YoutubeDownloader(AbstractDownloader):
         # exit(1)
         file_dir = os.path.join(os.getcwd(), mediaDir)
         file_name = video_title
-        searchUrl = "https://www.googleapis.com/youtube/v3/videos?id="+video_id+"&key="+YT_API_KEY+"&part=contentDetails"
+        searchUrl = "https://www.googleapis.com/youtube/v3/videos?id=" + video_id + \
+            "&key=" + YT_API_KEY + "&part=contentDetails"
         try:
             response = urllib.request.urlopen(searchUrl).read()
-        except Exception as e:
+        except Exception:
             raise UrlOrNetworkProblem("google")
         data = json.loads(response)
         duration = data['items'][0]['contentDetails']['duration']
@@ -72,13 +72,13 @@ class YoutubeDownloader(AbstractDownloader):
             raise MediaIsTooLong()
         check_path = os.path.join(file_dir, unidecode(file_name)) + ".mp4"
         if self.is_in_cache(check_path):
-            return (check_path, video_title , seconds)
+            return (check_path, video_title, seconds)
         streams.first().download(output_path=file_dir, filename=file_name)
         file_name += ".mp4"
         file_name = unidecode(file_name)
-        file_path = os.path.join(file_dir,file_name)
+        file_path = os.path.join(file_dir, file_name)
         self.touch_without_creation(file_path)
-        sf.filter_storage()
+        filter_storage()
         if _DEBUG_:
             print("check file at path - " + file_path)
 

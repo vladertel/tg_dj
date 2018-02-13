@@ -8,9 +8,8 @@ from .AbstractDownloader import AbstractDownloader
 from frontend.config import token as bot_token
 from .config import mediaDir, _DEBUG_, MAXIMUM_DURATION
 from .exceptions import *
-from .storage_checker import StorageFilter
+from .storage_checker import filter_storage
 
-sf = StorageFilter()
         # self.output_queue.put({
         #     "user": message.from_user.id,
         #     "file": message.audio.file_id,
@@ -51,7 +50,7 @@ class FileDownloader(AbstractDownloader):
 
         info = mutagen.File(file_path)
         self.touch_without_creation(file_path)
-        sf.filter_storage()
+        filter_storage()
         return (file_path, self.get_title(file_path), duration)
 
 

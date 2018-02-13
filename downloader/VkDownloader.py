@@ -9,10 +9,8 @@ from user_agent import generate_user_agent
 from .AbstractDownloader import AbstractDownloader
 from .config import mediaDir, _DEBUG_, DATMUSIC_API_ENDPOINT, MAXIMUM_FILE_SIZE
 from .exceptions import *
-from .storage_checker import StorageFilter
+from .storage_checker import filter_storage
 
-
-sf = StorageFilter()
 
 class VkDownloader(AbstractDownloader):
     name = "vk downloader"
@@ -102,7 +100,7 @@ class VkDownloader(AbstractDownloader):
         with open(file_path, 'wb') as f:
             f.write(downloaded.content)
         self.touch_without_creation(file_path)
-        sf.filter_storage()
+        filter_storage()
         if _DEBUG_:
             print("Check file at path: "+ file_path)
         return (file_path, song["artist"] + " - " + song["title"], song["duration"])
