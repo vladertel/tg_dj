@@ -5,7 +5,7 @@ import mutagen
 from unidecode import unidecode
 
 from .AbstractDownloader import AbstractDownloader
-from frontend.config import token as bot_token
+from frontend.private_config import token as bot_token
 from .config import mediaDir, _DEBUG_, MAXIMUM_DURATION
 from .exceptions import *
 from .storage_checker import filter_storage

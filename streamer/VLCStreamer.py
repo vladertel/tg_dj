@@ -8,7 +8,7 @@ from .config import *
 # options = 'sout=#duplicate{dst=rtp{access=udp,mux=ts,dst=224.0.0.1,port=1233},dst=display}'
 # Load media with streaming options
 # media = instance.media_new('test.mp3', options)
-# The above snippet will stream to the multicast address 224.0.0.1, 
+# The above snippet will stream to the multicast address 224.0.0.1,
 # allowing all devices on the network to consume the RTP stream, whilst also playing it locally.
 
 
@@ -32,8 +32,8 @@ class VLCStreamer():
                 self.player.play()
             elif action == 'skip_song':
                 self.player.stop()
-            elif action == 'stop_playback':
+            elif action == 'stop_playing':
                 self.player.stop()
             else:
-                print('Message not found:', task)
+                print('Message not supported:', task)
             self.input_queue.task_done()

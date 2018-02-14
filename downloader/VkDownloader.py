@@ -43,12 +43,12 @@ class VkDownloader(AbstractDownloader):
     def get_payload(self, query):
         return {
             "q": query,
-            "page":0
+            "page": 0
         }
 
     def search_with_query(self, search_query):
         if _DEBUG_:
-            print("Trying to get data from "+ DATMUSIC_API_ENDPOINT + " with query " + search_query)
+            print("Trying to get data from " + DATMUSIC_API_ENDPOINT + " with query " + search_query)
         headers = self.get_headers()
         songs = requests.get(DATMUSIC_API_ENDPOINT, params=self.get_payload(search_query), headers=headers)
         if songs.status_code != 200:
@@ -102,7 +102,7 @@ class VkDownloader(AbstractDownloader):
         self.touch_without_creation(file_path)
         filter_storage()
         if _DEBUG_:
-            print("Check file at path: "+ file_path)
+            print("Check file at path: " + file_path)
         return (file_path, song["artist"] + " - " + song["title"], song["duration"])
-            # downloaded.raw.decode_content = True
-            # shutil.copyfileobj(downloaded.raw, f)
+        # downloaded.raw.decode_content = True
+        # shutil.copyfileobj(downloaded.raw, f)

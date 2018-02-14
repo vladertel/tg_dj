@@ -1,5 +1,5 @@
 **/__pycache__/
 *.pyc
-frontend/config.py
 media/*
 private_config.py
+users

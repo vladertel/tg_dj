@@ -2,25 +2,39 @@ import telebot
 import threading
 from queue import Queue
 import re
+import os
+import json
 
-from .config import token
+from .private_config import token
+from .config import cacheDir
 
 compiled_regex = re.compile(r"^\d+")
+
 
 def generate_markup(songs):
     markup = telebot.types.ReplyKeyboardMarkup(one_time_keyboard=True)
     i = 1
     for song in songs:
-        markup.row(str(i) + ". " + song["artist"] + " - " + song["title"])
+        dur = song["duration"]
+        m = dur // 60
+        s = dur - m * 60
+        strdur = "{:d}:{:02d}".format(m, s)
+        markup.row(str(i) + ". " + song["artist"] + " - " + song["title"] + " " + strdur)
         i += 1
     markup.row("None of these")
     return markup
+
+
+def get_files_in_dir(directory):
+    return [f for f in os.listdir(directory) if
+            os.path.isfile(os.path.join(directory, f)) and not f.startswith(".")]
+
 
 class TgFrontend():
 
     def __init__(self):
         self.bot = telebot.TeleBot(token)
-        self.botThread = threading.Thread(daemon=True, target=self.bot.polling, kwargs={"none_stop":True})
+        self.botThread = threading.Thread(daemon=True, target=self.bot.polling, kwargs={"none_stop": True})
         self.botThread.start()
         self.input_queue = Queue()
         self.output_queue = Queue()
@@ -30,12 +44,35 @@ class TgFrontend():
         # 0 - basic
         # 1 - asked for confirmation
         # 2 - waiting for response
-        self.users_states = {}
-        self.users_to_array_of_songs = {}
+        self.user_info = {}
+        self.load_users()
         self.init_handlers()
+
+    def load_users(self):
+        files_dir = os.path.join(os.getcwd(), cacheDir)
+        if not os.path.exists(files_dir):
+            return
+        files = get_files_in_dir(files_dir)
+        for user in files:
+            with open(os.path.join(os.getcwd(), cacheDir, user)) as f:
+                try:
+                    userinfo = json.load(f)
+                except UnicodeDecodeError:
+                    pass  # or os.unlink?
+                else:
+                    self.user_info[int(user)] = userinfo
+
+    def cleanup(self):
+        cache_path = os.path.join(os.getcwd(), cacheDir)
+        if not os.path.exists(cache_path):
+            os.makedirs(cache_path)
+        for user in self.user_info:
+            with open(os.path.join(cache_path, str(user)), 'w') as f:
+                f.write(json.dumps(self.user_info[user], ensure_ascii=False))
 
     def init_handlers(self):
         self.bot.message_handler(commands=['start'])(self.start_handler)
+        self.bot.message_handler(commands=['stop_playing'])(self.stop_playing)
         self.bot.message_handler(content_types=['text'])(self.text_message_handler)
         self.bot.message_handler(content_types=['audio'])(self.audio_handler)
         # self.bot.message_handlers.append(self.bot._build_handler_dict)
@@ -43,51 +80,68 @@ class TgFrontend():
     def brain_listener(self):
         while True:
             task = self.input_queue.get(block=True)
-            self.users_states[task["user"]] = 0
+            self.user_info[task["user"]]["state"] = 0
             if task["action"] == "ask_user":
                 songs = task["songs"]
-                self.users_states[task["user"]] = 1
-                self.users_to_array_of_songs[task["user"]] = songs
+                self.user_info[task["user"]]["state"] = 1
+                self.user_info[task["user"]]["array_of_songs"] = songs
                 self.bot.send_message(task["user"], task["message"], reply_markup=generate_markup(songs))
             elif task["action"] == "user_message":
                 self.bot.send_message(task["user"], task["message"])
             else:
                 self.bot.send_message(task["user"], "DEBUG:\n" + str(task))
 
-    def broadcast_to_all_users(self):
+    def broadcast_to_all_users(self, message):
+        for user in self.users_states:
+            self.bot.send_message(user, message)
+
+    def stop_playing(self, message):
+        self.output_queue.put({
+            "action": "stop_playing",
+            "user": message.from_user.id
+        })
+
+    def vote_up(self):
+        pass
+
+    def vote_down(self):
         pass
 
     def start_handler(self, message):
-        self.users_states[message.from_user.id] = 0
+        self.user_info[message.from_user.id] = {}
+        self.user_info[message.from_user.id]["state"] = 0
         self.bot.send_message(message.from_user.id, "halo")
 
     def text_message_handler(self, message):
         user = message.from_user.id
         text = message.text
-        if user not in self.users_states:
-            self.users_states[user] = 0
+        if user not in self.user_info:
+            self.user_info[user] = {}
+            self.user_info[user]["state"] = 0
 
-        if self.users_states[user] == 0:
-            self.users_states[user] = 2
+        if self.user_info[user]["state"] == 0:
+            self.user_info[user]["state"] = 2
             request = {
                 "user": user,
                 "text": text,
                 "action": "download"
             }
             self.output_queue.put(request)
+            self.bot.send_message(user, "Your request is queued. Wait for response")
             return
 
-        if self.users_states[user] == 1:
+        if self.user_info[user]["state"] == 1:
             if text == "No" or text == "None of these":
                 self.bot.send_message(user, "Then ask me something else!")
-                self.users_to_array_of_songs.pop(user, None)
-                self.users_states[user] = 0
+                self.user_info[user]["array_of_songs"] = []
+                self.user_info[user]["state"] = 0
                 return
             try:
-                songs = self.users_to_array_of_songs.pop(user)
+                songs = self.user_info[user]["array_of_songs"]
+                self.user_info[user]["array_of_songs"] = []
             except KeyError:
                 self.bot.send_message(user, "You did not ask me anything before")
-                self.users_states[user] = 0
+                self.user_info[user]["state"] = 0
             else:
                 m = compiled_regex.search(text)
                 try:
@@ -99,16 +153,16 @@ class TgFrontend():
                 if len(songs) <= number or number < 0:
                     self.bot.send_message(user, "Bad number")
                     return
-                self.users_states[user] = 0
+                self.user_info[user]["state"] = 0
                 self.output_queue.put({
-                        "user": user,
-                        "text": text,
-                        "action":"user_confirmed",
-                        "number": number
-                    })
+                    "user": user,
+                    "text": text,
+                    "action": "user_confirmed",
+                    "number": number
+                })
             return
 
-        if self.users_states[user] == 2:
+        if self.user_info[user]["state"] == 2:
             self.bot.send_message(user, "Stop it. Get some halp, your request will be processed soon")
             return
 
@@ -125,4 +179,3 @@ class TgFrontend():
             })
         else:
             self.bot.send_message(message.from_user.id, "Unsupported audio format... for now... maybe later")
-

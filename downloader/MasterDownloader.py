@@ -53,6 +53,15 @@ class MasterDownloader():
         else:
             self.download_done(task["user"], file_path, title, seconds)
 
+    def thread_download_confirmed(self, downloader, task):
+        try:
+            file_path, title, seconds = downloader.schedule_link(task["song"], task["headers"])
+        except Exception as e:
+            self.error(task["user"], "error happened: " + str(e))
+        else:
+            self.download_done(
+                task["user"], file_path, title, seconds)
+
     def queue_listener(self):
         while True:
             task = self.input_queue.get()
@@ -112,14 +121,17 @@ class MasterDownloader():
                 else:
                     number = task["number"]
                     self.user_message(task["user"], "Processing...")
-                    try:
-                        file_path, title, seconds = self.downloaders["vk"].schedule_link(
-                            songs[number], headers)
-                    except Exception as e:
-                        self.error(task["user"], "error happened: " + str(e))
-                    else:
-                        self.download_done(
-                            task["user"], file_path, title, seconds)
+                    new_task = {
+                        "action": "user_confirmed",
+                        "song": songs[number],
+                        "headers": headers,
+                        "user": task["user"]
+                    }
+                    threading.Thread(daemon=True, target=self.thread_download_confirmed, args=(
+                        downloader, new_task)).start()
+                        # file_path, title, seconds = self.downloaders["vk"].schedule_link(
+                        #     songs[number], headers)
+
             else:
                 self.error(
                     task["user"], "Don't know what to do with this action: " + task["action"])
