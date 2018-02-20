@@ -18,3 +18,7 @@ for arg in args:
         pass
 
 brain = DJ_Brain(*args)
+try:
+    atexit.register(brain.cleanup)
+except AttributeError:
+        pass
