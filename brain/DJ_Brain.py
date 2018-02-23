@@ -102,6 +102,16 @@ class DJ_Brain():
                         "message": "You have no power here",
                         "user": task["user"]
                     })
+            elif action == 'skip_song':
+                if task['user'] in superusers:
+                    print("pushed task to backend: " + str(task))
+                    self.backend.input_queue.put(task)
+                else:
+                    self.frontend.input_queue.put({
+                        "action": "user_message",
+                        "message": "You have no power here",
+                        "user": task["user"]
+                    })
             else:
                 print('Message not supported:', task)
             self.frontend.output_queue.task_done()
@@ -124,7 +134,7 @@ class DJ_Brain():
                     "message": "Your query is playing now",
                     "user": task["user"]
                 })
-            elif action == 'user_message' or action == 'ask_user':
+            elif action == 'user_message' or action == 'ask_user' or action == 'confirmation_done':
                 print("pushed task to frontend: " + str(task))
                 self.frontend.input_queue.put(task)
             else:

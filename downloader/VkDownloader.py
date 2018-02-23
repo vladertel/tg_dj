@@ -17,14 +17,8 @@ class VkDownloader(AbstractDownloader):
 
     def is_acceptable(self, task):
         if "text" in task:
-            try:
-                songs, headers = self.search_with_query(task["text"])
-            except OnlyOneFound as e:
-                args = e.args
-                # self.user_message(task["user"], "Processing...")
-                file_path, title, seconds = self.vk.schedule_link(args[0], args[1])
-                # self.download_done(file_path, title, task["user"])
-            raise AskUser((songs, headers))
+            songs, headers = self.search_with_query(task["text"])
+            raise AskUser(songs, headers)
         return False
 
     def schedule_task(self, task):

@@ -1,5 +1,5 @@
 import threading
-import re
+# import re
 
 from queue import Queue
 
@@ -49,7 +49,7 @@ class MasterDownloader():
         try:
             file_path, title, seconds = downloader.schedule_task(task)
         except Exception as e:
-            print(e)
+            self.error(task["user"], "error happened: " + str(e))
         else:
             self.download_done(task["user"], file_path, title, seconds)
 
@@ -82,8 +82,8 @@ class MasterDownloader():
                         self.user_message(
                             task["user"], "Requested media is too long (more than " + str(MAXIMUM_DURATION) + " MB)")
                     except MediaIsTooBig:
-                        self.user_message(
-                            task["user"], "Requested media is too large (more than " + str(MAXIMUM_FILE_SIZE / 1000000) + " MB)")
+                        self.user_message(task["user"], "Requested media is too large (more than " +
+                                                str(MAXIMUM_FILE_SIZE / 1000000) + " MB)")
                     except (UrlOrNetworkProblem, UrlProblem, BadReturnStatus):
                         self.user_message(task["user"], "Seems like " + downloader.name +
                                           " is unavailable or bad link :(\nTry again, or tell this to admin")
@@ -91,14 +91,14 @@ class MasterDownloader():
                         self.user_message(
                             task["user"], "Nothing found with that query :(")
                     except AskUser as e:
-                        songs, headers = e.args[0]
+                        songs, headers = e.args[0], e.args[1]
                         self.users_to_vk_songs[task["user"]] = songs
                         self.users_to_vk_headers[task["user"]] = headers
                         self.ask_user(
                             task["user"], "What you want exactly?", songs=songs)
                         break
                     except OnlyOneFound as e:
-                        song, headers = e.args[0]
+                        song, headers = e.args[0], e.args[1]
                         new_task = {
                             "user": task["user"],
                             "song": song,
@@ -120,17 +120,26 @@ class MasterDownloader():
                         task["user"], "UNEXISTENT USER IN users_to_vk_songs")
                 else:
                     number = task["number"]
+                    try:
+                        song = songs[number]
+                    except (KeyError, IndexError):
+                        self.user_message(task["user"], "No such music")
+                        continue
                     self.user_message(task["user"], "Processing...")
+                    self.output_queue.put({
+                        "user": task["user"],
+                        "action": "confirmation_done"
+                    })
                     new_task = {
                         "action": "user_confirmed",
-                        "song": songs[number],
+                        "song": song,
                         "headers": headers,
                         "user": task["user"]
                     }
                     threading.Thread(daemon=True, target=self.thread_download_confirmed, args=(
                         downloader, new_task)).start()
-                        # file_path, title, seconds = self.downloaders["vk"].schedule_link(
-                        #     songs[number], headers)
+                    # file_path, title, seconds = self.downloaders["vk"].schedule_link(
+                    #     songs[number], headers)
 
             else:
                 self.error(
