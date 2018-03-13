@@ -57,6 +57,7 @@ class TgFrontend():
         self.user_info = {}
         self.load_users()
         self.init_handlers()
+        self.init_callbacks()
 
     def load_users(self):
         files_dir = os.path.join(os.getcwd(), cacheDir)
@@ -86,26 +87,95 @@ class TgFrontend():
 
     def init_handlers(self):
         self.bot.message_handler(commands=['start'])(self.start_handler)
-        self.bot.message_handler(commands=['stop_playing'])(self.stop_playing)
-        self.bot.message_handler(commands=['skip_song'])(self.skip_song)
+        self.bot.message_handler(commands=['stop_playing', 'stop'])(self.stop_playing)
+        self.bot.message_handler(commands=['skip_song', 'skip'])(self.skip_song)
+        self.bot.message_handler(commands=['voteup', 'vote_up'])(self.vote_up)
+        self.bot.message_handler(commands=['votedown', 'vote_down'])(self.vote_down)
+        self.bot.message_handler(commands=['get_queue'])(self.get_queue)
         self.bot.message_handler(content_types=['text'])(self.text_message_handler)
         self.bot.message_handler(content_types=['audio'])(self.audio_handler)
-        # self.bot.message_handlers.append(self.bot._build_handler_dict)
+
+    def print_true(self, arg):
+        print(arg)
+        return True
+
+    def init_callbacks(self):
+        self.bot.callback_query_handler(func=lambda x: x.data[0:4] == "vote")(self.vote_callback)
+        self.bot.callback_query_handler(func=lambda x: x.data[0:4] == "")(self.queue_callback)
+        self.bot.callback_query_handler(func=lambda: True)(self.problem)
+
+    def queue_callback(self, data):
+        pass
+
+    def problem(self, data):
+        print("UNHANDLED CALLBACK MESSAGE")
+        print(data)
+
+    def vote_callback(self, data):
+        if data.data[4] == "+":
+            action = "vote_up"
+        else:
+            action = "vote_down"
+        self.output_queue.put({
+            "action": action,
+            "sid": int(data.data[5:]),
+            "user": data.from_user.id
+        })
+
+    def get_queue(self, message):
+        self.output_queue.put({
+            "action": "get_queue",
+            "user": message.from_user.id,
+            "page": 0
+        })
+
+#####  BRAIN LISTENERS  #####
+    def listened_ask_user(self, task):
+        songs = task["songs"]
+        self.user_info[task["user"]]["state"] = 1
+        self.bot.send_message(task["user"], task["message"], reply_markup=generate_markup(songs))
+
+    def listened_user_message(self, task):
+        self.bot.send_message(task["user"], task["message"], reply_markup=None)
+
+    def listened_confirmation_done(self, task):
+        self.user_info[task["user"]]["state"] = 0
+
+    def listened_queue(self, task):
+        if len(task['data']) <= 0:
+            reply = self.bot.send_message(task["user"], "Queue is empty", reply_markup=None)
+            self.input_queue.task_done()
+            return
+        data = "\n".join([str(x.id) + ". " + x.title +
+                          " " + "{:d}:{:02d}".format(*list(divmod(x.duration, 60))) for x in task['data']])
+        kb = telebot.types.InlineKeyboardMarkup(row_width=2)
+        for x in task['data']:
+            kb.row(telebot.types.InlineKeyboardButton(text="👍 " + str(x.id), callback_data="vote+" + str(x.id)),
+                    telebot.types.InlineKeyboardButton(text="👎 " + str(x.id), callback_data="vote-" + str(x.id)))
+        if self.user_info[task["user"]]["queue_msg_id"] is not None:
+            self.bot.delete_message(task["user"], self.user_info[task["user"]]["queue_msg_id"])
+        reply = self.bot.send_message(task["user"], data, reply_markup=kb)
+        # print(reply)
+        self.user_info[task["user"]]["queue_msg_id"] = reply["message_id"]
 
     def brain_listener(self):
         while True:
             task = self.input_queue.get(block=True)
+            action = task["action"]
+            if task["user"] not in self.user_info:
+                self.init_user(task["user"])
             self.user_info[task["user"]]["state"] = 0
-            if task["action"] == "ask_user":
-                songs = task["songs"]
-                self.user_info[task["user"]]["state"] = 1
-                self.bot.send_message(task["user"], task["message"], reply_markup=generate_markup(songs))
-            elif task["action"] == "user_message":
-                self.bot.send_message(task["user"], task["message"], reply_markup=None)
-            elif task["action"] == "confirmation_done":
-                self.user_info[task["user"]]["state"] = 0
+            if action == "ask_user":
+                self.listened_ask_user(task)
+            elif action == "user_message":
+                self.listened_user_message(task)
+            elif action == "confirmation_done":
+                self.listened_confirmation_done(task)
+            elif action == "queue" or action == "reload_rating":
+                self.listened_queue(task)
             else:
                 self.bot.send_message(task["user"], "DEBUG:\n" + str(task), reply_markup=None)
+            self.input_queue.task_done()
 
     def broadcast_to_all_users(self, message):
         for user in self.users_states:
@@ -123,21 +193,41 @@ class TgFrontend():
             "user": message.from_user.id
         })
 
-    def vote_up(self):
-        pass
+    def vote_up(self, message):
+        try:
+            self.output_queue.put({
+                "action": "vote_up",
+                "user": message.from_user.id,
+                "sid": int(message.text.split()[1])
+            })
+        except ValueError:
+            self.bot.send_message(message.from_user.id, "No")
 
-    def vote_down(self):
-        pass
+    def vote_down(self, message):
+        try:
+            self.output_queue.put({
+                "action": "vote_up",
+                "user": message.from_user.id,
+                "sid": int(message.text.split()[1])
+            })
+        except ValueError:
+            self.bot.send_message(message.from_user.id, "No")
 
     def start_handler(self, message):
         self.user_info[message.from_user.id] = {}
         self.user_info[message.from_user.id]["state"] = 0
         self.bot.send_message(message.from_user.id, "halo")
 
-    def init_user(self, user):
+    def init_user(self, user, state=0, history=[], queue_entry="queue", qn=0):
         self.user_info[user] = {}
-        self.user_info[user]["state"] = 0
-        self.user_info[user]["history"] = []
+        self.user_info[user]["state"] = state
+        self.user_info[user]["history"] = history
+        self.user_info[user]["queue_msg_id"] = None
+        self.user_info[user]["queue_fsm"] = {
+            "entry": queue_entry,
+            "number": qn  # queue - page, song - sid
+        }
+        # self.user_info[]
 
     def text_message_handler(self, message):
         user = message.from_user.id
@@ -146,6 +236,8 @@ class TgFrontend():
             self.init_user(user)
         self.user_info[user]["history"].append(text)
         if self.user_info[user]["state"] == 0:
+            if text == "None of these":
+                return
             self.user_info[user]["state"] = 2
             request = {
                 "user": user,

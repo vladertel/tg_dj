@@ -79,11 +79,11 @@ class MasterDownloader():
                                 downloader, task)).start()
                             break
                     except MediaIsTooLong:
-                        self.user_message(
-                            task["user"], "Requested media is too long (more than " + str(MAXIMUM_DURATION) + " MB)")
+                        self.user_message(task["user"],
+                            "Requested media is too long (more than " + str(MAXIMUM_DURATION) + " seconds)")
                     except MediaIsTooBig:
                         self.user_message(task["user"], "Requested media is too large (more than " +
-                                                str(MAXIMUM_FILE_SIZE / 1000000) + " MB)")
+                                          str(MAXIMUM_FILE_SIZE / 1000000) + " MB)")
                     except (UrlOrNetworkProblem, UrlProblem, BadReturnStatus):
                         self.user_message(task["user"], "Seems like " + downloader.name +
                                           " is unavailable or bad link :(\nTry again, or tell this to admin")

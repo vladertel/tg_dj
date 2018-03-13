@@ -3,11 +3,11 @@
 
 import datetime
 from collections import namedtuple
-from queue import Queue
 from threading import Thread
 import platform
 
 from .config import *
+from .scheduler import Scheduler
 
 
 class UserQuotaReached(Exception):
@@ -70,6 +70,8 @@ class DJ_Brain():
         self.downloader_thread.start()
         self.backend_thread.start()
 
+        self.scheduler = Scheduler()
+
     def frontend_listener(self):
         while True:
             task = self.frontend.output_queue.get()
@@ -104,16 +106,48 @@ class DJ_Brain():
                     })
             elif action == 'skip_song':
                 if task['user'] in superusers:
+                    task['action'] = "stop_playing"
                     print("pushed task to backend: " + str(task))
                     self.backend.input_queue.put(task)
+                    track = self.scheduler.get_first_track()
+                    if track is not None:
+                        new_task = {
+                            "action": "play_song",
+                            "uri": track.media
+                        }
+                        self.backend.input_queue.put(new_task)
                 else:
                     self.frontend.input_queue.put({
                         "action": "user_message",
                         "message": "You have no power here",
                         "user": task["user"]
                     })
+            elif action == "vote_down":
+                print("vote_down user: " + str(task["user"]) + ", sid: " + str(task["sid"]))
+                self.scheduler.vote_down(task["user"], task["sid"])
+                self.frontend.input_queue.put({
+                    "action": "reload_rating",
+                    "user": task["user"],
+                    "data": self.scheduler.get_queue()
+                })
+            elif action == "vote_up":
+                print("vote_up user: " + str(task["user"]) + ", sid: " + str(task["sid"]))
+                self.scheduler.vote_up(task["user"], task["sid"])
+                self.frontend.input_queue.put({
+                    "action": "reload_rating",
+                    "user": task["user"],
+                    "data": self.scheduler.get_queue()
+                })
+            elif action == "get_queue":
+                print("user " + str(task["user"]) + " requested queue")
+                queue = self.scheduler.get_queue()
+                self.frontend.input_queue.put({
+                    "action": "queue",
+                    "data": queue,
+                    "user": task["user"]
+                })
             else:
-                print('Message not supported:', task)
+                print('Message not supported:', str(task))
             self.frontend.output_queue.task_done()
 
     def downloader_listener(self):
@@ -124,31 +158,47 @@ class DJ_Brain():
                 path = task['path']
                 if self.isWindows:
                     path = path[2:]
-                print("pushed task to backend: { action: play_song, path: " + path + "}")
-                self.backend.input_queue.put({
-                    'action': 'play_song',
-                    'uri': path
-                })
-                self.frontend.input_queue.put({
-                    "action": "user_message",
-                    "message": "Your query is playing now",
-                    "user": task["user"]
-                })
+                if self.backend.is_playing:
+                    self.scheduler.add_track_to_end_of_queue(path, task['title'], task['duration'], task["user"])
+                else:
+                    print("pushed task to backend: { action: play_song, path: " + path + "}")
+                    self.backend.input_queue.put({
+                        'action': 'play_song',
+                        'uri': path,
+                        'title': task["title"]
+                    })
+                    self.frontend.input_queue.put({
+                        "action": "user_message",
+                        "message": "Your query is playing now",
+                        "user": task["user"]
+                    })
+
             elif action == 'user_message' or action == 'ask_user' or action == 'confirmation_done':
                 print("pushed task to frontend: " + str(task))
                 self.frontend.input_queue.put(task)
             else:
-                print('Message not supported:', task)
+                print('Message not supported: ', str(task))
             self.downloader.output_queue.task_done()
 
     def backend_listener(self):
         while True:
             task = self.backend.output_queue.get()
             action = task['action']
-            if False:
-                pass
+            if action == "song_finished":
+                track = self.scheduler.get_first_track()
+                if track is not None:
+                    self.backend.input_queue.put({
+                        "action": "play_song",
+                        "uri": track.media,
+                        "title": track.title
+                    })
+                    self.frontend.input_queue.put({
+                        "action": "user_message",
+                        "message": "Your query is playing now",
+                        "user": track.media
+                    })
             else:
-                print('Message not supported:', task)
+                print('Message not supported:', str(task))
             self.backend.output_queue.task_done()
 
     def add_request(self, user, text):
