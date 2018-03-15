@@ -15,7 +15,7 @@ def filter_storage():
     files = get_files_in_dir(files_dir)
     files.sort(key=lambda x: -os.path.getmtime(x))
     if _DEBUG_:
-        print(files)
+        print("Number of files: " + str(len(files)))
     if len(files) <= MAXIMUM_FILES_COUNT:
         if _DEBUG_:
             print("filter_storage files < MAXIMUM_FILES_COUNT")

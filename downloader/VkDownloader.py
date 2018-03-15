@@ -54,7 +54,6 @@ class VkDownloader(AbstractDownloader):
             # print(songs.text)
             raise e
         if _DEBUG_:
-            pass
             print("Got " + str(len(data)) + "results")
         # try:
         length = len(data)

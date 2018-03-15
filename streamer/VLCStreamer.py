@@ -16,6 +16,7 @@ class VLCStreamer():
     def __init__(self):
         self.is_playing = False
         self.now_playing = None
+        self.ordered_by = None
         self.input_queue = Queue()
         self.output_queue = Queue()
         self.queue_thread = Thread(daemon=True, target=self.queue_listener)
@@ -46,6 +47,7 @@ class VLCStreamer():
                 self.player.play()
                 self.is_playing = True
                 self.now_playing = task["title"]
+                # self.ordered_by = task[""]
             # elif action == 'skip_song':
             #     self.player.stop()
             #     self.is_playing = True

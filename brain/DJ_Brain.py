@@ -72,6 +72,10 @@ class DJ_Brain():
 
         self.scheduler = Scheduler()
 
+    def cleanup(self):
+        self.scheduler.cleanup()
+        print("WARNING: DO NOT FORGET TO SAVE requests AND LIMITS")
+
     def frontend_listener(self):
         while True:
             task = self.frontend.output_queue.get()
@@ -82,7 +86,7 @@ class DJ_Brain():
                 elif "file" in task:
                     text = task['file']
                 user = task['user']
-                if self.add_request(user, text):
+                if user in superusers or self.add_request(user, text):
                     print("pushed task to downloader: " + str(task))
                     self.downloader.input_queue.put(task)
                 else:
@@ -122,30 +126,40 @@ class DJ_Brain():
                         "message": "You have no power here",
                         "user": task["user"]
                     })
+            elif action == 'delete':
+                if task['user'] in superusers:
+                    pos = self.scheduler.remove_from_queue(task['number'])
+                    (lista, page, lastpage) = self.scheduler.get_queue_page(pos // 10)
+                    self.frontend_menu_list(task["user"], page, lista, lastpage)
+                else:
+                    self.frontend.input_queue.put({
+                        "action": "user_message",
+                        "message": "You have no power here",
+                        "user": task["user"]
+                    })
             elif action == "vote_down":
                 print("vote_down user: " + str(task["user"]) + ", sid: " + str(task["sid"]))
-                self.scheduler.vote_down(task["user"], task["sid"])
-                self.frontend.input_queue.put({
-                    "action": "reload_rating",
-                    "user": task["user"],
-                    "data": self.scheduler.get_queue()
-                })
+                song, pos = self.scheduler.vote_down(task["user"], task["sid"])
+                self.frontend_menu_song(task["user"], song, task["sid"], pos)
             elif action == "vote_up":
                 print("vote_up user: " + str(task["user"]) + ", sid: " + str(task["sid"]))
-                self.scheduler.vote_up(task["user"], task["sid"])
-                self.frontend.input_queue.put({
-                    "action": "reload_rating",
-                    "user": task["user"],
-                    "data": self.scheduler.get_queue()
-                })
-            elif action == "get_queue":
-                print("user " + str(task["user"]) + " requested queue")
-                queue = self.scheduler.get_queue()
-                self.frontend.input_queue.put({
-                    "action": "queue",
-                    "data": queue,
-                    "user": task["user"]
-                })
+                song, pos = self.scheduler.vote_up(task["user"], task["sid"])
+                self.frontend_menu_song(task["user"], song, task["sid"], pos)
+            elif action == "menu":
+                print("user " + str(task["user"]) + " requested menu")
+                if task["entry"] == "main":
+                    self.frontend_menu_main(task["user"], self.scheduler.queue_length(), self.backend.now_playing)
+                elif task["entry"] == "list":
+                    (lista, page, lastpage) = self.scheduler.get_queue_page(task["number"])
+                    self.frontend_menu_list(task["user"], page, lista, lastpage)
+                elif task["entry"] == "song":
+                    (song, pos) = self.scheduler.get_song(task["number"])
+                    if song is not None:
+                        self.frontend_menu_song(task["user"], song, task["number"], pos)
+                    else:
+                        self.frontend_menu_list(task["user"], 0, self.scheduler.get_queue_len <= 10)
+                else:
+                    print('Menu not supported:', str(task["entry"]))
             else:
                 print('Message not supported:', str(task))
             self.frontend.output_queue.task_done()
@@ -173,9 +187,12 @@ class DJ_Brain():
                         "user": task["user"]
                     })
 
-            elif action == 'user_message' or action == 'ask_user' or action == 'confirmation_done':
+            elif action == 'user_message' or action == 'confirmation_done':
                 print("pushed task to frontend: " + str(task))
                 self.frontend.input_queue.put(task)
+            elif action == 'ask_user':
+                print("pushed task to frontend: " + str(task))
+                self.frontend_menu_ask(task["user"], task["message"], task["songs"])
             else:
                 print('Message not supported: ', str(task))
             self.downloader.output_queue.task_done()
@@ -195,7 +212,7 @@ class DJ_Brain():
                     self.frontend.input_queue.put({
                         "action": "user_message",
                         "message": "Your query is playing now",
-                        "user": track.media
+                        "user": track.user
                     })
             else:
                 print('Message not supported:', str(task))
@@ -214,3 +231,51 @@ class DJ_Brain():
 
     def add_user(self, user):
         self.users[user] = User(user)
+
+##### MESSAGING METHONDS ####
+    def frontend_menu_list(self, user, number, lista, lastpage):
+        self.frontend.input_queue.put({
+            "action": "menu",
+            "user": user,
+            "entry": "list",
+            "number": number,
+            "lista": lista,
+            "lastpage": lastpage
+        })
+
+    def frontend_menu_song(self, user, song, number, position):
+        self.frontend.input_queue.put({
+            "action": "menu",
+            "user": user,
+            "entry": "song",
+            "number": number,
+            "duration": song.duration,
+            "rating": sum([song.votes[k] for k in song.votes]),
+            "position": position,
+            "title": song.title,
+            "superuser": user in superusers
+        })
+
+    def frontend_menu_main(self, user, qlen, now_playing):
+        self.frontend.input_queue.put({
+            "action": "menu",
+            "user": user,
+            "entry": "main",
+            "number": 0,
+            "qlen": qlen,
+            "now_playing": now_playing,
+        })
+
+    def frontend_menu_ask(self, user, message, songs):
+        self.frontend.input_queue.put({
+            "action": "menu",
+            "user": user,
+            "entry": "ask",
+            "number": 0,
+            "songs": songs,
+            "message": message
+        })
+
+#### MANUAL MANAGEMENT ####
+    def manual_start(self):
+        self.backend.vlc_song_finished("lolkek")
