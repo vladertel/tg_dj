@@ -1,7 +1,16 @@
 import threading
 import json
-from .config import queueDir
 from os.path import join
+import os
+
+import eyed3
+
+from .config import queueDir
+
+
+def get_files_in_dir(directory):
+    return [f for f in os.listdir(directory) if
+            os.path.isfile(os.path.join(directory, f)) and not f.startswith(".")]
 
 
 class Song():
@@ -43,8 +52,11 @@ class Scheduler():
     def __init__(self):
         self.is_media_playing = False
         self.playing_queue = []
+        self.backlog = []
+        self.backlog_already_played = []
         self.lock = threading.Lock()
         self.load_init()
+        self.populate_backlog()
 
     def load_init(self):
         try:
@@ -57,18 +69,37 @@ class Scheduler():
                         queue.append(Song.deserialize(obj))
                     self.playing_queue = queue
                     self.sort_queue()
+                self.backlog_already_played = dicts["backlog_already_played"]
         except FileNotFoundError:
             pass
+
+    def populate_backlog(self):
+        files = get_files_in_dir(os.path.join("brain", "backlog"))
+        add_to_end = []
+        for file in files:
+            filepath = os.path.join(os.getcwd(), "brain", "backlog", file)
+            af = eyed3.load(filepath)
+            if af is not None:
+                duration = af.info.time_secs
+                title = "".join(file.split(".")[:-1])
+                if filepath in self.backlog_already_played:
+                    add_to_end.append(Song.new(filepath, title, duration, "System"))
+                else:
+                    self.backlog.append(Song.new(filepath, title, duration, "System"))
+        for song in add_to_end:
+            self.backlog.append(song)
+        print("backlog capacity: " + str(len(self.backlog)))
 
     def cleanup(self):
         output = [a.__dict__ for a in self.playing_queue]
         jsonya = {
             "last_id": Song.ids,
-            "songs": output
+            "songs": output,
+            "backlog_already_played": self.backlog_already_played
         }
         with open(join(queueDir, "queue"), "w") as f:
             f.write(json.dumps(jsonya, ensure_ascii=False))
-
+        print("Scheduler - saved queue")
 
     def add_track_to_end_of_queue(self, path, title, duration, user):
         self.lock.acquire()
@@ -80,10 +111,24 @@ class Scheduler():
         try:
             song = self.playing_queue.pop(0)
         except IndexError:
-            print("Scheduler: Nothing to pop")
-            song = None
+            print("Scheduler: Nothing to pop in main queue")
+            try:
+                song = self.backlog.pop(0)
+                self.backlog_already_played.append(song.media)
+            except IndexError:
+                print("Scheduler: Nothing to pop in backlog")
+                song = None
         self.lock.release()
         return song
+
+    def get_next_song(self):
+        try:
+            return self.playing_queue[0]
+        except IndexError:
+            try:
+                return self.backlog[0]
+            except IndexError:
+                return None
 
     def get_song(self, sid):
         k = 0

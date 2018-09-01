@@ -23,3 +23,4 @@ def filter_storage():
     files_to_delete = files[MAXIMUM_FILES_COUNT:]
     for file in files_to_delete:
         os.unlink(file)
+        print("deleted: " + file)

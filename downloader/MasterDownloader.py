@@ -68,34 +68,33 @@ class MasterDownloader():
             # process task???
             print("Downloader - task: " + str(task))
             if task["action"] == "download":
-                print("Downloading something")
                 for dwnld_name in self.downloaders:
                     downloader = self.downloaders[dwnld_name]
                     try:
                         arg = downloader.is_acceptable(task)
                         if arg:
-                            self.user_message(task["user"], "Processing...")
+                            self.user_message(task["user"], "Ответ от сервера: Скачиваем...")
                             threading.Thread(daemon=True, target=self.thread_download_function, args=(
                                 downloader, task)).start()
                             break
                     except MediaIsTooLong:
                         self.user_message(task["user"],
-                            "Requested media is too long (more than " + str(MAXIMUM_DURATION) + " seconds)")
+                            "Запрошенная песня слишком долгая (больше чем " + str(MAXIMUM_DURATION) + " секунд)")
                     except MediaIsTooBig:
-                        self.user_message(task["user"], "Requested media is too large (more than " +
+                        self.user_message(task["user"], "Запрошенная песня слишком много весит (Больше чем " +
                                           str(MAXIMUM_FILE_SIZE / 1000000) + " MB)")
                     except (UrlOrNetworkProblem, UrlProblem, BadReturnStatus):
-                        self.user_message(task["user"], "Seems like " + downloader.name +
-                                          " is unavailable or bad link :(\nTry again, or tell this to admin")
+                        self.user_message(task["user"], "Похоже модуль " + downloader.name +
+                                          " отвалился или плохой запрос :(\nПопробуйте позже или скажите админу")
                     except NothingFound:
                         self.user_message(
-                            task["user"], "Nothing found with that query :(")
+                            task["user"], "Ничего не нашел по этому запросу :(")
                     except AskUser as e:
                         songs, headers = e.args[0], e.args[1]
                         self.users_to_vk_songs[task["user"]] = songs
                         self.users_to_vk_headers[task["user"]] = headers
                         self.ask_user(
-                            task["user"], "What you want exactly?", songs=songs)
+                            task["user"], "Что именно вы хотите?", songs=songs)
                         break
                     except OnlyOneFound as e:
                         song, headers = e.args[0], e.args[1]
@@ -117,15 +116,15 @@ class MasterDownloader():
                 except KeyError:
                     print("UNEXISTENT USER IN users_to_vk_songs")
                     self.error(
-                        task["user"], "UNEXISTENT USER IN users_to_vk_songs")
+                        task["user"], "Что-то пошло не так utvs")
                 else:
                     number = task["number"]
                     try:
                         song = songs[number]
                     except (KeyError, IndexError):
-                        self.user_message(task["user"], "No such music")
+                        self.user_message(task["user"], "Что-то пошло не так 123")
                         continue
-                    self.user_message(task["user"], "Processing...")
+                    self.user_message(task["user"], "Ответ от сервера: Скачиваем...")
                     self.output_queue.put({
                         "user": task["user"],
                         "action": "confirmation_done"

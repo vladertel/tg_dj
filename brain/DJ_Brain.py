@@ -5,6 +5,8 @@ import datetime
 from collections import namedtuple
 from threading import Thread
 import platform
+import json
+import os
 
 from .config import *
 from .scheduler import Scheduler
@@ -48,6 +50,39 @@ class User():
         self.past_requests += self.recent_requests[0:outdated + 1]
         self.recent_requests = self.recent_requests[outdated + 1:]
 
+    def toJSON(self):
+        json = {
+            "past_requests": [],
+            "recent_requests": []
+        }
+        for req in self.past_requests:
+            json["past_requests"].append({
+                "user": req.user,
+                "text": req.text,
+                "time": req.time.timestamp()
+            })
+        for req in self.recent_requests:
+            json["recent_requests"].append({
+                "user": req.user,
+                "text": req.text,
+                "time": req.time.timestamp()
+            })
+        return json
+
+    def fromJSON(self, objecta):
+        for req in objecta['past_requests']:
+            self.past_requests.append(
+                Request(req['user'],
+                        req['text'],
+                        datetime.datetime.utcfromtimestamp(req['time']) + datetime.timedelta(hours=3))
+            )
+        for req in objecta['recent_requests']:
+            self.recent_requests.append(
+                Request(req['user'],
+                        req['text'],
+                        datetime.datetime.utcfromtimestamp(req['time']) + datetime.timedelta(hours=3))
+            )
+
 
 class DJ_Brain():
 
@@ -62,6 +97,9 @@ class DJ_Brain():
         self.downloader = downloader
         self.backend = backend
 
+        self.scheduler = Scheduler()
+        self.load()
+
         self.frontend_thread = Thread(daemon=True, target=self.frontend_listener)
         self.downloader_thread = Thread(daemon=True, target=self.downloader_listener)
         self.backend_thread = Thread(daemon=True, target=self.backend_listener)
@@ -70,11 +108,24 @@ class DJ_Brain():
         self.downloader_thread.start()
         self.backend_thread.start()
 
-        self.scheduler = Scheduler()
-
     def cleanup(self):
         self.scheduler.cleanup()
-        print("WARNING: DO NOT FORGET TO SAVE requests AND LIMITS")
+        out_users = {}
+        for user in self.users:
+            out_users[user] = self.users[user].toJSON()
+        with open(os.path.join(saveDir, "users_save"), 'w') as f:
+            f.write(json.dumps(out_users, ensure_ascii=False))
+        print("Brain - state saved")
+
+    def load(self):
+        try:
+            with open(os.path.join(saveDir, "users_save")) as f:
+                users = json.loads(f.read())
+            for user in users:
+                self.add_user(user)
+                self.users[user].fromJSON(users[user])
+        except FileNotFoundError:
+            print("save not found for brain")
 
     def frontend_listener(self):
         while True:
@@ -93,7 +144,7 @@ class DJ_Brain():
                     self.frontend.input_queue.put({
                         'action': 'user_message',
                         'user': user,
-                        'message': 'Request quota reached. Try again later'
+                        'message': 'Превышен лимит запросов, попробуйте позже'
                     })
             elif action == 'user_confirmed':
                 print("pushed task to downloader: " + str(task))
@@ -117,7 +168,8 @@ class DJ_Brain():
                     if track is not None:
                         new_task = {
                             "action": "play_song",
-                            "uri": track.media
+                            "uri": track.media,
+                            "title": track.title
                         }
                         self.backend.input_queue.put(new_task)
                 else:
@@ -140,11 +192,13 @@ class DJ_Brain():
             elif action == "vote_down":
                 print("vote_down user: " + str(task["user"]) + ", sid: " + str(task["sid"]))
                 song, pos = self.scheduler.vote_down(task["user"], task["sid"])
-                self.frontend_menu_song(task["user"], song, task["sid"], pos)
+                (lista, page, lastpage) = self.scheduler.get_queue_page(pos // 10)
+                self.frontend_menu_list(task["user"], page, lista, lastpage)
             elif action == "vote_up":
                 print("vote_up user: " + str(task["user"]) + ", sid: " + str(task["sid"]))
                 song, pos = self.scheduler.vote_up(task["user"], task["sid"])
-                self.frontend_menu_song(task["user"], song, task["sid"], pos)
+                (lista, page, lastpage) = self.scheduler.get_queue_page(pos // 10)
+                self.frontend_menu_list(task["user"], page, lista, lastpage)
             elif action == "menu":
                 print("user " + str(task["user"]) + " requested menu")
                 if task["entry"] == "main":
@@ -157,9 +211,12 @@ class DJ_Brain():
                     if song is not None:
                         self.frontend_menu_song(task["user"], song, task["number"], pos)
                     else:
-                        self.frontend_menu_list(task["user"], 0, self.scheduler.get_queue_len <= 10)
+                        (lista, page, lastpage) = self.scheduler.get_queue_page(0)
+                        self.frontend_menu_list(task["user"], page, lista, lastpage)
                 else:
                     print('Menu not supported:', str(task["entry"]))
+            elif action == "manual_start":
+                self.manual_start()
             else:
                 print('Message not supported:', str(task))
             self.frontend.output_queue.task_done()
@@ -183,7 +240,7 @@ class DJ_Brain():
                     })
                     self.frontend.input_queue.put({
                         "action": "user_message",
-                        "message": "Your query is playing now",
+                        "message": "Играет один из ваших запросов!",
                         "user": task["user"]
                     })
 
@@ -211,9 +268,16 @@ class DJ_Brain():
                     })
                     self.frontend.input_queue.put({
                         "action": "user_message",
-                        "message": "Your query is playing now",
+                        "message": "Играет ваш заказ!\n" + track.title,
                         "user": track.user
                     })
+                    next_track = self.scheduler.get_next_song()
+                    if next_track is not None:
+                        self.backend.input_queue.put({
+                            "action": "user_message",
+                            "message": "После текущего заказа будет играть ваш!\n" + next_track.title,
+                            "user": next_track.user
+                        })
             else:
                 print('Message not supported:', str(task))
             self.backend.output_queue.task_done()

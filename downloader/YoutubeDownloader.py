@@ -17,8 +17,7 @@ class YoutubeDownloader(AbstractDownloader):
     name = "YouTube downloader"
 
     def __init__(self):
-        self.yt_regex = re.compile(r"((?:https?://)?(?:www\.)?youtube\.com/watch\?v=[a-zA-Z0-9_]{11})|\
-            ((?:https?://)?(?:www\.)?youtu\.be/[a-zA-Z0-9_]{11})", flags=re.IGNORECASE)
+        self.yt_regex = re.compile(r"((?:https?://)?(?:www\.)?(?:m\.)?youtube\.com/watch\?v=[a-zA-Z0-9_-]{11})|((?:https?://)?(?:www\.)?(?:m\.)?youtu\.be/[a-zA-Z0-9_-]{11})", flags=re.IGNORECASE)
 
     def is_acceptable(self, task):
         if "text" in task:
@@ -73,13 +72,13 @@ class YoutubeDownloader(AbstractDownloader):
         check_path = os.path.join(file_dir, unidecode(file_name)) + ".mp4"
         if self.is_in_cache(check_path):
             return (check_path, video_title, seconds)
-        streams.first().download(output_path=file_dir, filename=file_name)
+        streams.first().download(output_path=file_dir, filename=unidecode(file_name))
         file_name += ".mp4"
         file_name = unidecode(file_name)
         file_path = os.path.join(file_dir, file_name)
         self.touch_without_creation(file_path)
         filter_storage()
         if _DEBUG_:
-            print("check file at path - " + file_path)
+            print("YT: check file at path - " + file_path)
 
         return (file_path, video_title, seconds)
