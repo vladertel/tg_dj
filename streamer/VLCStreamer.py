@@ -44,6 +44,7 @@ class VLCStreamer():
             task = self.input_queue.get()
             action = task['action']
             if action == 'play_song':
+                self.player.stop()
                 uri = task['uri']
                 media = self.vlc_instance.media_new(uri, options)
                 # media = self.vlc_instance.media_new(uri)
