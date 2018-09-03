@@ -108,6 +108,51 @@ class MasterDownloader():
                         break
                 self.input_queue.task_done()
                 continue
+            elif task["action"] == "search_inline":
+                for dwnld_name in self.downloaders:
+                    downloader = self.downloaders[dwnld_name]
+                    try:
+                        arg = downloader.is_acceptable(task)
+                        if arg:
+                            self.user_message(task["user"], "Ответ от сервера: Скачиваем...")
+                            threading.Thread(daemon=True, target=self.thread_download_function, args=(
+                                downloader, task)).start()
+                            break
+                    except MediaIsTooLong:
+                        self.user_message(task["user"],
+                            "Запрошенная песня слишком долгая (больше чем " + str(MAXIMUM_DURATION) + " секунд)")
+                    except MediaIsTooBig:
+                        self.user_message(task["user"], "Запрошенная песня слишком много весит (Больше чем " +
+                                          str(MAXIMUM_FILE_SIZE / 1000000) + " MB)")
+                    except (UrlOrNetworkProblem, UrlProblem, BadReturnStatus):
+                        self.user_message(task["user"], "Похоже модуль " + downloader.name +
+                                          " отвалился или плохой запрос :(\nПопробуйте позже или скажите админу")
+                    except NothingFound:
+                        self.user_message(
+                            task["user"], "Ничего не нашел по этому запросу :(")
+                    except AskUser as e:
+                        songs, headers = e.args[0], e.args[1]
+                        for s in songs:
+                            self.vk_cache[s['source_id']] = s
+                        self.output_queue.put({
+                            "action": "user_inline_reply",
+                            "qid": task["qid"],
+                            "user": task["user"],
+                            "results": songs
+                        })
+                        break
+                    except OnlyOneFound as e:
+                        song, headers = e.args[0], e.args[1]
+                        new_task = {
+                            "user": task["user"],
+                            "song": song,
+                            "headers": headers
+                        }
+                        threading.Thread(daemon=True, target=self.thread_download_function, args=(
+                            downloader, new_task)).start()
+                        break
+                self.input_queue.task_done()
+                continue
             elif task["action"] == "user_confirmed":
                 print("user_confirmed vk: " + str(task["number"]))
                 try:
@@ -139,6 +184,30 @@ class MasterDownloader():
                         downloader, new_task)).start()
                     # file_path, title, seconds = self.downloaders["vk"].schedule_link(
                     #     songs[number], headers)
+            elif task["action"] == "search_inline_select":
+                print("search_inline_select vk: " + task["result_id"])
+                try:
+                    song = self.vk_cache[task["result_id"]]
+                except KeyError:
+                    print("No cache entry for id " + task["result_id"])
+                    self.error(
+                        task["user"], "Что-то пошло не так utvs")
+                else:
+                    self.user_message(task["user"], "Скачиваем %s - %s ..." % (song['artist'], song['title']))
+                    self.output_queue.put({
+                        "user": task["user"],
+                        "action": "confirmation_done"
+                    })
+                    new_task = {
+                        "action": "user_confirmed",
+                        "song": song,
+                        "headers": headers,
+                        "user": task["user"]
+                    }
+                    threading.Thread(daemon=True, target=self.thread_download_confirmed, args=(
+                        downloader, new_task)).start()
+                    # file_path, title, seconds = self.downloaders["vk"].schedule_link(
+                    #     songs[number], headers)
 
             else:
                 self.error(
@@ -156,6 +225,8 @@ class MasterDownloader():
         self.users_to_vk_songs = {}
         self.input_queue = Queue()
         self.output_queue = Queue()
+
+        self.vk_cache = {}
 
         self.queue_thread_listener = threading.Thread(
             daemon=True, target=self.queue_listener)

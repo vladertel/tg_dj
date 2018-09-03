@@ -149,6 +149,9 @@ class DJ_Brain():
             elif action == 'user_confirmed':
                 print("pushed task to downloader: " + str(task))
                 self.downloader.input_queue.put(task)
+            elif action == 'search_inline_select':
+                print("pushed task to downloader: " + str(task))
+                self.downloader.input_queue.put(task)
             elif action == 'stop_playing':
                 if task['user'] in superusers:
                     print("pushed task to backend: " + str(task))
@@ -217,6 +220,29 @@ class DJ_Brain():
                     print('Menu not supported:', str(task["entry"]))
             elif action == "manual_start":
                 self.manual_start()
+            elif action == "search_inline":
+                text = task['text']
+                user = task['user']
+                if user in superusers or self.add_request(user, text):
+                    print("pushed task to downloader: " + str(task))
+                    self.downloader.input_queue.put(task)
+                else:
+                    self.frontend.input_queue.put({
+                        'action': 'user_message',
+                        'user': user,
+                        'message': 'Превышен лимит запросов, попробуйте позже'
+                    })
+
+                # if task['user'] in superusers:
+                #     print("pushed task to backend: " + str(task))
+                #     self.backend.input_queue.put(task)
+                # else:
+                #     self.frontend.input_queue.put({
+                #         "action": "inline_response",
+                #         "qid": task['qid'],
+                #         "results": results,
+                #         "user": task["user"]
+                #     })
             else:
                 print('Message not supported:', str(task))
             self.frontend.output_queue.task_done()
@@ -250,6 +276,9 @@ class DJ_Brain():
             elif action == 'ask_user':
                 print("pushed task to frontend: " + str(task))
                 self.frontend_menu_ask(task["user"], task["message"], task["songs"])
+            elif action == 'user_inline_reply':
+                print("pushed task to frontend: " + str(task))
+                self.frontend.input_queue.put(task)
             else:
                 print('Message not supported: ', str(task))
             self.downloader.output_queue.task_done()

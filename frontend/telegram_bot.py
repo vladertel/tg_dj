@@ -25,6 +25,7 @@ help_message = """Приветствую тебя, %ЮЗЕРНЕЙМ%!
 И еще: из-за криворукости автора изредка пропадает менюшка, вернуть ее можно написав /start
 """
 
+
 def generate_markup(songs):
     markup = telebot.types.ReplyKeyboardMarkup(one_time_keyboard=True)
     i = 1
@@ -131,6 +132,9 @@ class TgFrontend():
         self.bot.callback_query_handler(func=lambda x: x.data[0:4] == "none")(self.menu_none_picked)
         self.bot.callback_query_handler(func=lambda x: x.data[0:5] == "admin")(self.admin_menus)
         self.bot.callback_query_handler(func=lambda x: True)(self.problem)
+
+        self.bot.inline_handler(func=lambda x: True)(self.search)
+        self.bot.chosen_inline_handler(func=lambda x: True)(self.search_select)
 
     def cleanup(self):
         cache_path = os.path.join(os.getcwd(), cacheDir)
@@ -261,6 +265,37 @@ class TgFrontend():
             "user": data.from_user.id
         })
 
+    def search(self, data):
+        if data.from_user.id in self.banned_users:
+            return
+
+        self.output_queue.put({
+            "action": "search_inline",
+            "qid": data.id,
+            "text": data.query.lstrip(),
+            "user": data.from_user.id
+        })
+
+    def search_select(self, data):
+        if data.from_user.id in self.banned_users:
+            return
+
+        pprint.pprint(str(data))
+
+        self.output_queue.put({
+            "action": "search_inline_select",
+            "user": data.from_user.id,
+            "result_id": data.result_id,
+        })
+
+        # self.output_queue.put({
+        #     "action": "search_inline",
+        #     "qid": data.id,
+        #     "text": data.query.lstrip(),
+        #     "user": data.from_user.id
+        # })
+
+
 ##### MENU RELATED #####
     def listened_menu(self, task):
         menu = task["entry"]
@@ -283,7 +318,6 @@ class TgFrontend():
         kb.row(telebot.types.InlineKeyboardButton(text="Пользователи", callback_data="admin:lius0"))
         kb.row(telebot.types.InlineKeyboardButton(text="🔄Обновить🔄", callback_data="admin:main"))
         self.bot.send_message(user, message_text, reply_markup=kb)
-
 
     def send_menu_admin_list_users(self, user, page):
         users = [[x, self.user_info[x]['username']] for x in self.user_info if x not in superusers]
@@ -373,6 +407,7 @@ class TgFrontend():
             kb.row(telebot.types.InlineKeyboardButton(text="Очередь", callback_data="list0"))
         else:
             message_text = "Ничего не играет пока, будь первым!"
+        kb.row(telebot.types.InlineKeyboardButton(text="🔍 Поиск музыки", switch_inline_query_current_chat=""))
         kb.row(telebot.types.InlineKeyboardButton(text="🔄Обновить🔄", callback_data="main"))
         self.bot.send_message(user, message_text, reply_markup=kb)
 
@@ -527,6 +562,7 @@ class TgFrontend():
 
 ##### USER MESSAGES HANDLERS #####
     def text_message_handler(self, message):
+        return
         user = message.from_user.id
         if user in self.banned_users:
             self.bot.send_message(user, "Похоже вас забанило :(",
@@ -546,6 +582,9 @@ class TgFrontend():
         self.output_queue.put(request)
         self.bot.send_message(user, "Ваш запрос ожидает ответ от сервера",
                               reply_markup=telebot.types.ReplyKeyboardRemove())
+
+        print(str(message))
+
         return
 
     def audio_handler(self, message):
