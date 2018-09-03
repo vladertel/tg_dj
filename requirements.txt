@@ -3,3 +3,5 @@ mutagen
 user_agent
 pytelegrambotapi
 unidecode
+python-vlc
+eyed3
