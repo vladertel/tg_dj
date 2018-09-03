@@ -72,6 +72,10 @@ class YoutubeDownloader(AbstractDownloader):
         check_path = os.path.join(file_dir, unidecode(file_name)) + ".mp4"
         if self.is_in_cache(check_path):
             return (check_path, video_title, seconds)
+        if not os.path.exists(file_dir):
+            os.makedirs(file_dir)
+            if _DEBUG_:
+                print("Media dir have been created: " + file_dir)
         streams.first().download(output_path=file_dir, filename=unidecode(file_name))
         file_name += ".mp4"
         file_name = unidecode(file_name)

@@ -86,6 +86,10 @@ class VkDownloader(AbstractDownloader):
         file_path = os.path.join(os.getcwd(), mediaDir, file_name)
         if self.is_in_cache(file_path):
             return (file_path, song["artist"] + " - " + song["title"], song["duration"])
+        if not os.path.exists(os.path.join(os.getcwd(), mediaDir)):
+            os.makedirs(os.path.join(os.getcwd(), mediaDir))
+            if _DEBUG_:
+                print("Media dir have been created: " + os.path.join(os.getcwd(), mediaDir))
         sleep(1)
         downloaded = requests.get(song["download"], headers=headers, stream=True)
         if downloaded.status_code != 200:
