@@ -20,9 +20,9 @@ from .storage_checker import filter_storage
 
 class FileDownloader(AbstractDownloader):
     name = "links downloader"
+
     def is_acceptable(self, task):
         return "file" in task
-
 
     def get_title(self, file_path):
         info = mutagen.File(file_path)
