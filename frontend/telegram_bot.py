@@ -5,6 +5,7 @@ import re
 import os
 import json
 from time import sleep
+import pprint
 
 from .private_config import token
 from .config import cacheDir, superusers
@@ -24,20 +25,6 @@ help_message = """Приветствую тебя, %ЮЗЕРНЕЙМ%!
 
 И еще: из-за криворукости автора изредка пропадает менюшка, вернуть ее можно написав /start
 """
-
-
-def generate_markup(songs):
-    markup = telebot.types.ReplyKeyboardMarkup(one_time_keyboard=True)
-    i = 1
-    for song in songs:
-        dur = song["duration"]
-        m = dur // 60
-        s = dur - m * 60
-        strdur = "{:d}:{:02d}".format(m, s)
-        markup.row(str(i) + ". " + song["artist"] + " - " + song["title"] + " " + strdur)
-        i += 1
-    markup.row("None of these")
-    return markup
 
 
 def get_files_in_dir(directory):
@@ -148,7 +135,8 @@ class TgFrontend():
         print("TG - Users saved.")
 
 
-##### TG CALLBACK HANDLERS #####
+#######################
+# TG CALLBACK HANDLERS
     def menu_main(self, data):
         try:
             self.bot.delete_message(data.from_user.id, data.message.message_id)
@@ -238,7 +226,7 @@ class TgFrontend():
         self.output_queue.put({
             "action": "user_confirmed",
             "user": data.from_user.id,
-            "number": int(data.data[4:])
+            "result_id": data.data[4:]
         })
 
     def queue_callback(self, data):
@@ -299,6 +287,7 @@ class TgFrontend():
 ##### MENU RELATED #####
     def listened_menu(self, task):
         menu = task["entry"]
+        print("MENU entry: " + str(task["entry"]))
         if menu == "main":
             self.send_menu_main(task["user"], task["qlen"], task["now_playing"])
         elif menu == "list":
@@ -314,13 +303,13 @@ class TgFrontend():
     def send_menu_admin(self, user):
         message_text = "Админка, меню для админов и вот это вот всё"
         kb = telebot.types.InlineKeyboardMarkup(row_width=1)
-        kb.row(telebot.types.InlineKeyboardButton(text="Пропустить песню", callback_data="admin:skip"))
-        kb.row(telebot.types.InlineKeyboardButton(text="Пользователи", callback_data="admin:lius0"))
+        kb.row(telebot.types.InlineKeyboardButton(text="Пропустить песню", callback_data="admin:skip"),
+               telebot.types.InlineKeyboardButton(text="Пользователи", callback_data="admin:lius0"))
         kb.row(telebot.types.InlineKeyboardButton(text="🔄Обновить🔄", callback_data="admin:main"))
         self.bot.send_message(user, message_text, reply_markup=kb)
 
     def send_menu_admin_list_users(self, user, page):
-        users = [[x, self.user_info[x]['username']] for x in self.user_info if x not in superusers]
+        users = [[x, self.user_info[x]['username']] for x in self.user_info] # if x not in superusers
         start = page * 10
         if len(users) == 0:
             self.bot.send_message(user, "No users here :(")
@@ -443,7 +432,7 @@ class TgFrontend():
             kb.row(telebot.types.InlineKeyboardButton(
                 text=song["artist"] + " - " + song["title"] +
                     " {:d}:{:02d}".format(*list(divmod(song["duration"], 60))),
-                callback_data="pick" + str(i))
+                callback_data="pick" + song["source_id"])
             )
             i += 1
         kb.row(telebot.types.InlineKeyboardButton(text="Ни одна из этих",
@@ -464,7 +453,7 @@ class TgFrontend():
                telebot.types.InlineKeyboardButton(text="🔄Обновить🔄", callback_data="song" + str(sid)))
         self.bot.send_message(user, message_text, reply_markup=kb)
 
-##### BRAIN LISTENER #####
+# BRAIN LISTENER #####
     def brain_listener(self):
         while True:
             task = self.input_queue.get(block=True)
@@ -475,32 +464,42 @@ class TgFrontend():
             if task["user"] not in self.user_info:
                 self.init_user(task["user"])
             self.user_info[task["user"]]["state"] = 0
-            if action == "ask_user":
-                self.listened_ask_user(task)
-            elif action == "user_message":
+            if action == "user_message":
                 self.listened_user_message(task)
             elif action == "confirmation_done":
                 self.listened_confirmation_done(task)
             elif action == "menu":
                 self.listened_menu(task)
+            elif action == "user_inline_reply":
+                self.listened_inline_reply(task)
             else:
                 self.bot.send_message(193092055, "DEBUG:\n" + str(task),
                                       reply_markup=telebot.types.ReplyKeyboardRemove())
             self.input_queue.task_done()
 
-#####  BRAIN LISTENERS  #####
-    def listened_ask_user(self, task):
-        songs = task["songs"]
-        self.user_info[task["user"]]["state"] = 1
-        self.bot.send_message(task["user"], task["message"], reply_markup=generate_markup(songs))
-
+# BRAIN LISTENERS  #####
     def listened_user_message(self, task):
         self.bot.send_message(task["user"], task["message"], reply_markup=telebot.types.ReplyKeyboardRemove())
 
     def listened_confirmation_done(self, task):
         self.user_info[task["user"]]["state"] = 0
 
-##### UTILITY FUNCTIONS #####
+    def listened_inline_reply(self, task):
+        results = []
+        for song in task["results"]:
+            results.append(telebot.types.InlineQueryResultArticle(
+                id=song['source_id'],
+                title=song['artist'],
+                description=song['title'],
+                url=song['download'],
+                hide_url=True,
+                input_message_content=telebot.types.InputTextMessageContent(song['artist'] + " - " + song['title']),
+            ))
+
+        self.bot.answer_inline_query(task["qid"], results)
+
+
+# UTILITY FUNCTIONS #####
     def broadcast_to_all_users(self, message):
         if message.from_user.id in superusers:
             text = message.text.lstrip("/broadcast ")
@@ -524,7 +523,7 @@ class TgFrontend():
         else:
             self.bot.send_message(message.from_user.id, "You have no power here")
 
-##### COMMANDS #####
+# COMMANDS #####
     def start_admin(self, message):
         if message.from_user.id in superusers:
             self.send_menu_admin(message.from_user.id)
@@ -560,9 +559,9 @@ class TgFrontend():
             "number": 0
         })
 
-##### USER MESSAGES HANDLERS #####
+# USER MESSAGES HANDLERS #####
     def text_message_handler(self, message):
-        return
+        # return #
         user = message.from_user.id
         if user in self.banned_users:
             self.bot.send_message(user, "Похоже вас забанило :(",

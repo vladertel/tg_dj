@@ -12,17 +12,22 @@ from .exceptions import *
 from .storage_checker import filter_storage
 
 
+class CaptchaNeeded(ApiError):
+    pass
+
+
 class VkDownloader(AbstractDownloader):
     name = "vk downloader"
 
     def is_acceptable(self, task):
-        if "text" in task:
-            songs, headers = self.search_with_query(task["text"])
-            raise AskUser(songs, headers)
-        return False
+        return "text" in task
 
     def schedule_task(self, task):
-        return self.schedule_link(task["song"], task["headers"])
+        if "song" in task:
+            (song, headers) = (task["song"], task["headers"])
+        else:
+            (song, headers) = self.search_with_query(task["text"])
+        return self.schedule_link(song, headers)
 
     def get_headers(self):
         return {
@@ -47,25 +52,28 @@ class VkDownloader(AbstractDownloader):
         songs = requests.get(DATMUSIC_API_ENDPOINT, params=self.get_payload(search_query), headers=headers)
         if songs.status_code != 200:
             raise BadReturnStatus(songs.status_code)
+
+        payload = json.loads(songs.text)
+        if payload['status'] != "ok":
+            if payload['error']['message'] == "Captcha needed":
+                raise CaptchaNeeded()
+            else:
+                raise ApiError()
+
         try:
-            data = json.loads(songs.text)["data"]
+            data = payload["data"]
         except KeyError as e:
-            print("seems like wrong result")
-            # print(songs.text)
+            print("Payload has no data: %s" % songs.text)
             raise e
         if _DEBUG_:
-            print("Got " + str(len(data)) + "results")
-        # try:
+            print("Got " + str(len(data)) + " results")
+
         length = len(data)
-        if length > 10:
-            songs = data[0:10]
-        elif length == 0:
+        if length == 0:
             raise NothingFound()
-        elif length == 1:
-            raise OnlyOneFound(data[0], headers)
         else:
-            songs = data[0:length]
-        return (songs, headers)
+            songs = data
+            raise MultipleChoice(songs, headers)
 
     def schedule_link(self, song, headers):
         if _DEBUG_:

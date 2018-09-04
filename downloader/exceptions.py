@@ -23,13 +23,13 @@ class NothingFound(Exception):
     pass
 
 
-class OnlyOneFound(Exception):
-    pass
-
-
 class UnappropriateArgument(Exception):
     pass
 
 
-class AskUser(Exception):
+class MultipleChoice(Exception):
+    pass
+
+
+class ApiError(Exception):
     pass
