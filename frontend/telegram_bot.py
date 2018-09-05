@@ -5,7 +5,6 @@ import re
 import os
 import json
 from time import sleep
-import pprint
 
 from .private_config import token
 from .config import cacheDir, superusers
@@ -223,10 +222,12 @@ class TgFrontend():
         except Exception as e:
             print("delete_message exception: " + str(e))
             return
+        _, downloader, result_id = data.data[4:].split(" ")
         self.output_queue.put({
-            "action": "user_confirmed",
+            "action": "search_result_selected",
             "user": data.from_user.id,
-            "result_id": data.data[4:]
+            "downloader": downloader,
+            "result_id": result_id,
         })
 
     def queue_callback(self, data):
@@ -260,7 +261,7 @@ class TgFrontend():
         self.output_queue.put({
             "action": "search_inline",
             "qid": data.id,
-            "text": data.query.lstrip(),
+            "query": data.query.lstrip(),
             "user": data.from_user.id
         })
 
@@ -268,20 +269,14 @@ class TgFrontend():
         if data.from_user.id in self.banned_users:
             return
 
-        pprint.pprint(str(data))
+        downloader, result_id = data.result_id.split(" ")
 
         self.output_queue.put({
-            "action": "search_inline_select",
+            "action": "search_result_selected",
             "user": data.from_user.id,
-            "result_id": data.result_id,
+            "downloader": downloader,
+            "result_id": result_id,
         })
-
-        # self.output_queue.put({
-        #     "action": "search_inline",
-        #     "qid": data.id,
-        #     "text": data.query.lstrip(),
-        #     "user": data.from_user.id
-        # })
 
 
 ##### MENU RELATED #####
@@ -295,8 +290,6 @@ class TgFrontend():
         elif menu == "song":
             self.send_menu_song(task["user"], task["number"], task["duration"], task["rating"],
                                 task["position"], task["title"], task['superuser'])
-        elif menu == "ask":
-            self.send_menu_ask(task["user"], task["message"], task["songs"])
         else:
             print("WRONG MENU entry: " + str(task["entry"]))
 
@@ -418,28 +411,6 @@ class TgFrontend():
                telebot.types.InlineKeyboardButton(text="🔄Обновить🔄", callback_data="list" + str(page)))
         self.bot.send_message(user, message_text, reply_markup=kb)
 
-    def send_menu_ask(self, user, message, songs):
-        if self.user_info[user]["last_ask"] is not None:
-            try:
-                self.bot.delete_message(user, self.user_info[user]["last_ask"])
-            except Exception as e:
-                print("delete_message exception: last ask" + str(e))
-
-        kb = telebot.types.InlineKeyboardMarkup(row_width=2)
-        message_text = message
-        i = 0
-        for song in songs:
-            kb.row(telebot.types.InlineKeyboardButton(
-                text=song["artist"] + " - " + song["title"] +
-                    " {:d}:{:02d}".format(*list(divmod(song["duration"], 60))),
-                callback_data="pick" + song["source_id"])
-            )
-            i += 1
-        kb.row(telebot.types.InlineKeyboardButton(text="Ни одна из этих",
-                                                      callback_data="none"))
-        reply = self.bot.send_message(user, message_text, reply_markup=kb)
-        self.user_info[user]["last_ask"] = reply.message_id
-
     def send_menu_song(self, user, sid, duration, rating, position, title, superuser=False):
         strdur = "{:d}:{:02d}".format(*list(divmod(duration, 60)))
         base_str = "Песня: {}\nПродолжительность: {}\nРейтинг: {:d}\nМесто в очереди: {:d}"
@@ -452,6 +423,7 @@ class TgFrontend():
         kb.row(telebot.types.InlineKeyboardButton(text="🔙Назад", callback_data="list" + str(position)),
                telebot.types.InlineKeyboardButton(text="🔄Обновить🔄", callback_data="song" + str(sid)))
         self.bot.send_message(user, message_text, reply_markup=kb)
+
 
 # BRAIN LISTENER #####
     def brain_listener(self):
@@ -488,12 +460,12 @@ class TgFrontend():
         results = []
         for song in task["results"]:
             results.append(telebot.types.InlineQueryResultArticle(
-                id=song['source_id'],
+                id=song['downloader'] + " " + song['id'],
                 title=song['artist'],
-                description=song['title'],
-                url=song['download'],
-                hide_url=True,
-                input_message_content=telebot.types.InputTextMessageContent(song['artist'] + " - " + song['title']),
+                description=song['title'] + " {:d}:{:02d}".format(*list(divmod(song["duration"], 60))),
+                input_message_content=telebot.types.InputTextMessageContent(
+                    song['artist'] + " - " + song['title']
+                ),
             ))
 
         self.bot.answer_inline_query(task["qid"], results)
@@ -561,7 +533,6 @@ class TgFrontend():
 
 # USER MESSAGES HANDLERS #####
     def text_message_handler(self, message):
-        # return #
         user = message.from_user.id
         if user in self.banned_users:
             self.bot.send_message(user, "Похоже вас забанило :(",
@@ -581,10 +552,6 @@ class TgFrontend():
         self.output_queue.put(request)
         self.bot.send_message(user, "Ваш запрос ожидает ответ от сервера",
                               reply_markup=telebot.types.ReplyKeyboardRemove())
-
-        print(str(message))
-
-        return
 
     def audio_handler(self, message):
         user = message.from_user.id

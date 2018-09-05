@@ -29,5 +29,13 @@ class AbstractDownloader():
         raise ShouldNotBeCalled(
             "this method should not be called from abstract class")
 
+    def schedule_search(self, task):
+        raise ShouldNotBeCalled(
+            "this method should not be called from abstract class")
+
+    def schedule_search_result(self, task):
+        raise ShouldNotBeCalled(
+            "this method should not be called from abstract class")
+
     def is_in_cache(self, file_path):
         return os.path.exists(file_path) and os.path.getsize(file_path) > 0

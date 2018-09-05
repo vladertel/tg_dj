@@ -19,17 +19,16 @@ class CaptchaNeeded(ApiError):
 class VkDownloader(AbstractDownloader):
     name = "vk downloader"
 
+    def __init__(self):
+        super().__init__()
+
+        self.songs_cache = {}
+
     def is_acceptable(self, task):
-        return "text" in task
+        return "query" in task
 
-    def schedule_task(self, task):
-        if "song" in task:
-            (song, headers) = (task["song"], task["headers"])
-        else:
-            (song, headers) = self.search_with_query(task["text"])
-        return self.schedule_link(song, headers)
-
-    def get_headers(self):
+    @staticmethod
+    def get_headers():
         return {
             "User-Agent": generate_user_agent(),
             "Accept": "application/json, text/javascript, */*; q=0.01",
@@ -39,13 +38,15 @@ class VkDownloader(AbstractDownloader):
             "Accept-Language": "en-us"
         }
 
-    def get_payload(self, query):
+    @staticmethod
+    def get_payload(query):
         return {
             "q": query,
             "page": 0
         }
 
-    def search_with_query(self, search_query):
+    def schedule_search(self, task):
+        search_query = task["query"]
         if _DEBUG_:
             print("Trying to get data from " + DATMUSIC_API_ENDPOINT + " with query " + search_query)
         headers = self.get_headers()
@@ -71,43 +72,69 @@ class VkDownloader(AbstractDownloader):
         length = len(data)
         if length == 0:
             raise NothingFound()
-        else:
-            songs = data
-            raise MultipleChoice(songs, headers)
 
-    def schedule_link(self, song, headers):
-        if _DEBUG_:
-            print("Downloading song:" + str(song))
-        response = requests.head(song["download"], headers=headers, allow_redirects=True)
+        songs = data
+        for s in songs:
+            self.songs_cache[s['source_id']] = s
+
+        ret = []
+        for s in songs:
+            ret.append({
+                "id": s["source_id"],
+                "artist": s["artist"],
+                "title": s["title"],
+                "duration": s["duration"],
+            })
+        return ret
+
+    def schedule_search_result(self, result_id, user_message=lambda msg: True):
+        try:
+            song = self.songs_cache[result_id]
+        except KeyError:
+            print("ERROR [VkDownloader]: No search cache entry for id " + result_id)
+            # self.error(user, "Ошибка (запрошенная песня отсутствует в кэше поиска)")
+            return
+
+        file_name = unidecode(song["artist"] + " - " + song["title"] + '.mp3')
+        file_path = os.path.join(os.getcwd(), mediaDir, file_name)
+
+        if self.is_in_cache(file_path):
+            print("INFO [VkDownloader]: File %s already in cache" % result_id)
+            user_message("%s - %s в очереди" % (song['artist'], song['title']))
+            return file_path, song["artist"] + " - " + song["title"], song["duration"]
+
+        if not os.path.exists(os.path.join(os.getcwd(), mediaDir)):
+            os.makedirs(os.path.join(os.getcwd(), mediaDir))
+            if _DEBUG_:
+                print("DEBUG [VkDownloader]: Media dir have been created: %s" % os.path.join(os.getcwd(), mediaDir))
+
+        print("INFO [VkDownloader]: Downloading vk song #" + result_id)
+        user_message("Скачиваем %s - %s ..." % (song['artist'], song['title']))
+
+        response = requests.head(song["download"], headers=self.get_headers(), allow_redirects=True)
         if response.status_code != 200:
             raise BadReturnStatus(response.status_code)
         try:
             file_size = response.headers['content-length']
         except KeyError as e:
-            print("VkDownloader: no such header: content-length")
-            print(e)
-            raise e
+            print("ERROR [VkDownloader]: no such header: content-length. More information below\n" + str(e))
+            raise ApiError
         if int(file_size) > MAXIMUM_FILE_SIZE:
             raise MediaIsTooBig(file_size)
-        file_name = song["artist"] + " - " + song["title"] + '.mp3'
-        file_name = unidecode(file_name)
-        file_path = os.path.join(os.getcwd(), mediaDir, file_name)
-        if self.is_in_cache(file_path):
-            return (file_path, song["artist"] + " - " + song["title"], song["duration"])
-        if not os.path.exists(os.path.join(os.getcwd(), mediaDir)):
-            os.makedirs(os.path.join(os.getcwd(), mediaDir))
-            if _DEBUG_:
-                print("Media dir have been created: " + os.path.join(os.getcwd(), mediaDir))
+
         sleep(1)
-        downloaded = requests.get(song["download"], headers=headers, stream=True)
+
+        downloaded = requests.get(song["download"], headers=self.get_headers(), stream=True)
         if downloaded.status_code != 200:
             raise BadReturnStatus(downloaded.status_code)
+
         with open(file_path, 'wb') as f:
             f.write(downloaded.content)
         self.touch_without_creation(file_path)
         filter_storage()
+
         if _DEBUG_:
-            print("VK: Check file at path: " + file_path)
-        return (file_path, song["artist"] + " - " + song["title"], song["duration"])
-        # downloaded.raw.decode_content = True
-        # shutil.copyfileobj(downloaded.raw, f)
+            print("DEBUG [VkDownloader]: File stored in path: " + file_path)
+
+        user_message("%s - %s в очереди" % (song['artist'], song['title']))
+        return file_path, song["artist"] + " - " + song["title"], song["duration"]

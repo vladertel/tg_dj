@@ -133,7 +133,7 @@ class DJ_Brain():
             action = task['action']
             if action == 'download':
                 if "text" in task:
-                    text = task['text']
+                    text = task['text'] + "[DL]"
                 elif "file" in task:
                     text = task['file']
                 user = task['user']
@@ -146,15 +146,23 @@ class DJ_Brain():
                         'user': user,
                         'message': 'Превышен лимит запросов, попробуйте позже'
                     })
-            elif action == 'user_confirmed':
-                print("pushed task to downloader: " + str(task))
-                self.downloader.input_queue.put(task)
             elif action == "search_inline":
                 print("pushed task to downloader: " + str(task))
                 self.downloader.input_queue.put(task)
-            elif action == 'search_inline_select':
-                print("pushed task to downloader: " + str(task))
-                self.downloader.input_queue.put(task)
+            elif action == 'search_result_selected':
+                if "text" in task:
+                    text = task['text'] + "[VK]"
+                user = task['user']
+                if self.add_request(user, "SEARCH_RESULT") or user in superusers:
+                    print("pushed task to downloader: " + str(task))
+                    self.downloader.input_queue.put(task)
+                else:
+                    self.frontend.input_queue.put({
+                        'action': 'user_message',
+                        'user': user,
+                        'message': 'Превышен лимит запросов, попробуйте позже'
+                    })
+
             elif action == 'stop_playing':
                 if task['user'] in superusers:
                     print("pushed task to backend: " + str(task))
@@ -264,9 +272,6 @@ class DJ_Brain():
             elif action == 'user_message' or action == 'confirmation_done':
                 print("pushed task to frontend: " + str(task))
                 self.frontend.input_queue.put(task)
-            elif action == 'ask_user':
-                print("pushed task to frontend: " + str(task))
-                self.frontend_menu_ask(task["user"], task["message"], task["songs"])
             elif action == 'user_inline_reply':
                 print("pushed task to frontend: " + str(task))
                 self.frontend.input_queue.put(task)
@@ -348,16 +353,6 @@ class DJ_Brain():
             "number": 0,
             "qlen": qlen,
             "now_playing": now_playing,
-        })
-
-    def frontend_menu_ask(self, user, message, songs):
-        self.frontend.input_queue.put({
-            "action": "menu",
-            "user": user,
-            "entry": "ask",
-            "number": 0,
-            "songs": songs,
-            "message": message
         })
 
 #### MANUAL MANAGEMENT ####
