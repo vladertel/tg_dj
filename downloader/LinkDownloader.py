@@ -21,20 +21,29 @@ def get_mp3_title_and_duration(path):
 
 class LinkDownloader(AbstractDownloader):
     def __init__(self):
-        self.mp3_regex = re.compile(
+        self.mp3_dns_regex = re.compile(
             r"(?:https?://)?(?:www\.)?(?:[a-zA-Z0-9_-]{3,30}\.)+[a-zA-Z]{2,4}\/.*\.mp3[a-zA-Z0-9_\?\&\=\-]*",
+            flags=re.IGNORECASE)
+        self.mp3_ip4_regex = re.compile(
+            r"(?:https?://)?([0-9]{1,3}\.){3}([0-9]{1,3})\/.*\.mp3[a-zA-Z0-9_\?\&\=\-]*",
             flags=re.IGNORECASE)
         self.name = "links downloader"
 
     def is_acceptable(self, task):
         if "text" in task:
-            match = self.mp3_regex.search(task["text"])
+            match = self.mp3_dns_regex.search(task["text"])
+            if match:
+                return match.group(0)
+            match = self.mp3_ip4_regex.search(task["text"])
             if match:
                 return match.group(0)
         return False
 
     def schedule_task(self, task):
-        match = self.mp3_regex.search(task["text"])
+        match = self.mp3_dns_regex.search(task["text"])
+        if match:
+            return self.schedule_link(match.group(0))
+        match = self.mp3_ip4_regex.search(task["text"])
         if match:
             return self.schedule_link(match.group(0))
         raise UnappropriateArgument()
