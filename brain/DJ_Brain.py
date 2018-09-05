@@ -150,10 +150,9 @@ class DJ_Brain():
                 print("pushed task to downloader: " + str(task))
                 self.downloader.input_queue.put(task)
             elif action == 'search_result_selected':
-                if "text" in task:
-                    text = task['text'] + "[VK]"
+                text = task["downloader"] + "#" + task["result_id"]
                 user = task['user']
-                if self.add_request(user, "SEARCH_RESULT") or user in superusers:
+                if self.add_request(user, text) or user in superusers:
                     print("pushed task to downloader: " + str(task))
                     self.downloader.input_queue.put(task)
                 else:
@@ -175,9 +174,9 @@ class DJ_Brain():
                     })
             elif action == 'skip_song':
                 if task['user'] in superusers:
-                    task['action'] = "stop_playing"
-                    print("pushed task to backend: " + str(task))
-                    self.backend.input_queue.put(task)
+                    # task['action'] = "stop_playing"
+                    # print("pushed task to backend: " + str(task))
+                    # self.backend.input_queue.put(task)
                     track = self.scheduler.get_first_track()
                     if track is not None:
                         new_task = {
