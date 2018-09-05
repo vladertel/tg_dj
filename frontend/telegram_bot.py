@@ -566,7 +566,9 @@ class TgFrontend():
             "duration": message.audio.duration,
             "action": "download",
             "file_size": message.audio.file_size,
-            "file_info": file_info
+            "file_info": file_info,
+            "artist": message.audio.performer,
+            "title": message.audio.title,
         })
         # else:
             # self.bot.send_message(message.from_user.id, "Unsupported audio format... For now I accept only mp3 :(")

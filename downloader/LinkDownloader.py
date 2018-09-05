@@ -2,6 +2,7 @@ import os
 import requests
 import re
 
+from urllib import parse
 from unidecode import unidecode
 from mutagen.mp3 import MP3
 
@@ -13,10 +14,29 @@ from .storage_checker import filter_storage
 
 def get_mp3_title_and_duration(path):
     audio = MP3(path)
-    title = "Not provided"
-    if "artist" in audio and "title" in audio:
-        title = audio.info["artist"] + " - " + audio.info["title"]
-    return (title, audio.info.length)
+
+    try:
+        artist = str(audio.tags.getall("TPE1")[0][0])
+    except IndexError:
+        artist = None
+    try:
+        title = str(audio.tags.getall("TIT2")[0][0])
+    except IndexError:
+        title = None
+
+    if artist is not None and title is not None:
+        ret = artist + " - " + title
+    elif artist is not None:
+        ret = artist
+    elif title is not None:
+        ret = title
+    else:
+        ret = os.path.splitext(os.path.basename(path[:-4]))[0]
+
+    if _DEBUG_:
+        print("DEBUG [LinkDownloader]: Media name: " + ret)
+
+    return ret, audio.info.length
 
 
 class LinkDownloader(AbstractDownloader):
@@ -62,12 +82,12 @@ class LinkDownloader(AbstractDownloader):
             raise MediaIsTooBig()
 
         file_dir = os.path.join(os.getcwd(), mediaDir)
-        file_name = unidecode(url.split("/")[-1] + ".mp3")
+        file_name = unidecode(parse.unquote(url).split("/")[-1] + ".mp3")
         file_path = os.path.join(file_dir, file_name)
 
         if os.path.exists(file_path) and os.path.getsize(file_path) > 0:
             title, duration = get_mp3_title_and_duration(file_path)
-            return (file_path, title, duration)
+            return file_path, title, duration
 
         downloaded = requests.get(url, stream=True)
         if downloaded.status_code != 200:
@@ -84,4 +104,4 @@ class LinkDownloader(AbstractDownloader):
         self.touch_without_creation(file_path)
         filter_storage()
 
-        return (file_path, title, duration)
+        return file_path, title, duration
