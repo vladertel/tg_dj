@@ -19,7 +19,7 @@ from .storage_checker import filter_storage
         # })
 
 class FileDownloader(AbstractDownloader):
-    name = "links downloader"
+    name = "file downloader"
 
     def is_acceptable(self, task):
         return "file" in task
@@ -52,7 +52,6 @@ class FileDownloader(AbstractDownloader):
         self.touch_without_creation(file_path)
         filter_storage()
         return (file_path, self.get_title(file_path), duration)
-
 
     def schedule_task(self, task):
         return self.schedule_link(task["user"], task["file"], task["duration"], task["file_info"], task["file_size"])
