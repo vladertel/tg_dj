@@ -59,8 +59,8 @@ class MasterDownloader:
             else:
                 self.download_done(task["user"], file_path, title, seconds)
                 print("DEBUG: Download done")
+                self.user_message(user, "Запрос обработан")
                 break
-        print("DEBUG: Exiting download function")
         self.input_queue.task_done()
 
     def thread_download_confirmed(self, downloader, task):

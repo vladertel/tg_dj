@@ -550,8 +550,6 @@ class TgFrontend():
             "action": "download"
         }
         self.output_queue.put(request)
-        self.bot.send_message(user, "Ваш запрос ожидает ответ от сервера",
-                              reply_markup=telebot.types.ReplyKeyboardRemove())
 
     def audio_handler(self, message):
         user = message.from_user.id
