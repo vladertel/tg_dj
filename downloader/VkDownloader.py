@@ -47,6 +47,10 @@ class VkDownloader(AbstractDownloader):
 
     def schedule_search(self, task):
         search_query = task["query"]
+
+        if len(search_query.strip()) == 0:
+            return []
+
         if _DEBUG_:
             print("Trying to get data from " + DATMUSIC_API_ENDPOINT + " with query " + search_query)
         headers = self.get_headers()
