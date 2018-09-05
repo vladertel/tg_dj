@@ -5,7 +5,7 @@ import vlc
 
 from .config import *
 
-options = 'sout=#duplicate{dst=rtp{access=udp,mux=ts,dst=192.168.16.127,port=1233},dst=display}'
+options = 'sout=#duplicate{dst=gather:http{mux=ts,dst=:1233/},dst=display}'
 # options = 'sout=#duplicate{dst=rtp{access=udp,mux=ts,dst=224.0.0.1,port=1233},dst=display}'
 # options = 'sout=#duplicate{dst=http{mux=ts,dst=:8080/},dst=display}'
 # options = ':sout=#duplicate{dst=std{access=http,mux=ts,dst=:1234}}'
@@ -44,9 +44,8 @@ class VLCStreamer():
             task = self.input_queue.get()
             action = task['action']
             if action == 'play_song':
-                self.player.stop()
                 uri = task['uri']
-                media = self.vlc_instance.media_new(uri, options)
+                media = self.vlc_instance.media_new(uri, options, "sout-keep")
                 # media = self.vlc_instance.media_new(uri)
                 self.player.set_media(media)
                 self.player.play()

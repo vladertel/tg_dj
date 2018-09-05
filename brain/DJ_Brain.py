@@ -133,7 +133,7 @@ class DJ_Brain():
             action = task['action']
             if action == 'download':
                 if "text" in task:
-                    text = task['text']
+                    text = task['text'] + "[DL]"
                 elif "file" in task:
                     text = task['file']
                 user = task['user']
@@ -146,9 +146,22 @@ class DJ_Brain():
                         'user': user,
                         'message': 'Превышен лимит запросов, попробуйте позже'
                     })
-            elif action == 'user_confirmed':
+            elif action == "search_inline":
                 print("pushed task to downloader: " + str(task))
                 self.downloader.input_queue.put(task)
+            elif action == 'search_result_selected':
+                text = task["downloader"] + "#" + task["result_id"]
+                user = task['user']
+                if self.add_request(user, text) or user in superusers:
+                    print("pushed task to downloader: " + str(task))
+                    self.downloader.input_queue.put(task)
+                else:
+                    self.frontend.input_queue.put({
+                        'action': 'user_message',
+                        'user': user,
+                        'message': 'Превышен лимит запросов, попробуйте позже'
+                    })
+
             elif action == 'stop_playing':
                 if task['user'] in superusers:
                     print("pushed task to backend: " + str(task))
@@ -161,9 +174,9 @@ class DJ_Brain():
                     })
             elif action == 'skip_song':
                 if task['user'] in superusers:
-                    task['action'] = "stop_playing"
-                    print("pushed task to backend: " + str(task))
-                    self.backend.input_queue.put(task)
+                    # task['action'] = "stop_playing"
+                    # print("pushed task to backend: " + str(task))
+                    # self.backend.input_queue.put(task)
                     track = self.scheduler.get_first_track()
                     if track is not None:
                         new_task = {
@@ -217,8 +230,19 @@ class DJ_Brain():
                     print('Menu not supported:', str(task["entry"]))
             elif action == "manual_start":
                 self.manual_start()
+
+                # if task['user'] in superusers:
+                #     print("pushed task to backend: " + str(task))
+                #     self.backend.input_queue.put(task)
+                # else:
+                #     self.frontend.input_queue.put({
+                #         "action": "inline_response",
+                #         "qid": task['qid'],
+                #         "results": results,
+                #         "user": task["user"]
+                #     })
             else:
-                print('Message not supported:', str(task))
+                print('ERROR: Message not supported:', str(task))
             self.frontend.output_queue.task_done()
 
     def downloader_listener(self):
@@ -247,9 +271,9 @@ class DJ_Brain():
             elif action == 'user_message' or action == 'confirmation_done':
                 print("pushed task to frontend: " + str(task))
                 self.frontend.input_queue.put(task)
-            elif action == 'ask_user':
+            elif action == 'user_inline_reply':
                 print("pushed task to frontend: " + str(task))
-                self.frontend_menu_ask(task["user"], task["message"], task["songs"])
+                self.frontend.input_queue.put(task)
             else:
                 print('Message not supported: ', str(task))
             self.downloader.output_queue.task_done()
@@ -328,16 +352,6 @@ class DJ_Brain():
             "number": 0,
             "qlen": qlen,
             "now_playing": now_playing,
-        })
-
-    def frontend_menu_ask(self, user, message, songs):
-        self.frontend.input_queue.put({
-            "action": "menu",
-            "user": user,
-            "entry": "ask",
-            "number": 0,
-            "songs": songs,
-            "message": message
         })
 
 #### MANUAL MANAGEMENT ####

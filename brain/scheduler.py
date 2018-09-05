@@ -70,7 +70,7 @@ class Scheduler():
                     self.playing_queue = queue
                     self.sort_queue()
                 self.backlog_already_played = dicts["backlog_already_played"]
-        except FileNotFoundError:
+        except (FileNotFoundError, ValueError) as _:
             pass
 
     def populate_backlog(self):
