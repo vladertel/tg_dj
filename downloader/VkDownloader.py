@@ -25,7 +25,7 @@ class VkDownloader(AbstractDownloader):
         self.songs_cache = {}
 
     def is_acceptable(self, task):
-        return "query" in task
+        return "query" in task or "result_id" in task
 
     @staticmethod
     def get_headers():
@@ -45,14 +45,16 @@ class VkDownloader(AbstractDownloader):
             "page": 0
         }
 
-    def schedule_search(self, task):
+    def search(self, task, user_message=lambda text: True):
         search_query = task["query"]
+        if _DEBUG_:
+            print("DEBUG [VkDownloader]: Search query: " + search_query)
 
         if len(search_query.strip()) == 0:
             return []
 
         if _DEBUG_:
-            print("Trying to get data from " + DATMUSIC_API_ENDPOINT + " with query " + search_query)
+            print("DEBUG [VkDownloader]: Getting data from " + DATMUSIC_API_ENDPOINT + " with query " + search_query)
         headers = self.get_headers()
         songs = requests.get(DATMUSIC_API_ENDPOINT, params=self.get_payload(search_query), headers=headers)
         if songs.status_code != 200:
@@ -68,10 +70,10 @@ class VkDownloader(AbstractDownloader):
         try:
             data = payload["data"]
         except KeyError as e:
-            print("Payload has no data: %s" % songs.text)
+            print("ERROR [VkDownloader]: Payload has no data: %s" % songs.text)
             raise e
         if _DEBUG_:
-            print("Got " + str(len(data)) + " results")
+            print("DEBUG [VkDownloader]: Got " + str(len(data)) + " results")
 
         length = len(data)
         if length == 0:
@@ -91,12 +93,16 @@ class VkDownloader(AbstractDownloader):
             })
         return ret
 
-    def schedule_search_result(self, result_id, user_message=lambda msg: True):
+    def download(self, task, user_message=lambda text: True):
+        result_id = task["result_id"]
+        if _DEBUG_:
+            print("DEBUG [VkDownloader]: Downloading result #" + str(task["result_id"]))
+
         try:
             song = self.songs_cache[result_id]
         except KeyError:
             print("ERROR [VkDownloader]: No search cache entry for id " + result_id)
-            # self.error(user, "Ошибка (запрошенная песня отсутствует в кэше поиска)")
+            user_message("Внутренняя ошибка (запрошенная песня отсутствует в кэше поиска)")
             return
 
         file_name = unidecode(song["artist"] + " - " + song["title"] + '.mp3')
@@ -104,7 +110,7 @@ class VkDownloader(AbstractDownloader):
 
         if self.is_in_cache(file_path):
             print("INFO [VkDownloader]: File %s already in cache" % result_id)
-            user_message("%s - %s в очереди" % (song['artist'], song['title']))
+            user_message("Песня добавлена в очередь\n%s - %s" % (song['artist'], song['title']))
             return file_path, song["artist"] + " - " + song["title"], song["duration"]
 
         if not os.path.exists(os.path.join(os.getcwd(), mediaDir)):
@@ -113,7 +119,7 @@ class VkDownloader(AbstractDownloader):
                 print("DEBUG [VkDownloader]: Media dir have been created: %s" % os.path.join(os.getcwd(), mediaDir))
 
         print("INFO [VkDownloader]: Downloading vk song #" + result_id)
-        user_message("Скачиваем %s - %s ..." % (song['artist'], song['title']))
+        user_message("Скачиваем...\n%s - %s" % (song['artist'], song['title']))
 
         response = requests.head(song["download"], headers=self.get_headers(), allow_redirects=True)
         if response.status_code != 200:
@@ -140,5 +146,5 @@ class VkDownloader(AbstractDownloader):
         if _DEBUG_:
             print("DEBUG [VkDownloader]: File stored in path: " + file_path)
 
-        user_message("%s - %s в очереди" % (song['artist'], song['title']))
+        user_message("Песня добавлена в очередь\n%s - %s" % (song['artist'], song['title']))
         return file_path, song["artist"] + " - " + song["title"], song["duration"]

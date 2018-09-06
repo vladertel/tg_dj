@@ -1,6 +1,7 @@
 # Abstract Download
 import os
 
+
 class ShouldNotBeCalled(Exception):
     pass
 
@@ -15,25 +16,17 @@ class AbstractDownloader():
         raise ShouldNotBeCalled(
             "this method should not be called from abstract class")
 
-    def schedule_link(self, url, callback):
-        raise ShouldNotBeCalled(
-            "this method should not be called from abstract class")
-
     def touch_without_creation(self, fname):
         try:
             os.utime(fname, None)
         except OSError:
             print("Touched unexistent path")
 
-    def schedule_task(self, task):
+    def search(self, task, user_message=lambda text: True):
         raise ShouldNotBeCalled(
             "this method should not be called from abstract class")
 
-    def schedule_search(self, task):
-        raise ShouldNotBeCalled(
-            "this method should not be called from abstract class")
-
-    def schedule_search_result(self, task):
+    def download(self, task, user_message=lambda text: True):
         raise ShouldNotBeCalled(
             "this method should not be called from abstract class")
 

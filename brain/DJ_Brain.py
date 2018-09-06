@@ -133,9 +133,13 @@ class DJ_Brain():
             action = task['action']
             if action == 'download':
                 if "text" in task:
-                    text = task['text'] + "[DL]"
+                    text = task['text']
                 elif "file" in task:
                     text = task['file']
+                elif "downloader" in task and "result_id" in task:
+                    text = task["downloader"] + "#" + task["result_id"]
+                else:
+                    text = "Unknown download type"
                 user = task['user']
                 if user in superusers or self.add_request(user, text):
                     print("pushed task to downloader: " + str(task))
@@ -146,22 +150,9 @@ class DJ_Brain():
                         'user': user,
                         'message': 'Превышен лимит запросов, попробуйте позже'
                     })
-            elif action == "search_inline":
+            elif action == "search":
                 print("pushed task to downloader: " + str(task))
                 self.downloader.input_queue.put(task)
-            elif action == 'search_result_selected':
-                text = task["downloader"] + "#" + task["result_id"]
-                user = task['user']
-                if self.add_request(user, text) or user in superusers:
-                    print("pushed task to downloader: " + str(task))
-                    self.downloader.input_queue.put(task)
-                else:
-                    self.frontend.input_queue.put({
-                        'action': 'user_message',
-                        'user': user,
-                        'message': 'Превышен лимит запросов, попробуйте позже'
-                    })
-
             elif action == 'stop_playing':
                 if task['user'] in superusers:
                     print("pushed task to backend: " + str(task))
@@ -230,17 +221,6 @@ class DJ_Brain():
                     print('Menu not supported:', str(task["entry"]))
             elif action == "manual_start":
                 self.manual_start()
-
-                # if task['user'] in superusers:
-                #     print("pushed task to backend: " + str(task))
-                #     self.backend.input_queue.put(task)
-                # else:
-                #     self.frontend.input_queue.put({
-                #         "action": "inline_response",
-                #         "qid": task['qid'],
-                #         "results": results,
-                #         "user": task["user"]
-                #     })
             else:
                 print('ERROR: Message not supported:', str(task))
             self.frontend.output_queue.task_done()
@@ -268,10 +248,10 @@ class DJ_Brain():
                         "user": task["user"]
                     })
 
-            elif action == 'user_message' or action == 'confirmation_done':
+            elif action == 'user_message' or action == 'edit_user_message' or action == 'confirmation_done':
                 print("pushed task to frontend: " + str(task))
                 self.frontend.input_queue.put(task)
-            elif action == 'user_inline_reply':
+            elif action == 'search_results':
                 print("pushed task to frontend: " + str(task))
                 self.frontend.input_queue.put(task)
             else:

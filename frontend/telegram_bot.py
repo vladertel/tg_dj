@@ -13,16 +13,17 @@ compiled_regex = re.compile(r"^\d+")
 
 help_message = """Приветствую тебя, %ЮЗЕРНЕЙМ%!
 
-С помощью этого бота ты можешь заказать музончик на нашем общем празднике.
+Этот бот позволяет тебе управлять музыкой, которая играет на нашем общем празднике.
 
-Работает всё предельно просто.
-У тебя есть несколько вариантов заказать песню:
-1) ты можешь отправить ссылочку на видосик на ютубе (например https://www.youtube.com/watch?v=dQw4w9WgXcQ)
-2) ты можешь отправить обычный текстовый запрос (например "Алла Пугачева розы")
+Во-первых, ты можешь добавить в плейлист твои любимые треки. Для этого можно:
+1. Воспользоваться кнопкой поиска музыки ниже
+2. Отправить ссылку на видео на ютубе (например https://www.youtube.com/watch?v=dQw4w9WgXcQ)
+3. Отправить ссылку на любой mp3-файл
+4. Отправить сам файл с музыкой 
 
-Также ты можешь голосовать, выбрав в менюшке соответствующую песню.
+Во-вторых, ты можешь голосовать за/против музыки в очереди.
 
-И еще: из-за криворукости автора изредка пропадает менюшка, вернуть ее можно написав /start
+Если у вас исчезло меню, то вернуть его на место можно командой /start
 """
 
 
@@ -105,6 +106,7 @@ class TgFrontend():
         self.bot.message_handler(commands=['ms'])(self.manual_start)
         self.bot.message_handler(commands=['stop_playing', 'stop'])(self.stop_playing)
         self.bot.message_handler(commands=['skip_song', 'skip'])(self.skip_song)
+        self.bot.message_handler(commands=['/'])(lambda x: True)
         self.bot.message_handler(content_types=['text'])(self.text_message_handler)
         self.bot.message_handler(content_types=['audio'])(self.audio_handler)
 
@@ -113,9 +115,7 @@ class TgFrontend():
         self.bot.callback_query_handler(func=lambda x: x.data[0:4] == "main")(self.menu_main)
         self.bot.callback_query_handler(func=lambda x: x.data[0:4] == "song")(self.menu_song)
         self.bot.callback_query_handler(func=lambda x: x.data[0:4] == "list")(self.menu_list)
-        self.bot.callback_query_handler(func=lambda x: x.data[0:4] == "pick")(self.menu_pick)
         self.bot.callback_query_handler(func=lambda x: x.data[0:4] == "dele")(self.menu_delete_song)
-        self.bot.callback_query_handler(func=lambda x: x.data[0:4] == "none")(self.menu_none_picked)
         self.bot.callback_query_handler(func=lambda x: x.data[0:5] == "admin")(self.admin_menus)
         self.bot.callback_query_handler(func=lambda x: True)(self.problem)
 
@@ -170,14 +170,6 @@ class TgFrontend():
         else:
             print("UNKNOWN ADMIN SUBMENU: " + submenu)
 
-    def menu_none_picked(self, data):
-        try:
-            self.bot.delete_message(data.from_user.id, data.message.message_id)
-        except Exception as e:
-            print("delete_message exception: " + str(e))
-            return
-        self.bot.send_message(data.from_user.id, "Значит сформируй запрос по-другому")
-
     def menu_song(self, data):
         try:
             self.bot.delete_message(data.from_user.id, data.message.message_id)
@@ -216,20 +208,6 @@ class TgFrontend():
             "number": int(data.data[4:])
         })
 
-    def menu_pick(self, data):
-        try:
-            self.bot.delete_message(data.from_user.id, data.message.message_id)
-        except Exception as e:
-            print("delete_message exception: " + str(e))
-            return
-        _, downloader, result_id = data.data[4:].split(" ")
-        self.output_queue.put({
-            "action": "search_result_selected",
-            "user": data.from_user.id,
-            "downloader": downloader,
-            "result_id": result_id,
-        })
-
     def queue_callback(self, data):
         pass
 
@@ -259,7 +237,7 @@ class TgFrontend():
             return
 
         self.output_queue.put({
-            "action": "search_inline",
+            "action": "search",
             "qid": data.id,
             "query": data.query.lstrip(),
             "user": data.from_user.id
@@ -271,18 +249,21 @@ class TgFrontend():
 
         downloader, result_id = data.result_id.split(" ")
 
+        reply = self.bot.send_message(data.from_user.id, "Запрос обрабатывается...")
+
         self.output_queue.put({
-            "action": "search_result_selected",
+            "action": "download",
             "user": data.from_user.id,
             "downloader": downloader,
             "result_id": result_id,
+            "message_id": reply.message_id,
+            "chat_id": reply.chat.id,
         })
 
 
 ##### MENU RELATED #####
     def listened_menu(self, task):
         menu = task["entry"]
-        print("MENU entry: " + str(task["entry"]))
         if menu == "main":
             self.send_menu_main(task["user"], task["qlen"], task["now_playing"])
         elif menu == "list":
@@ -438,12 +419,14 @@ class TgFrontend():
             self.user_info[task["user"]]["state"] = 0
             if action == "user_message":
                 self.listened_user_message(task)
+            if action == "edit_user_message":
+                self.listened_edit_user_message(task)
             elif action == "confirmation_done":
                 self.listened_confirmation_done(task)
             elif action == "menu":
                 self.listened_menu(task)
-            elif action == "user_inline_reply":
-                self.listened_inline_reply(task)
+            elif action == "search_results":
+                self.listened_search_results(task)
             else:
                 self.bot.send_message(193092055, "DEBUG:\n" + str(task),
                                       reply_markup=telebot.types.ReplyKeyboardRemove())
@@ -453,10 +436,13 @@ class TgFrontend():
     def listened_user_message(self, task):
         self.bot.send_message(task["user"], task["message"], reply_markup=telebot.types.ReplyKeyboardRemove())
 
+    def listened_edit_user_message(self, task):
+        self.bot.edit_message_text(task["new_text"], task["chat_id"], task["message_id"])
+
     def listened_confirmation_done(self, task):
         self.user_info[task["user"]]["state"] = 0
 
-    def listened_inline_reply(self, task):
+    def listened_search_results(self, task):
         results = []
         for song in task["results"]:
             results.append(telebot.types.InlineQueryResultArticle(
@@ -464,7 +450,7 @@ class TgFrontend():
                 title=song['artist'],
                 description=song['title'] + " {:d}:{:02d}".format(*list(divmod(song["duration"], 60))),
                 input_message_content=telebot.types.InputTextMessageContent(
-                    song['artist'] + " - " + song['title']
+                    "// " + song['artist'] + " - " + song['title']
                 ),
             ))
 
@@ -542,12 +528,14 @@ class TgFrontend():
         if user not in self.user_info:
             self.init_user(user)
         self.user_info[user]["history"].append(text)
-        if text == "None of these":
-            return
+
+        reply = self.bot.send_message(user, "Запрос обрабатывается...")
         request = {
+            "action": "download",
             "user": user,
             "text": text,
-            "action": "download"
+            "message_id": reply.message_id,
+            "chat_id": reply.chat.id,
         }
         self.output_queue.put(request)
 
@@ -560,15 +548,19 @@ class TgFrontend():
         self.user_info[user]["history"].append("sent audio with id:" + str(message.audio.file_id))
         # if message.audio.mime_type == "audio/mpeg3":
         file_info = self.bot.get_file(message.audio.file_id)
+
+        reply = self.bot.send_message(user, "Запрос обрабатывается...")
         self.output_queue.put({
+            "action": "download",
             "user": message.from_user.id,
             "file": message.audio.file_id,
             "duration": message.audio.duration,
-            "action": "download",
             "file_size": message.audio.file_size,
             "file_info": file_info,
             "artist": message.audio.performer,
             "title": message.audio.title,
+            "message_id": reply.message_id,
+            "chat_id": reply.chat.id,
         })
         # else:
             # self.bot.send_message(message.from_user.id, "Unsupported audio format... For now I accept only mp3 :(")

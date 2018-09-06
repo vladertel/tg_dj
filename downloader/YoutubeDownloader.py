@@ -26,7 +26,7 @@ class YoutubeDownloader(AbstractDownloader):
                 return match.group(0)
         return False
 
-    def schedule_task(self, task):
+    def download(self, task, user_message=lambda text: True):
         match = self.yt_regex.search(task["text"])
         if match:
             return self.schedule_link(match.group(0))
