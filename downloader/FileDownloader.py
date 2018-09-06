@@ -25,14 +25,11 @@ class FileDownloader(AbstractDownloader):
             print("DEBUG [FileDownloader]: Downloading song #" + str(file_id))
 
         artist = task["artist"].strip()
-        if len(artist) == 0:
-            artist = "TG_DJ"
-
         title = task["title"].strip()
         if len(title) == 0:
-            title = "Music"
-
-        title = artist + " - " + title
+            title = "Unknown"
+        if len(artist) > 0:
+            title = artist + " — " + title
 
         if _DEBUG_:
             print("DEBUG [FileDownloader]: Title for song #" + str(file_id) + ": " + title)

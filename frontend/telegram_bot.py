@@ -557,8 +557,8 @@ class TgFrontend():
             "duration": message.audio.duration,
             "file_size": message.audio.file_size,
             "file_info": file_info,
-            "artist": message.audio.performer,
-            "title": message.audio.title,
+            "artist": message.audio.performer or "",
+            "title": message.audio.title or "",
             "message_id": reply.message_id,
             "chat_id": reply.chat.id,
         })
