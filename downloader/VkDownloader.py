@@ -110,7 +110,7 @@ class VkDownloader(AbstractDownloader):
 
         if self.is_in_cache(file_path):
             print("INFO [VkDownloader]: File %s already in cache" % result_id)
-            user_message("Песня добавлена в очередь\n%s - %s" % (song['artist'], song['title']))
+            user_message("Песня добавлена в очередь\n%s — %s" % (song['artist'], song['title']))
             return file_path, song["artist"] + " - " + song["title"], song["duration"]
 
         if not os.path.exists(os.path.join(os.getcwd(), mediaDir)):
@@ -119,7 +119,7 @@ class VkDownloader(AbstractDownloader):
                 print("DEBUG [VkDownloader]: Media dir have been created: %s" % os.path.join(os.getcwd(), mediaDir))
 
         print("INFO [VkDownloader]: Downloading vk song #" + result_id)
-        user_message("Скачиваем...\n%s - %s" % (song['artist'], song['title']))
+        user_message("Скачиваем...\n%s — %s" % (song['artist'], song['title']))
 
         response = requests.head(song["download"], headers=self.get_headers(), allow_redirects=True)
         if response.status_code != 200:
@@ -146,5 +146,5 @@ class VkDownloader(AbstractDownloader):
         if _DEBUG_:
             print("DEBUG [VkDownloader]: File stored in path: " + file_path)
 
-        user_message("Песня добавлена в очередь\n%s - %s" % (song['artist'], song['title']))
+        user_message("Песня добавлена в очередь\n%s — %s" % (song['artist'], song['title']))
         return file_path, song["artist"] + " - " + song["title"], song["duration"]
