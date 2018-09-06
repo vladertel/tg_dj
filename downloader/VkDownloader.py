@@ -107,7 +107,10 @@ class VkDownloader(AbstractDownloader):
 
         title = song["artist"] + " - " + song["title"]
 
-        file_name = unidecode(title + '.mp3')
+        valid_chars = '-_.() abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'
+        sanitized_title = ''.join([c if c in valid_chars else "_" for c in title])
+
+        file_name = unidecode(sanitized_title + '.mp3')
         file_path = os.path.join(os.getcwd(), mediaDir, file_name)
 
         if self.is_in_cache(file_path):
