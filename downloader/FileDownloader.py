@@ -1,4 +1,5 @@
 import os
+import time
 import requests
 
 from .AbstractDownloader import AbstractDownloader
@@ -54,14 +55,12 @@ class FileDownloader(AbstractDownloader):
         if _DEBUG_:
             print("DEBUG [FileDownloader]: Querying Telegram API")
 
-        try:
-            response = requests.get('https://api.telegram.org/file/bot{0}/{1}'.format(bot_token, file_info.file_path))
-        except requests.exceptions.ConnectionError as e:
-            raise UrlOrNetworkProblem(e)
-        if response.status_code != 200:
-            raise BadReturnStatus(response.status_code)
-        with open(file_path, 'wb') as f:
-            f.write(response.content)
+        self.get_file(
+            url='https://tgapi.inbicst.ru/file/bot{0}/{1}'.format(bot_token, file_info.file_path),
+            file_path=file_path,
+            file_size=file_size,
+            percent_callback=lambda p: user_message("Скачиваем [%d%%]...\n%s" % (int(p), title)),
+        )
 
         if _DEBUG_:
             print("DEBUG [FileDownloader]: Download complete #" + str(file_id))

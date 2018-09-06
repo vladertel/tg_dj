@@ -82,6 +82,8 @@ class MasterDownloader:
                 user_message("Трек слишком длинный (" + str(e.args[0]) + " секунд)")
             except MediaIsTooBig:
                 user_message("Трек слишком много весит ( > " + str(MAXIMUM_FILE_SIZE / 1000000) + " MB)")
+            except MediaSizeUnspecified:
+                user_message("Трек не будет загружен, так как не удаётся определить его размер")
             except BadReturnStatus as e:
                 user_message("Сервер недоступен (код ответа: " + str(e.args[0]) + ")\nПопробуйте повторить позже")
             except ApiError:
@@ -136,10 +138,6 @@ class MasterDownloader:
                     "results": search_results,
                 })
 
-            except MediaIsTooLong:
-                user_message("Трек слишком длинный")
-            except MediaIsTooBig:
-                user_message("Трек слишком много весит ( > " + str(MAXIMUM_FILE_SIZE / 1000000) + " MB)")
             except BadReturnStatus as e:
                 user_message("Сервер недоступен (код ответа: " + str(e.args[0]) + ")\nПопробуйте повторить позже")
             except ApiError:
