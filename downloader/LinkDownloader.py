@@ -25,7 +25,7 @@ def get_mp3_title_and_duration(path):
         title = None
 
     if artist is not None and title is not None:
-        ret = artist + " - " + title
+        ret = artist + " — " + title
     elif artist is not None:
         ret = artist
     elif title is not None:

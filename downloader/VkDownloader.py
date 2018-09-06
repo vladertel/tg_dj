@@ -105,7 +105,7 @@ class VkDownloader(AbstractDownloader):
             user_message("Внутренняя ошибка (запрошенная песня отсутствует в кэше поиска)")
             return
 
-        title = song["artist"] + " - " + song["title"]
+        title = song["artist"] + " — " + song["title"]
 
         valid_chars = '-_.() abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'
         sanitized_title = ''.join([c if c in valid_chars else "_" for c in title])
