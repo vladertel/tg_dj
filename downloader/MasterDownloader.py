@@ -101,7 +101,13 @@ class MasterDownloader:
                 print("DEBUG: Download done")
                 break
         if not accepted:
-            user_message("Нет подходящего для вашего запроса обработчика.")
+            self.output_queue.put({
+                "action": "no_dl_handler",
+                "user": user,
+                "text": task["text"] if "text" in task else "",
+                "chat_id": task["chat_id"] if "chat_id" in task else None,
+                "message_id": task["message_id"] if "message_id" in task else None,
+            })
 
         self.input_queue.task_done()
 

@@ -127,104 +127,107 @@ class DJ_Brain():
         except FileNotFoundError:
             print("save not found for brain")
 
+    # FRONTEND QUEUE
     def frontend_listener(self):
         while True:
             task = self.frontend.output_queue.get()
             action = task['action']
             if action == 'download':
-                if "text" in task:
-                    text = task['text']
-                elif "file" in task:
-                    text = task['file']
-                elif "downloader" in task and "result_id" in task:
-                    text = task["downloader"] + "#" + task["result_id"]
-                else:
-                    text = "Unknown download type"
-                user = task['user']
-                if user in superusers or self.add_request(user, text):
-                    print("pushed task to downloader: " + str(task))
-                    self.downloader.input_queue.put(task)
-                else:
-                    self.frontend.input_queue.put({
-                        'action': 'user_message',
-                        'user': user,
-                        'message': 'Превышен лимит запросов, попробуйте позже'
-                    })
+                self.download_action(task)
             elif action == "search":
                 print("pushed task to downloader: " + str(task))
                 self.downloader.input_queue.put(task)
-            elif action == 'stop_playing':
-                if task['user'] in superusers:
-                    print("pushed task to backend: " + str(task))
-                    self.backend.input_queue.put(task)
-                else:
-                    self.frontend.input_queue.put({
-                        "action": "user_message",
-                        "message": "You have no power here",
-                        "user": task["user"]
-                    })
-            elif action == 'skip_song':
-                if task['user'] in superusers:
-                    # task['action'] = "stop_playing"
-                    # print("pushed task to backend: " + str(task))
-                    # self.backend.input_queue.put(task)
-                    track = self.scheduler.get_first_track()
-                    if track is not None:
-                        new_task = {
-                            "action": "play_song",
-                            "uri": track.media,
-                            "title": track.title
-                        }
-                        self.backend.input_queue.put(new_task)
-                else:
-                    self.frontend.input_queue.put({
-                        "action": "user_message",
-                        "message": "You have no power here",
-                        "user": task["user"]
-                    })
-            elif action == 'delete':
-                if task['user'] in superusers:
-                    pos = self.scheduler.remove_from_queue(task['number'])
-                    (lista, page, lastpage) = self.scheduler.get_queue_page(pos // 10)
-                    self.frontend_menu_list(task["user"], page, lista, lastpage)
-                else:
-                    self.frontend.input_queue.put({
-                        "action": "user_message",
-                        "message": "You have no power here",
-                        "user": task["user"]
-                    })
-            elif action == "vote_down":
-                print("vote_down user: " + str(task["user"]) + ", sid: " + str(task["sid"]))
-                song, pos = self.scheduler.vote_down(task["user"], task["sid"])
-                (lista, page, lastpage) = self.scheduler.get_queue_page(pos // 10)
-                self.frontend_menu_list(task["user"], page, lista, lastpage)
-            elif action == "vote_up":
-                print("vote_up user: " + str(task["user"]) + ", sid: " + str(task["sid"]))
-                song, pos = self.scheduler.vote_up(task["user"], task["sid"])
-                (lista, page, lastpage) = self.scheduler.get_queue_page(pos // 10)
-                self.frontend_menu_list(task["user"], page, lista, lastpage)
-            elif action == "menu":
-                print("user " + str(task["user"]) + " requested menu")
-                if task["entry"] == "main":
-                    self.frontend_menu_main(task["user"], self.scheduler.queue_length(), self.backend.now_playing)
-                elif task["entry"] == "list":
-                    (lista, page, lastpage) = self.scheduler.get_queue_page(task["number"])
-                    self.frontend_menu_list(task["user"], page, lista, lastpage)
-                elif task["entry"] == "song":
-                    (song, pos) = self.scheduler.get_song(task["number"])
-                    if song is not None:
-                        self.frontend_menu_song(task["user"], song, task["number"], pos)
-                    else:
-                        (lista, page, lastpage) = self.scheduler.get_queue_page(0)
-                        self.frontend_menu_list(task["user"], page, lista, lastpage)
-                else:
-                    print('Menu not supported:', str(task["entry"]))
+            elif action == "menu_event":
+                self.menu_action(task)
             elif action == "manual_start":
                 self.manual_start()
             else:
-                print('ERROR: Message not supported:', str(task))
+                print('ERROR [Core]: Message not supported:', str(task))
             self.frontend.output_queue.task_done()
 
+    def download_action(self, task):
+        if "text" in task:
+            text = task['text']
+        elif "file" in task:
+            text = task['file']
+        elif "downloader" in task and "result_id" in task:
+            text = task["downloader"] + "#" + task["result_id"]
+        else:
+            text = "Unknown download type"
+
+        user = task['user']
+        if user in superusers or self.add_request(user, text):
+            print("pushed task to downloader: " + str(task))
+            self.downloader.input_queue.put(task)
+        else:
+            self.frontend.input_queue.put({
+                'action': 'user_message',
+                'user': user,
+                'message': 'Превышен лимит запросов, попробуйте позже'
+            })
+
+    def menu_action(self, task):
+        user = task["user"]
+        path = task["path"]
+        print("DEBUG [Core]: menu action %s from user %s" % (path, user))
+
+        if path[0] == "main":
+            self.send_menu_main(user)
+        elif path[0] == "queue":
+            cur_page = int(path[1])
+            songs_list, _, is_last_page = self.scheduler.get_queue_page(cur_page)
+            self.send_menu_songs_queue(user, cur_page, songs_list, is_last_page)
+
+        elif path[0] == "song":
+            sel_song = int(path[1])
+            (song, position) = self.scheduler.get_song(sel_song)
+            if song is not None:
+                self.send_menu_song_info(user, path[1], song, position)
+            else:
+                cur_page = 0
+                songs_list, _, is_last_page = self.scheduler.get_queue_page(cur_page)
+                self.send_menu_songs_queue(user, cur_page, songs_list, is_last_page)
+
+        elif path[0] == "vote":
+            sign = path[1]
+            sid = int(path[2])
+            print("DEBUG [Core]: User %d votes %s for song %d" % (user, sign, sid))
+            if sign == "up":
+                song, position = self.scheduler.vote_up(user, sid)
+            else:
+                song, position = self.scheduler.vote_down(user, sid)
+            self.send_menu_song_info(user, path[2], song, position)
+
+        elif path[0] == "admin" and user in superusers:
+            path.pop(0)
+            self.menu_admin_action(task)
+        else:
+            print('ERROR [Core]: Menu not supported:', str(path))
+
+    def menu_admin_action(self, task):
+        user = task["user"]
+        path = task["path"]
+
+        if path[0] == "skip_song":
+            track = self.scheduler.get_first_track()
+            if track is not None:
+                new_task = {
+                    "action": "play_song",
+                    "uri": track.media,
+                    "title": track.title
+                }
+                self.backend.input_queue.put(new_task)
+            self.send_menu_main(user)
+        elif path[0] == "delete":
+            pos = self.scheduler.remove_from_queue(int(path[1]))
+            songs_list, page, is_last_page = self.scheduler.get_queue_page(pos // 10)
+            self.send_menu_songs_queue(task["user"], page, songs_list, is_last_page)
+
+        elif path[0] == 'stop_playing':
+            self.backend.input_queue.put({"action": "stop_playing"})
+            self.send_menu_main(user)
+
+    # DOWNLOADER QUEUE
     def downloader_listener(self):
         while True:
             task = self.downloader.output_queue.get()
@@ -248,11 +251,9 @@ class DJ_Brain():
                         "user": task["user"]
                     })
 
-            elif action == 'user_message' or action == 'edit_user_message' or action == 'confirmation_done':
-                print("pushed task to frontend: " + str(task))
-                self.frontend.input_queue.put(task)
-            elif action == 'search_results':
-                print("pushed task to frontend: " + str(task))
+            elif action in ['user_message', 'edit_user_message', 'confirmation_done',
+                            'no_dl_handler', 'search_results']:
+                print("DEBUG [Core]: pushed task to frontend: " + str(task))
                 self.frontend.input_queue.put(task)
             else:
                 print('Message not supported: ', str(task))
@@ -300,22 +301,32 @@ class DJ_Brain():
     def add_user(self, user):
         self.users[user] = User(user)
 
-##### MESSAGING METHONDS ####
-    def frontend_menu_list(self, user, number, lista, lastpage):
+    def send_menu_main(self, user):
         self.frontend.input_queue.put({
             "action": "menu",
             "user": user,
-            "entry": "list",
-            "number": number,
-            "lista": lista,
-            "lastpage": lastpage
+            "entry": "main",
+            "number": 0,
+            "queue_len": self.scheduler.queue_length(),
+            "now_playing": self.backend.now_playing,
+            "superuser": user in superusers
         })
 
-    def frontend_menu_song(self, user, song, number, position):
+    def send_menu_songs_queue(self, user, number, songs_list, is_last_page):
         self.frontend.input_queue.put({
             "action": "menu",
+            "entry": "queue",
             "user": user,
-            "entry": "song",
+            "page": number,
+            "songs_list": songs_list,
+            "is_last_page": is_last_page
+        })
+
+    def send_menu_song_info(self, user, number, song, position):
+        self.frontend.input_queue.put({
+            "action": "menu",
+            "entry": "song_details",
+            "user": user,
             "number": number,
             "duration": song.duration,
             "rating": sum([song.votes[k] for k in song.votes]),
@@ -324,16 +335,5 @@ class DJ_Brain():
             "superuser": user in superusers
         })
 
-    def frontend_menu_main(self, user, qlen, now_playing):
-        self.frontend.input_queue.put({
-            "action": "menu",
-            "user": user,
-            "entry": "main",
-            "number": 0,
-            "qlen": qlen,
-            "now_playing": now_playing,
-        })
-
-#### MANUAL MANAGEMENT ####
     def manual_start(self):
         self.backend.vlc_song_finished("lolkek")
