@@ -23,14 +23,16 @@ class UserRequestQuotaReached(UserQuotaReached):
 Request = namedtuple("Request", ['user', 'text', 'time'])
 
 
-class User():
+class User:
 
     id = None
     past_requests = []
     recent_requests = []
+    banned = False
 
-    def __init__(self, id):
-        self.id = id
+    def __init__(self, uid, username):
+        self.id = uid
+        self.username = username
 
     def add_request(self, request):
         self.expire_requests()
@@ -110,33 +112,66 @@ class DJ_Brain():
 
     def cleanup(self):
         self.scheduler.cleanup()
-        out_users = {}
-        for user in self.users:
-            out_users[user] = self.users[user].toJSON()
-        with open(os.path.join(saveDir, "users_save"), 'w') as f:
-            f.write(json.dumps(out_users, ensure_ascii=False))
+        # out_users = {}
+        # for user in self.users:
+        #     out_users[user] = self.users[user].toJSON()
+        # with open(os.path.join(saveDir, "users_save"), 'w') as f:
+        #     f.write(json.dumps(out_users, ensure_ascii=False))
         print("Brain - state saved")
 
     def load(self):
         try:
-            with open(os.path.join(saveDir, "users_save")) as f:
-                users = json.loads(f.read())
-            for user in users:
-                self.add_user(user)
-                self.users[user].fromJSON(users[user])
+            pass
+            # with open(os.path.join(saveDir, "users_save")) as f:
+            #     users = json.loads(f.read())
+            # for user in users:
+            #     self.add_user(user)
+            #     self.users[user].fromJSON(users[user])
         except FileNotFoundError:
             print("save not found for brain")
+
+    def get_users_list_page(self, page):
+        ids_list = list(self.users)
+        length = len(ids_list)
+        if length == 0:
+            return [], 0, True
+
+        start = page * 10
+        if start >= length:
+            lendiv, lenmod = divmod(length, 10)
+            ids_list = ids_list[lendiv * 10:]
+            return [self.users[uid] for uid in ids_list], lendiv, True
+
+        if start < 0:
+            start = 0
+        end = start + 10
+
+        ids_list = ids_list[start:end]
+        return [self.users[uid] for uid in ids_list], page, length <= end
 
     # FRONTEND QUEUE
     def frontend_listener(self):
         while True:
             task = self.frontend.output_queue.get()
+
+            if "user" in task:
+                user_id = task['user']
+                user = self.users[user_id]
+                if user.banned:
+                    self.frontend.input_queue.put({
+                        "action": "access_denied",
+                        "user": user_id,
+                    })
+                    continue
+
             action = task['action']
             if action == 'download':
                 self.download_action(task)
             elif action == "search":
                 print("pushed task to downloader: " + str(task))
                 self.downloader.input_queue.put(task)
+            elif action == "init_user":
+                self.add_user(task["uid"], task["username"])
             elif action == "menu_event":
                 self.menu_action(task)
             elif action == "manual_start":
@@ -227,6 +262,44 @@ class DJ_Brain():
             self.backend.input_queue.put({"action": "stop_playing"})
             self.send_menu_main(user)
 
+        elif path[0] == "list_users":
+            cur_page = int(path[1])
+            users_list, _, is_last_page = self.get_users_list_page(cur_page)
+            self.send_menu_users_queue(user, cur_page, users_list, is_last_page)
+
+        elif path[0] == "user_info":
+            handled_user = self.users[int(path[1])]
+            self.frontend.input_queue.put({
+                "action": "menu",
+                "entry": "admin_user",
+                "user": user,
+                "about_user": handled_user,
+            })
+
+        elif path[0] == "ban_user":
+            handled_user = self.users[int(path[1])]
+            handled_user.banned = True
+
+            print("DEBUG [Core]: User banned")
+
+            self.frontend.input_queue.put({
+                "action": "menu",
+                "entry": "admin_user",
+                "user": user,
+                "about_user": handled_user,
+            })
+
+        elif path[0] == "unban_user":
+            handled_user = self.users[int(path[1])]
+            handled_user.banned = False
+
+            self.frontend.input_queue.put({
+                "action": "menu",
+                "entry": "admin_user",
+                "user": user,
+                "about_user": handled_user,
+            })
+
     # DOWNLOADER QUEUE
     def downloader_listener(self):
         while True:
@@ -298,8 +371,9 @@ class DJ_Brain():
             return False
         return True
 
-    def add_user(self, user):
-        self.users[user] = User(user)
+    def add_user(self, uid, username=None):
+        self.users[uid] = User(uid, username)
+        print("Add user %s" % self.users[uid])
 
     def send_menu_main(self, user):
         self.frontend.input_queue.put({
@@ -333,6 +407,17 @@ class DJ_Brain():
             "position": position,
             "title": song.title,
             "superuser": user in superusers
+        })
+
+    def send_menu_users_queue(self, user, number, users_list, is_last_page):
+        self.frontend.input_queue.put({
+            "action": "menu",
+            "entry": "admin_list_users",
+            "user": user,
+            "page": number,
+            "users_list": users_list,
+            "users_cnt": len(self.users),
+            "is_last_page": is_last_page
         })
 
     def manual_start(self):
