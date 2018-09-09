@@ -204,8 +204,8 @@ class TgFrontend:
             played_time = int(time.time() - now_playing["start_time"])
             str_played = "{:d}:{:02d}".format(*list(divmod(played_time, 60)))
 
-            message_text += "🔊 \[%s / %s]`    `👤 %s\n" % (str_played, str_duration, author_str) + \
-                            "__%s__\n\n" % title
+            message_text += "🔊 [%s / %s]    👤 %s\n" % (str_played, str_duration, author_str) + \
+                            "%s\n\n" % title
             if superuser:
                 kb.row(
                     telebot.types.InlineKeyboardButton(text="⏹ Остановить", callback_data="admin:stop_playing"),
@@ -229,11 +229,11 @@ class TgFrontend:
                 track_author = User.get(id=next_in_queue.user)
                 author_str = track_author.first_name + " " + track_author.last_name
             else:
-                author_str = "\[Резерв]"
+                author_str = "[Резерв]"
 
             str_duration = "{:d}:{:02d}".format(*list(divmod(next_in_queue.duration, 60)))
             message_text += "Следующая в очереди:\n" + \
-                            "⏱ %s`    `👤 %s\n" % (str_duration, author_str) + \
+                            "⏱ %s    👤 %s\n" % (str_duration, author_str) + \
                             "%s\n" % next_in_queue.title
 
         if superuser:
@@ -241,7 +241,7 @@ class TgFrontend:
 
         kb.row(telebot.types.InlineKeyboardButton(text="🔍 Поиск музыки", switch_inline_query_current_chat=""))
         kb.row(telebot.types.InlineKeyboardButton(text=STR_REFRESH, callback_data="main"))
-        self.bot.send_message(user.tg_id, message_text, reply_markup=kb, parse_mode="Markdown")
+        self.bot.send_message(user.tg_id, message_text, reply_markup=kb)
 
     def send_menu_queue(self, task, user):
         page = task["page"]
