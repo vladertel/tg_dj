@@ -312,6 +312,7 @@ class DJ_Brain:
             "entry": "main",
             "queue_len": self.scheduler.queue_length(),
             "now_playing": self.backend.now_playing,
+            "next_in_queue": self.scheduler.get_next_song(),
             "superuser": user.superuser,
         })
 

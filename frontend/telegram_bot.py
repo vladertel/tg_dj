@@ -178,10 +178,12 @@ class TgFrontend:
         now_playing = task["now_playing"]
 
         kb = telebot.types.InlineKeyboardMarkup(row_width=2)
+        message_text = ""
+
         if now_playing is not None:
             title = now_playing["title"]
 
-            if now_playing["user_id"]:
+            if now_playing["user_id"] is not None:
                 track_author = User.get(id=now_playing["user_id"])
                 author_str = track_author.first_name + " " + track_author.last_name
             else:
@@ -193,10 +195,10 @@ class TgFrontend:
             played_time = int(time.time() - now_playing["start_time"])
             str_played = "{:d}:{:02d}".format(*list(divmod(played_time, 60)))
 
-            message_text = "🔊 \[%s / %s]\n" % (str_played, str_duration)+ \
-                           "🎵 __%s__\n" % title + \
-                           "👤 %s\n\n" % author_str + \
-                           "Песен в очереди: %d" % queue_len
+            message_text += "🔊 \[%s / %s]\n" % (str_played, str_duration)+ \
+                            "🎵 __%s__\n" % title + \
+                            "👤 %s\n\n" % author_str + \
+                            "Песен в очереди: %d" % queue_len
             if superuser:
                 kb.row(
                     telebot.types.InlineKeyboardButton(text="⏹ Остановить", callback_data="admin:stop_playing"),
@@ -204,12 +206,26 @@ class TgFrontend:
                 )
             kb.row(telebot.types.InlineKeyboardButton(text="📂 Очередь", callback_data="queue:0"))
         else:
-            message_text = "🔇 Пока ничего не играет. Будь первым!"
+            message_text += "🔇 Пока ничего не играет. Будь первым!"
             if superuser:
                 kb.row(
                     telebot.types.InlineKeyboardButton(text="▶️ Запустить", callback_data="admin:skip_song"),
                 )
                 kb.row(telebot.types.InlineKeyboardButton(text="📂 Очередь", callback_data="queue:0"))
+
+        next_in_queue = task["next_in_queue"]
+
+        if superuser and next_in_queue is not None:
+            if next_in_queue.user is not None:
+                track_author = User.get(id=next_in_queue.user)
+                author_str = track_author.first_name + " " + track_author.last_name
+            else:
+                author_str = "\[Резерв]"
+
+            str_duration = "{:d}:{:02d}".format(*list(divmod(next_in_queue.duration, 60)))
+            message_text += "Следующая в очереди:\n" + \
+                            "⏱ %s`    `👤 %s\n" % (str_duration, author_str) + \
+                            "%s\n" % next_in_queue.title
 
         if superuser:
             kb.row(telebot.types.InlineKeyboardButton(text="👥 Пользователи", callback_data="admin:list_users:0"))
