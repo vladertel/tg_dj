@@ -54,6 +54,15 @@ def get_files_in_dir(directory):
             os.path.isfile(os.path.join(directory, f)) and not f.startswith(".") and f != "bans"]
 
 
+def make_caption(number, word_forms):
+    if 10 < number % 100 < 20:
+        return word_forms[0] + word_forms[5]
+    for i in range(1, 5):
+        if number % 10 == i:
+            return word_forms[0] + word_forms[i]
+    return word_forms[0] + word_forms[5]
+
+
 class TgFrontend:
 
     def __init__(self):
@@ -195,16 +204,16 @@ class TgFrontend:
             played_time = int(time.time() - now_playing["start_time"])
             str_played = "{:d}:{:02d}".format(*list(divmod(played_time, 60)))
 
-            message_text += "🔊 \[%s / %s]\n" % (str_played, str_duration)+ \
-                            "🎵 __%s__\n" % title + \
-                            "👤 %s\n\n" % author_str + \
-                            "Песен в очереди: %d" % queue_len
+            message_text += "🔊 \[%s / %s]`    `👤 %s\n" % (str_played, str_duration, author_str) + \
+                            "__%s__\n\n" % title
             if superuser:
                 kb.row(
                     telebot.types.InlineKeyboardButton(text="⏹ Остановить", callback_data="admin:stop_playing"),
                     telebot.types.InlineKeyboardButton(text="▶️ Переключить", callback_data="admin:skip_song"),
                 )
-            kb.row(telebot.types.InlineKeyboardButton(text="📂 Очередь", callback_data="queue:0"))
+            queue_len_str = "%d %s" % (queue_len, make_caption(queue_len, ['трек', '', 'а', 'а', 'а', 'ов']))
+            kb.row(telebot.types.InlineKeyboardButton(text="📂 Очередь: %s" % queue_len_str,
+                                                      callback_data="queue:0"))
         else:
             message_text += "🔇 Пока ничего не играет. Будь первым!"
             if superuser:
@@ -252,8 +261,8 @@ class TgFrontend:
         nav = []
         if page > 0 or not is_last_page:
             nav.append(telebot.types.InlineKeyboardButton(
-                text="." if page == 0 else "⬅️",
-                callback_data="//" if page > 0 else "queue:%d" % (page - 1),
+                text="." if page <= 0 else "⬅️",
+                callback_data="//" if page <= 0 else "queue:%d" % (page - 1),
             ))
             nav.append(telebot.types.InlineKeyboardButton(
                 text="Стр. %d" % (page + 1),
@@ -316,8 +325,8 @@ class TgFrontend:
         nav = []
         if page > 0 or not is_last_page:
             nav.append(telebot.types.InlineKeyboardButton(
-                text="." if page == 0 else "⬅️",
-                callback_data="//" if page > 0 else "admin:list_users:%d" % (page - 1),
+                text="." if page <= 0 else "⬅️",
+                callback_data="//" if page <= 0 else "admin:list_users:%d" % (page - 1),
             ))
             nav.append(telebot.types.InlineKeyboardButton(
                 text="Стр. %d" % (page + 1),
