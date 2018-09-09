@@ -282,7 +282,7 @@ class DJ_Brain:
             self.backend.output_queue.task_done()
 
     def play_next_track(self):
-        track = self.scheduler.get_first_track()
+        track = self.scheduler.pop_first_track()
         if track is not None:
             self.backend.input_queue.put({
                 "action": "play_song",

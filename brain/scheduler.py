@@ -2,6 +2,7 @@ import threading
 import json
 from os.path import join
 import os
+import random
 
 import eyed3
 
@@ -13,8 +14,11 @@ def get_files_in_dir(directory):
             os.path.isfile(os.path.join(directory, f)) and not f.startswith(".")]
 
 
-class Song():
+class Song:
     ids = 1
+
+    title = ""
+    id = None
 
     @classmethod
     def new(cls, path_to_media, title, duration, user):
@@ -48,12 +52,15 @@ class Song():
         return obj
 
 
-class Scheduler():
+class Scheduler:
     def __init__(self):
         self.is_media_playing = False
         self.playing_queue = []
         self.backlog = []
-        self.backlog_already_played = []
+        self.backlog_played = []
+        self.backlog_played_media = []
+        self.backlog_initial_size = 0
+
         self.lock = threading.Lock()
         self.load_init()
         self.populate_backlog()
@@ -69,7 +76,10 @@ class Scheduler():
                         queue.append(Song.deserialize(obj))
                     self.playing_queue = queue
                     self.sort_queue()
-                self.backlog_already_played = dicts["backlog_already_played"]
+                try:
+                    self.backlog_played_media = dicts["backlog_played_media"]
+                except KeyError:
+                    self.backlog_played_media = dicts["backlog_already_played"]
         except (FileNotFoundError, ValueError) as _:
             pass
 
@@ -82,7 +92,7 @@ class Scheduler():
             if af is not None:
                 duration = af.info.time_secs
                 title = "".join(file.split(".")[:-1])
-                if filepath in self.backlog_already_played:
+                if filepath in self.backlog_played_media:
                     add_to_end.append(Song.new(filepath, title, duration, None))
                 else:
                     self.backlog.append(Song.new(filepath, title, duration, None))
@@ -91,14 +101,13 @@ class Scheduler():
         print("INFO [Scheduler]: backlog capacity: " + str(len(self.backlog)))
 
     def cleanup(self):
-        output = [a.__dict__ for a in self.playing_queue]
-        jsonya = {
+        out_dict = {
             "last_id": Song.ids,
-            "songs": output,
-            "backlog_already_played": self.backlog_already_played
+            "songs": [a.__dict__ for a in self.playing_queue],
+            "backlog_played_media": [a.media for a in self.backlog_played]
         }
         with open(join(queueDir, "queue"), "w") as f:
-            f.write(json.dumps(jsonya, ensure_ascii=False))
+            f.write(json.dumps(out_dict, ensure_ascii=False))
         print("Scheduler - saved queue")
 
     def add_track_to_end_of_queue(self, path, title, duration, user):
@@ -106,7 +115,7 @@ class Scheduler():
         self.playing_queue.append(Song.new(path, title, duration, user))
         self.lock.release()
 
-    def get_first_track(self):
+    def pop_first_track(self):
         self.lock.acquire()
         try:
             song = self.playing_queue.pop(0)
@@ -114,7 +123,12 @@ class Scheduler():
             print("INFO [Scheduler]: Scheduler: Nothing to pop in main queue")
             try:
                 song = self.backlog.pop(0)
-                self.backlog_already_played.append(song.media)
+                self.backlog_played.append(song)
+
+                if len(self.backlog) <= self.backlog_initial_size // 2:
+                    i = random.randrange(len(self.backlog_played))
+                    self.backlog.append(self.backlog_played.pop(i))
+
             except IndexError:
                 print("INFO [Scheduler]: Scheduler: Nothing to pop in backlog")
                 song = None
@@ -135,25 +149,25 @@ class Scheduler():
         for song in self.playing_queue:
             k += 1
             if sid == song.id:
-                return (song, k)
-        return (None, None)
+                return song, k
+        return None, None
 
     def get_queue(self):
         return list(self.playing_queue)
 
     def get_queue_page(self, page):
         queue = list(self.playing_queue)
-        qlen = len(queue)
-        if qlen == 0:
-            return ([], 0, True)
+        queue_length = len(queue)
+        if queue_length == 0:
+            return [], 0, True
         start = page * 10
-        if start >= qlen:
-            lendiv, lenmod = divmod(qlen, 10)
-            return (queue[lendiv * 10:], lendiv, True)
+        if start >= queue_length:
+            div, _ = divmod(queue_length, 10)
+            return queue[div * 10:], div, True
         if start < 0:
             start = 0
         end = start + 10
-        return (queue[start:end], page, qlen <= end)
+        return queue[start:end], page, queue_length <= end
 
     def get_queue_len(self):
         return len(self.playing_queue)
@@ -184,6 +198,7 @@ class Scheduler():
         found = False
         self.lock.acquire()
         k = 0
+        song = None
         for song in self.playing_queue:
             k += 1
             if sid == song.id:
@@ -193,15 +208,16 @@ class Scheduler():
         self.lock.release()
         if found:
             self.sort_queue()
-            return (song, k)
+            return song, k
         else:
             print("ERROR [Scheduler]: vote_up: song not found for sid: " + str(sid))
-            return (None, None)
+            return None, None
 
     def vote_down(self, user, sid):
         found = False
         self.lock.acquire()
         k = 0
+        song = None
         for song in self.playing_queue:
             k += 1
             if sid == song.id:
@@ -211,7 +227,7 @@ class Scheduler():
         self.lock.release()
         if found:
             self.sort_queue()
-            return (song, k)
+            return song, k
         else:
             print("ERROR [Scheduler]: vote_down: song not found for sid: " + str(sid))
-            return (None, None)
+            return None, None
