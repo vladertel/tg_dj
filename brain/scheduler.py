@@ -83,9 +83,9 @@ class Scheduler():
                 duration = af.info.time_secs
                 title = "".join(file.split(".")[:-1])
                 if filepath in self.backlog_already_played:
-                    add_to_end.append(Song.new(filepath, title, duration, "System"))
+                    add_to_end.append(Song.new(filepath, title, duration, None))
                 else:
-                    self.backlog.append(Song.new(filepath, title, duration, "System"))
+                    self.backlog.append(Song.new(filepath, title, duration, None))
         for song in add_to_end:
             self.backlog.append(song)
         print("INFO [Scheduler]: backlog capacity: " + str(len(self.backlog)))

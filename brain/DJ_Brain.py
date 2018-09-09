@@ -291,13 +291,14 @@ class DJ_Brain:
                 "duration": track.duration,
                 "user_id": track.user,
             })
-            self.frontend.input_queue.put({
-                "action": "user_message",
-                "message": "Играет " + track.title,
-                "user_id": track.user
-            })
+            if track.user is not None:
+                self.frontend.input_queue.put({
+                    "action": "user_message",
+                    "message": "Играет " + track.title,
+                    "user_id": track.user
+                })
             next_track = self.scheduler.get_next_song()
-            if next_track is not None:
+            if next_track is not None and next_track.user is not None:
                 self.frontend.input_queue.put({
                     "action": "user_message",
                     "message": "Следующий трек ваш!\nБудет играть " + next_track.title,

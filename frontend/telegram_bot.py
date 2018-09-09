@@ -180,8 +180,12 @@ class TgFrontend:
         kb = telebot.types.InlineKeyboardMarkup(row_width=2)
         if now_playing is not None:
             title = now_playing["title"]
-            track_author = User.get(id=now_playing["user_id"])
-            author_str = track_author.first_name + " " + track_author.last_name
+
+            if now_playing["user_id"]:
+                track_author = User.get(id=now_playing["user_id"])
+                author_str = track_author.first_name + " " + track_author.last_name
+            else:
+                author_str = "Студсовет"
 
             duration = now_playing["duration"]
             str_duration = "{:d}:{:02d}".format(*list(divmod(duration, 60)))
