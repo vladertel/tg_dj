@@ -15,6 +15,10 @@ class MediaIsTooBig(Exception):
     pass
 
 
+class MediaSizeUnspecified(Exception):
+    pass
+
+
 class BadReturnStatus(Exception):
     pass
 

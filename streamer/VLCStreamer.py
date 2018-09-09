@@ -1,5 +1,6 @@
 from queue import Queue
 from threading import Thread
+import time
 
 import vlc
 
@@ -50,13 +51,18 @@ class VLCStreamer():
                 self.player.set_media(media)
                 self.player.play()
                 self.is_playing = True
-                self.now_playing = task["title"]
+                self.now_playing = {
+                    "title": task["title"],
+                    "duration": task["duration"],
+                    "start_time": time.time(),
+                    "user_id": task["user_id"],
+                }
             elif action == 'stop_playing':
                 self.player.stop()
                 self.is_playing = False
                 self.now_playing = None
             else:
-                print('Message not supported:', task)
+                print('ERROR [VLC]: Message not supported:', task)
             self.input_queue.task_done()
 
 

@@ -1,4 +1,5 @@
 import os
+import time
 import requests
 
 from .AbstractDownloader import AbstractDownloader
@@ -14,47 +15,58 @@ class FileDownloader(AbstractDownloader):
     def is_acceptable(self, task):
         return "file" in task
 
-    def schedule_task(self, task):
+    def download(self, task, user_message=lambda text: True):
         file_id = task["file"]
         duration = task["duration"]
         file_size = task["file_size"]
         file_info = task["file_info"]
 
-        artist = task["artist"].strip()
-        if len(artist) == 0:
-            artist = "TG_DJ"
+        if _DEBUG_:
+            print("DEBUG [FileDownloader]: Downloading song #" + str(file_id))
 
+        artist = task["artist"].strip()
         title = task["title"].strip()
         if len(title) == 0:
-            title = "Music"
-
-        title = artist + " - " + title
+            title = "Unknown"
+        if len(artist) > 0:
+            title = artist + " — " + title
 
         if _DEBUG_:
-            print("DEBUG [FileDownloader]: downloading song #" + str(file_id) + ": " + title)
+            print("DEBUG [FileDownloader]: Title for song #" + str(file_id) + ": " + title)
 
         if duration > MAXIMUM_DURATION:
-            raise MediaIsTooLong()
+            raise MediaIsTooLong(duration)
 
         if file_size > MAXIMUM_FILE_SIZE:
-            raise MediaIsTooBig()
+            raise MediaIsTooBig(file_size)
 
         file_dir = os.path.join(os.getcwd(), mediaDir)
         file_name = file_id + ".mp3"
         file_path = os.path.join(file_dir, file_name)
 
         if self.is_in_cache(file_path):
+            user_message("Песня добавлена в очередь\n%s" % title)
             return file_path, title, duration
 
-        response = requests.get('https://api.telegram.org/file/bot{0}/{1}'.format(bot_token, file_info.file_path))
-        if response.status_code != 200:
-            raise BadReturnStatus(response.status_code)
-        with open(file_path, 'wb') as f:
-            f.write(response.content)
+        user_message("Скачиваем...\n%s" % title)
+        if _DEBUG_:
+            print("DEBUG [FileDownloader]: Querying Telegram API")
+
+        self.get_file(
+            url='https://api.telegram.org/file/bot{0}/{1}'.format(bot_token, file_info.file_path),
+            file_path=file_path,
+            file_size=file_size,
+            percent_callback=lambda p: user_message("Скачиваем [%d%%]...\n%s" % (int(p), title)),
+        )
 
         if _DEBUG_:
             print("DEBUG [FileDownloader]: Download complete #" + str(file_id))
 
         self.touch_without_creation(file_path)
         filter_storage()
+
+        if _DEBUG_:
+            print("DEBUG [FileDownloader]: File stored in path: " + file_path)
+
+        user_message("Песня добавлена в очередь\n%s" % title)
         return file_path, title, duration
