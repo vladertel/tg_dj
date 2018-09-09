@@ -1,3 +1,4 @@
+peewee
 pytube
 mutagen
 user_agent

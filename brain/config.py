@@ -1,7 +1,7 @@
-user_max_request_number = 3
-user_max_request_check_interval = 600
+USER_REQUESTS_THRESHOLD_VALUE = 10
+USER_REQUESTS_THRESHOLD_INTERVAL = 600
 
-superusers = [193092055, 58718173]
+PAGE_SIZE = 10
 
 queueDir = "brain"
 saveDir = "brain"

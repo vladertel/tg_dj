@@ -88,7 +88,7 @@ class Scheduler():
                     self.backlog.append(Song.new(filepath, title, duration, "System"))
         for song in add_to_end:
             self.backlog.append(song)
-        print("backlog capacity: " + str(len(self.backlog)))
+        print("INFO [Scheduler]: backlog capacity: " + str(len(self.backlog)))
 
     def cleanup(self):
         output = [a.__dict__ for a in self.playing_queue]
@@ -111,12 +111,12 @@ class Scheduler():
         try:
             song = self.playing_queue.pop(0)
         except IndexError:
-            print("Scheduler: Nothing to pop in main queue")
+            print("INFO [Scheduler]: Scheduler: Nothing to pop in main queue")
             try:
                 song = self.backlog.pop(0)
                 self.backlog_already_played.append(song.media)
             except IndexError:
-                print("Scheduler: Nothing to pop in backlog")
+                print("INFO [Scheduler]: Scheduler: Nothing to pop in backlog")
                 song = None
         self.lock.release()
         return song
@@ -168,7 +168,7 @@ class Scheduler():
                     self.playing_queue.remove(song)
                     break
                 except ValueError:
-                    print("scheduler: TRIED TO REMOVE UNREMOVEABLE")
+                    print("ERROR [Scheduler]: Have tried to remove unremovable")
         self.lock.release()
         return k
 
@@ -195,7 +195,7 @@ class Scheduler():
             self.sort_queue()
             return (song, k)
         else:
-            print("vote_down: song not found for sid: " + str(sid))
+            print("ERROR [Scheduler]: vote_up: song not found for sid: " + str(sid))
             return (None, None)
 
     def vote_down(self, user, sid):
@@ -213,5 +213,5 @@ class Scheduler():
             self.sort_queue()
             return (song, k)
         else:
-            print("vote_down: song not found for sid: " + str(sid))
+            print("ERROR [Scheduler]: vote_down: song not found for sid: " + str(sid))
             return (None, None)

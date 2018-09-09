@@ -53,7 +53,7 @@ class FileDownloader(AbstractDownloader):
             print("DEBUG [FileDownloader]: Querying Telegram API")
 
         self.get_file(
-            url='https://tgapi.inbicst.ru/file/bot{0}/{1}'.format(bot_token, file_info.file_path),
+            url='https://api.telegram.org/file/bot{0}/{1}'.format(bot_token, file_info.file_path),
             file_path=file_path,
             file_size=file_size,
             percent_callback=lambda p: user_message("Скачиваем [%d%%]...\n%s" % (int(p), title)),
