@@ -283,26 +283,39 @@ class DJ_Brain:
 
     def play_next_track(self):
         track = self.scheduler.pop_first_track()
-        if track is not None:
-            self.backend.input_queue.put({
-                "action": "play_song",
-                "uri": track.media,
-                "title": track.title,
-                "duration": track.duration,
-                "user_id": track.user,
+        next_track = self.scheduler.get_next_song()
+        if track is None:
+            return
+
+        self.backend.input_queue.put({
+            "action": "play_song",
+            "uri": track.media,
+            "title": track.title,
+            "duration": track.duration,
+            "user_id": track.user,
+        })
+
+        user_curr = track.user
+        user_next = None if next_track is None else next_track.user
+
+        if user_curr is not None and user_next is not None and user_curr == user_next:
+            self.frontend.input_queue.put({
+                "action": "user_message",
+                "message": "Играет " + track.title + "\n\nСледующий трек тоже ваш!\nБудет играть " + next_track.title,
+                "user_id": next_track.user
             })
-            if track.user is not None:
-                self.frontend.input_queue.put({
-                    "action": "user_message",
-                    "message": "Играет " + track.title,
-                    "user_id": track.user
-                })
-            next_track = self.scheduler.get_next_song()
-            if next_track is not None and next_track.user is not None:
+        else:
+            if user_next is not None:
                 self.frontend.input_queue.put({
                     "action": "user_message",
                     "message": "Следующий трек ваш!\nБудет играть " + next_track.title,
                     "user_id": next_track.user
+                })
+            if user_curr is not None:
+                self.frontend.input_queue.put({
+                    "action": "user_message",
+                    "message": "Играет " + track.title,
+                    "user_id": track.user
                 })
 
     def send_menu_main(self, user):
