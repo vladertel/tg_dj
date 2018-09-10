@@ -6,7 +6,7 @@ import vlc
 
 from .config import *
 
-options = 'sout=#duplicate{dst=gather:http{mux=ts,dst=:1233/},dst=display}'
+options = 'sout=#transcode{acodec=mp3,ab=320,channels=2,samplerate=44100}:duplicate{dst=gather:http{mux=ts,dst=:1233/},dst=display}'
 # options = 'sout=#duplicate{dst=rtp{access=udp,mux=ts,dst=224.0.0.1,port=1233},dst=display}'
 # options = 'sout=#duplicate{dst=http{mux=ts,dst=:8080/},dst=display}'
 # options = ':sout=#duplicate{dst=std{access=http,mux=ts,dst=:1234}}'
