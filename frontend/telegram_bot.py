@@ -45,6 +45,8 @@ class User(BaseModel):
     login = peewee.CharField(null=True)
     first_name = peewee.CharField(null=True)
     last_name = peewee.CharField(null=True)
+    menu_message_id = peewee.IntegerField()
+    menu_chat_id = peewee.IntegerField()
 
 
 db.connect()
@@ -98,17 +100,13 @@ class TgFrontend:
 #######################
 # TG CALLBACK HANDLERS
     def callback_query_handler(self, data):
-
-        # TODO: Delete old menu only when ready to display a new one
-        try:
-            self.bot.delete_message(data.from_user.id, data.message.message_id)
-        except Exception as e:
-            print("ERROR [Bot]: delete_message exception: " + str(e))
-            return
-
         user = self.init_user(data.from_user)
         if user is None:
             return
+
+        user.menu_message_id = data.message.message_id
+        user.menu_chat_id = data.message.chat.id
+        user.save()
 
         path = data.data.split(":")
         if len(path) == 0:
@@ -228,6 +226,13 @@ class TgFrontend:
 
         kb.row(telebot.types.InlineKeyboardButton(text="🔍 Поиск музыки", switch_inline_query_current_chat=""))
         kb.row(telebot.types.InlineKeyboardButton(text=STR_REFRESH, callback_data="main"))
+
+        # self.bot.edit_message_reply_markup(
+        #     user.menu_chat_id, user.menu_message_id,
+        #     reply_markup=telebot.types.InlineKeyboardMarkup()
+        # )
+        self.bot.delete_message(user.menu_chat_id, user.menu_message_id)
+
         self.bot.send_message(user.tg_id, message_text, reply_markup=kb)
 
     def send_menu_queue(self, task, user):
