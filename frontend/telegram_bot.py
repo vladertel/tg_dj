@@ -65,6 +65,8 @@ class TgFrontend:
         self.init_handlers()
         self.init_callbacks()
 
+        self.bamboozled_users = []
+
 # INIT #####
     def bot_init(self):
         while True:
@@ -470,6 +472,10 @@ class TgFrontend:
 
     def listened_access_denied(self, _, user):
         self.bot.send_message(user.tg_id, "К вашему сожалению, вы были заблокированы :/")
+
+        if user.tg_id not in self.bamboozled_users:
+            self.bamboozled_users.append(user.tg_id)
+            self.bot.send_sticker(user.tg_id, data="CAADAgADiwgAArcKFwABQMmDfPtchVkC")
 
 
 # UTILITY FUNCTIONS #####
