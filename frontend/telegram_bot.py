@@ -413,6 +413,7 @@ class TgFrontend:
                 "search_results": self.listened_search_results,
                 "access_denied": self.listened_access_denied,
                 "menu": self.listened_menu,
+                "error": self.listened_user_message,
             }
 
             if action in handlers:
@@ -441,7 +442,7 @@ class TgFrontend:
         })
 
     def listened_user_message(self, task, user):
-        self.bot.send_message(user.tg_id, task["message"], reply_markup=telebot.types.ReplyKeyboardRemove())
+        self.bot.send_message(user.tg_id, task["message"])
 
     def listened_edit_user_message(self, task, _):
         self.bot.edit_message_text(task["new_text"], task["chat_id"], task["message_id"])

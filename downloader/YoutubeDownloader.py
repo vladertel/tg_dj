@@ -42,7 +42,7 @@ class YoutubeDownloader(AbstractDownloader):
             yt = YouTube(url)
             streams = yt.streams.filter(only_audio=True)
         except Exception:
-            raise UrlOrNetworkProblem()
+            raise ApiError()
         video_id = yt.video_id
         video_title = yt.title
         if video_id is None:

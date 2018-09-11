@@ -89,12 +89,12 @@ class MasterDownloader:
             except NothingFound:
                 user_message("Ничего не нашел по этому запросу :(")
             except Exception as e:
-                self.error(user_id, "error happened: " + str(e))
+                print("ERROR [MasterDownloader]: " + str(e))
+                self.error(user_id, str(e))
             else:
+                print("DEBUG [MasterDownloader]: Download done")
                 self.download_done(user_id, file_path, title, seconds)
-                accepted = True
-                print("DEBUG: Download done")
-                break
+            break
         if not accepted:
             self.output_queue.put({
                 "action": "no_dl_handler",
@@ -154,7 +154,8 @@ class MasterDownloader:
                     "results": []
                 })
             except Exception as e:
-                self.error(task["user_id"], "ERROR [MasterDownloader]: " + str(e))
+                print("ERROR [MasterDownloader]: " + str(e))
+                self.error(user_id, str(e))
 
         self.input_queue.task_done()
 
@@ -170,7 +171,8 @@ class MasterDownloader:
                 print("INFO [MasterDownloader]: Search action")
                 threading.Thread(daemon=True, target=self.thread_search, args=(task,)).start()
             else:
-                self.error(user_id, "WARNING [MasterDownloader]: Unknown action: \"" + task["action"] + "\"")
+                print("ERROR [MasterDownloader]: Unknown action: \"" + task["action"] + "\"")
+                self.error(user_id, "Ошибка загрузчика: неизвестное действие \"" + task["action"] + "\"")
 
     def __init__(self):
         # https://youtu.be/qAeybdD5UoQ
