@@ -4,7 +4,7 @@ from os.path import join
 import os
 import random
 
-import eyed3
+from utils import get_mp3_title_and_duration
 
 from .config import queueDir
 
@@ -87,15 +87,12 @@ class Scheduler:
         files = get_files_in_dir(os.path.join("brain", "backlog"))
         add_to_end = []
         for file in files:
-            filepath = os.path.join(os.getcwd(), "brain", "backlog", file)
-            af = eyed3.load(filepath)
-            if af is not None:
-                duration = af.info.time_secs
-                title = "".join(file.split(".")[:-1])
-                if filepath in self.backlog_played_media:
-                    add_to_end.append(Song.new(filepath, title, duration, None))
-                else:
-                    self.backlog.append(Song.new(filepath, title, duration, None))
+            path = os.path.join(os.getcwd(), "brain", "backlog", file)
+            title, duration = get_mp3_title_and_duration(path)
+            if path in self.backlog_played_media:
+                add_to_end.append(Song.new(path, title, duration, None))
+            else:
+                self.backlog.append(Song.new(path, title, duration, None))
         for song in add_to_end:
             self.backlog.append(song)
         print("INFO [Scheduler]: backlog capacity: " + str(len(self.backlog)))
@@ -119,10 +116,11 @@ class Scheduler:
         self.lock.acquire()
         try:
             song = self.playing_queue.pop(0)
+            print("INFO [Scheduler]: Playing main queue: %s" % song.title)
         except IndexError:
-            print("INFO [Scheduler]: Scheduler: Nothing to pop in main queue")
             try:
                 song = self.backlog.pop(0)
+                print("INFO [Scheduler]: Playing backlog queue: %s" % song.title)
                 self.backlog_played.append(song)
 
                 if len(self.backlog) <= self.backlog_initial_size // 2:
@@ -130,7 +128,7 @@ class Scheduler:
                     self.backlog.append(self.backlog_played.pop(i))
 
             except IndexError:
-                print("INFO [Scheduler]: Scheduler: Nothing to pop in backlog")
+                print("INFO [Scheduler]: Nothing to play")
                 song = None
         self.lock.release()
         return song
