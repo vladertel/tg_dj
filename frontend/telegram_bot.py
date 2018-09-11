@@ -2,12 +2,13 @@ import telebot
 import threading
 from queue import Queue
 import re
-import os
 import peewee
 from time import sleep
 import time
 
 from .private_config import token
+from utils import make_caption
+
 
 compiled_regex = re.compile(r"^\d+")
 
@@ -47,20 +48,6 @@ class User(BaseModel):
 
 
 db.connect()
-
-
-def get_files_in_dir(directory):
-    return [f for f in os.listdir(directory) if
-            os.path.isfile(os.path.join(directory, f)) and not f.startswith(".") and f != "bans"]
-
-
-def make_caption(number, word_forms):
-    if 10 < number % 100 < 20:
-        return word_forms[0] + word_forms[5]
-    for i in range(1, 5):
-        if number % 10 == i:
-            return word_forms[0] + word_forms[i]
-    return word_forms[0] + word_forms[5]
 
 
 class TgFrontend:

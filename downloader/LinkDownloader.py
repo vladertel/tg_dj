@@ -4,39 +4,13 @@ import re
 
 from urllib import parse
 from unidecode import unidecode
-from mutagen.mp3 import MP3
 
 from .AbstractDownloader import AbstractDownloader
 from .config import mediaDir, _DEBUG_, MAXIMUM_DURATION, MAXIMUM_FILE_SIZE
 from .exceptions import *
 from .storage_checker import filter_storage
 
-
-def get_mp3_title_and_duration(path):
-    audio = MP3(path)
-
-    try:
-        artist = str(audio.tags.getall("TPE1")[0][0])
-    except IndexError:
-        artist = None
-    try:
-        title = str(audio.tags.getall("TIT2")[0][0])
-    except IndexError:
-        title = None
-
-    if artist is not None and title is not None:
-        ret = artist + " — " + title
-    elif artist is not None:
-        ret = artist
-    elif title is not None:
-        ret = title
-    else:
-        ret = os.path.splitext(os.path.basename(path[:-4]))[0]
-
-    if _DEBUG_:
-        print("DEBUG [LinkDownloader]: Media name: " + ret)
-
-    return ret, audio.info.length
+from utils import get_mp3_title_and_duration
 
 
 class LinkDownloader(AbstractDownloader):
