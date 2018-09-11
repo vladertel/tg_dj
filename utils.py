@@ -5,6 +5,9 @@ from mutagen.mp3 import MP3
 def get_mp3_title_and_duration(path):
     audio = MP3(path)
 
+    if audio.tags is None:
+        return os.path.splitext(os.path.basename(path))[0], int(audio.info.length)
+
     try:
         artist = str(audio.tags.getall("TPE1")[0][0])
     except IndexError:
@@ -21,9 +24,9 @@ def get_mp3_title_and_duration(path):
     elif title is not None:
         ret = title
     else:
-        ret = os.path.splitext(os.path.basename(path[:-4]))[0]
+        ret = os.path.splitext(os.path.basename(path))[0]
 
-    return ret, audio.info.length
+    return ret, int(audio.info.length)
 
 
 def make_caption(number, word_forms):
