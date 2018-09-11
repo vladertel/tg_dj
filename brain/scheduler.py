@@ -93,8 +93,11 @@ class Scheduler:
                 add_to_end.append(Song.new(path, title, duration, None))
             else:
                 self.backlog.append(Song.new(path, title, duration, None))
-        for song in add_to_end:
-            self.backlog.append(song)
+
+        random.shuffle(self.backlog)
+        random.shuffle(add_to_end)
+        self.backlog += add_to_end
+
         print("INFO [Scheduler]: backlog capacity: " + str(len(self.backlog)))
 
     def cleanup(self):
