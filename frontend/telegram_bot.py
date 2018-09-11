@@ -45,8 +45,8 @@ class User(BaseModel):
     login = peewee.CharField(null=True)
     first_name = peewee.CharField(null=True)
     last_name = peewee.CharField(null=True)
-    menu_message_id = peewee.IntegerField()
-    menu_chat_id = peewee.IntegerField()
+    menu_message_id = peewee.IntegerField(null=True)
+    menu_chat_id = peewee.IntegerField(null=True)
 
 
 db.connect()
@@ -168,6 +168,19 @@ class TgFrontend:
         else:
             print("ERROR [Bot]: Unknown menu: " + str(menu))
 
+    def remove_old_menu(self, user):
+
+        # self.bot.edit_message_reply_markup(
+        #     user.menu_chat_id, user.menu_message_id,
+        #     reply_markup=telebot.types.InlineKeyboardMarkup()
+        # )
+
+        if user.menu_message_id is not None and user.menu_chat_id is not None:
+            try:
+                self.bot.delete_message(user.menu_chat_id, user.menu_message_id)
+            except Exception as e:
+                print("WARNING [Bot]: delete_message exception: " + str(e))
+
     def send_menu_main(self, task, user):
         superuser = task["superuser"]
         queue_len = task["queue_len"]
@@ -229,12 +242,7 @@ class TgFrontend:
         kb.row(telebot.types.InlineKeyboardButton(text="🔍 Поиск музыки", switch_inline_query_current_chat=""))
         kb.row(telebot.types.InlineKeyboardButton(text=STR_REFRESH, callback_data="main"))
 
-        # self.bot.edit_message_reply_markup(
-        #     user.menu_chat_id, user.menu_message_id,
-        #     reply_markup=telebot.types.InlineKeyboardMarkup()
-        # )
-        self.bot.delete_message(user.menu_chat_id, user.menu_message_id)
-
+        self.remove_old_menu(user)
         self.bot.send_message(user.tg_id, message_text, reply_markup=kb)
 
     def send_menu_queue(self, task, user):
@@ -270,6 +278,8 @@ class TgFrontend:
 
         kb.row(telebot.types.InlineKeyboardButton(text=STR_BACK, callback_data="main"),
                telebot.types.InlineKeyboardButton(text=STR_REFRESH, callback_data="queue:%d" % page))
+
+        self.remove_old_menu(user)
         self.bot.send_message(user.tg_id, message_text, reply_markup=kb)
 
     def send_menu_song(self, task, user):
@@ -293,6 +303,8 @@ class TgFrontend:
 
         kb.row(telebot.types.InlineKeyboardButton(text=STR_BACK, callback_data="queue:%d" % page),
                telebot.types.InlineKeyboardButton(text=STR_REFRESH, callback_data="song:%s" % sid))
+
+        self.remove_old_menu(user)
         self.bot.send_message(user.tg_id, message_text, reply_markup=kb)
 
     def send_menu_admin_list_users(self, task, user):
@@ -335,6 +347,7 @@ class TgFrontend:
         kb.row(telebot.types.InlineKeyboardButton(text=STR_BACK, callback_data="main"),
                telebot.types.InlineKeyboardButton(text=STR_REFRESH, callback_data="admin:list_users:%d" % page))
 
+        self.remove_old_menu(user)
         self.bot.send_message(user.tg_id, message_text, reply_markup=kb)
 
     def send_menu_admin_user(self, task, user):
@@ -372,8 +385,8 @@ class TgFrontend:
             for r in task['requests']:
                 message_text += r.text + "\n"
 
+        self.remove_old_menu(user)
         self.bot.send_message(user.tg_id, message_text, reply_markup=kb)
-
 
 # BRAIN LISTENER #####
     def brain_listener(self):
