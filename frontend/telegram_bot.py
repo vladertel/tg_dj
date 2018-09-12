@@ -87,6 +87,8 @@ class TgFrontend:
         self.bot.message_handler(commands=['/'])(lambda x: True)
         self.bot.message_handler(content_types=['text'])(self.text_message_handler)
         self.bot.message_handler(content_types=['audio'])(self.audio_handler)
+        self.bot.message_handler(content_types=['file', 'photo', 'document'])(self.file_handler)
+        self.bot.message_handler(content_types=['sticker'])(self.sticker_handler)
 
     def init_callbacks(self):
         self.bot.callback_query_handler(func=lambda x: x.data[0:2] == "//")(lambda x: True)
@@ -588,6 +590,12 @@ class TgFrontend:
             "chat_id": reply.chat.id,
         }
         self.output_queue.put(request)
+
+    def file_handler(self, message):
+        self.bot.send_message(message.from_user.id, "Такое не принимаем. (И вам не советуем)")
+
+    def sticker_handler(self, message):
+        self.bot.send_sticker(message.from_user.id, data="CAADAgADLwMAApAAAVAg-c0RjgqiVyMC")
 
     def audio_handler(self, message):
         user = self.init_user(message.from_user)
