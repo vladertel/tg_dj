@@ -393,6 +393,7 @@ class TgFrontend:
         while True:
             task = self.input_queue.get(block=True)
             if task["user_id"] == "System":
+                print("INFO [Bot]: Skipping task: %s" % str(task))
                 self.input_queue.task_done()
                 continue
 
@@ -403,11 +404,13 @@ class TgFrontend:
 
             if user is None and task["action"] != "user_init_done":
                 print("ERROR [Bot]: Task for unknown user: %d" % task["user_id"])
+                self.input_queue.task_done()
                 continue
 
             if task["action"] == "user_init_done":
                 print("INFO [Bot]: User init done: %s" % str(task))
                 self.listened_user_init_done(task)
+                self.input_queue.task_done()
                 continue
 
             print("DEBUG [Bot]: Task from core: %s" % str(task))
@@ -427,6 +430,8 @@ class TgFrontend:
                 handlers[action](task, user)
             else:
                 print("ERROR [Bot]: Unknown action: " + str(task))
+
+            print("DEBUG [Bot]: Task done: %s" % str(task))
             self.input_queue.task_done()
 
 # BRAIN LISTENERS  #####
