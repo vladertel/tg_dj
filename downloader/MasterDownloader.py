@@ -1,5 +1,6 @@
 import threading
 from queue import Queue
+from collections import OrderedDict
 
 from .YoutubeDownloader import YoutubeDownloader
 from .VkDownloader import VkDownloader
@@ -176,12 +177,12 @@ class MasterDownloader:
 
     def __init__(self):
         # https://youtu.be/qAeybdD5UoQ
-        self.downloaders = {
-            "yt": YoutubeDownloader(),
-            "link": LinkDownloader(),
-            "file": FileDownloader(),
-            "vk": VkDownloader()
-        }
+        self.downloaders = OrderedDict([
+            ("yt", YoutubeDownloader()),
+            ("file", FileDownloader()),
+            ("vk", VkDownloader()),
+            ("link", LinkDownloader()),
+        ])
         self.input_queue = Queue()
         self.output_queue = Queue()
 
