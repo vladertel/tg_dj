@@ -1,10 +1,13 @@
 import os
-import time
-import requests
 
-from .AbstractDownloader import AbstractDownloader
 from frontend.private_config import token as bot_token
+try:
+    from frontend.private_config import tg_api_url
+except ImportError:
+    tg_api_url = "https://api.telegram.org/"
+
 from .config import mediaDir, _DEBUG_, MAXIMUM_DURATION, MAXIMUM_FILE_SIZE
+from .AbstractDownloader import AbstractDownloader
 from .exceptions import *
 from .storage_checker import filter_storage
 
@@ -53,7 +56,7 @@ class FileDownloader(AbstractDownloader):
             print("DEBUG [FileDownloader]: Querying Telegram API")
 
         self.get_file(
-            url='https://api.telegram.org/file/bot{0}/{1}'.format(bot_token, file_info.file_path),
+            url=tg_api_url + 'file/bot{0}/{1}'.format(bot_token, file_info.file_path),
             file_path=file_path,
             file_size=file_size,
             percent_callback=lambda p: user_message("Скачиваем [%d%%]...\n%s" % (int(p), title)),
