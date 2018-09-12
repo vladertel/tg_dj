@@ -42,5 +42,5 @@ def make_caption(number, word_forms):
 def sanitize_file_name(file_name):
     valid_chars = '-_.() abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'
 
-    file_name = unidecode(file_name + '.mp3')
+    file_name = unidecode(file_name)
     return ''.join([c if c in valid_chars else "_" for c in file_name])
