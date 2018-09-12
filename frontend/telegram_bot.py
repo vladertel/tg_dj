@@ -193,7 +193,7 @@ class TgFrontend:
             title = now_playing["title"]
 
             if now_playing["user_id"] is not None:
-                track_author = User.get(id=now_playing["user_id"])
+                track_author = User.get(User.core_id == now_playing["user_id"])
                 author_str = track_author.first_name + " " + track_author.last_name
             else:
                 author_str = "Студсовет"
@@ -226,7 +226,7 @@ class TgFrontend:
 
         if superuser and next_in_queue is not None:
             if next_in_queue.user is not None:
-                track_author = User.get(id=next_in_queue.user)
+                track_author = User.get(User.core_id == next_in_queue.user)
                 author_str = track_author.first_name + " " + track_author.last_name
             else:
                 author_str = "[Резерв]"
@@ -429,7 +429,7 @@ class TgFrontend:
             if action in handlers:
                 handlers[action](task, user)
             else:
-                print("ERROR [Bot]: Unknown action: " + str(task))
+                print("ERROR [Bot]: Unknown action: " + str(task["action"]))
 
             print("DEBUG [Bot]: Task done: %s" % str(task))
             self.input_queue.task_done()
