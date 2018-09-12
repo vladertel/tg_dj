@@ -55,7 +55,7 @@ class YoutubeDownloader(AbstractDownloader):
         # exit(1)
 
         file_dir = os.path.join(os.getcwd(), mediaDir)
-        file_name = sanitize_file_name(video_title)
+        file_name = sanitize_file_name("youtube-" + str(video_id))
 
         search_url = "https://www.googleapis.com/youtube/v3/videos?id=" + video_id + \
             "&key=" + YT_API_KEY + "&part=contentDetails"

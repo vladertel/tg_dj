@@ -106,7 +106,7 @@ class VkDownloader(AbstractDownloader):
             return
 
         title = song["artist"] + " — " + song["title"]
-        file_name = sanitize_file_name(title + '.mp3')
+        file_name = sanitize_file_name("vk-" + str(result_id) + '.mp3')
         file_path = os.path.join(os.getcwd(), mediaDir, file_name)
 
         if self.is_in_cache(file_path):
