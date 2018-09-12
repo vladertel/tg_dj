@@ -1,19 +1,11 @@
 from queue import Queue
 from threading import Thread
 import time
-
 import vlc
 
-from .config import *
-
-options = 'sout=#transcode{acodec=mp3,ab=320,channels=2,samplerate=44100}:duplicate{dst=gather:http{mux=ts,dst=:1233/},dst=display}'
-# options = 'sout=#duplicate{dst=rtp{access=udp,mux=ts,dst=224.0.0.1,port=1233},dst=display}'
-# options = 'sout=#duplicate{dst=http{mux=ts,dst=:8080/},dst=display}'
-# options = ':sout=#duplicate{dst=std{access=http,mux=ts,dst=:1234}}'
-# Load media with streaming options
-# media = instance.media_new('test.mp3', options)
-# The above snippet will stream to the multicast address 224.0.0.1,
-# allowing all devices on the network to consume the RTP stream, whilst also playing it locally.
+from .private_config import vlc_options
+# vlc_options = 'sout=#transcode{acodec=mp3,ab=320,channels=2,samplerate=44100}' \
+#               ':duplicate{dst=gather:http{mux=ts,dst=:1233/},dst=display}'
 
 
 class VLCStreamer():
@@ -46,7 +38,7 @@ class VLCStreamer():
             action = task['action']
             if action == 'play_song':
                 uri = task['uri']
-                media = self.vlc_instance.media_new(uri, options, "sout-keep")
+                media = self.vlc_instance.media_new(uri, vlc_options, "sout-keep")
                 # media = self.vlc_instance.media_new(uri)
                 self.player.set_media(media)
                 self.player.play()
