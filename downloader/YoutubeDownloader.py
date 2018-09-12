@@ -4,13 +4,13 @@ import re
 import os
 
 from pytube import YouTube
-from unidecode import unidecode
 
 from .AbstractDownloader import AbstractDownloader
 from .config import mediaDir, _DEBUG_, MAXIMUM_DURATION
 from .private_config import YT_API_KEY
 from .exceptions import *
 from .storage_checker import filter_storage
+from utils import sanitize_file_name
 
 
 class YoutubeDownloader(AbstractDownloader):
@@ -55,7 +55,7 @@ class YoutubeDownloader(AbstractDownloader):
         # exit(1)
 
         file_dir = os.path.join(os.getcwd(), mediaDir)
-        file_name = video_title
+        file_name = sanitize_file_name(video_title)
 
         search_url = "https://www.googleapis.com/youtube/v3/videos?id=" + video_id + \
             "&key=" + YT_API_KEY + "&part=contentDetails"
@@ -75,7 +75,7 @@ class YoutubeDownloader(AbstractDownloader):
         if seconds > MAXIMUM_DURATION:
             raise MediaIsTooLong()
 
-        file_path = os.path.join(file_dir, unidecode(file_name)) + ".mp4"
+        file_path = os.path.join(file_dir, file_name) + ".mp4"
         if self.is_in_cache(file_path):
             if _DEBUG_:
                 print("DEBUG [YoutubeDownloader]: Loading from cache: " + file_path)
@@ -90,7 +90,7 @@ class YoutubeDownloader(AbstractDownloader):
         print("INFO [YoutubeDownloader]: Downloading audio from video: " + video_id)
         user_message("Скачиваем...\n%s" % video_title)
 
-        streams.first().download(output_path=file_dir, filename=unidecode(file_name))
+        streams.first().download(output_path=file_dir, filename=file_name)
         self.touch_without_creation(file_path)
         filter_storage()
 

@@ -3,14 +3,12 @@ import requests
 import re
 
 from urllib import parse
-from unidecode import unidecode
 
 from .AbstractDownloader import AbstractDownloader
 from .config import mediaDir, _DEBUG_, MAXIMUM_DURATION, MAXIMUM_FILE_SIZE
 from .exceptions import *
 from .storage_checker import filter_storage
-
-from utils import get_mp3_title_and_duration
+from utils import get_mp3_title_and_duration, sanitize_file_name
 
 
 class LinkDownloader(AbstractDownloader):
@@ -50,7 +48,7 @@ class LinkDownloader(AbstractDownloader):
             print("DEBUG [LinkDownloader]: Sending HEAD to url: " + url)
 
         file_dir = os.path.join(os.getcwd(), mediaDir)
-        file_name = unidecode(parse.unquote(url).split("/")[-1] + ".mp3")
+        file_name = sanitize_file_name(parse.unquote(url).split("/")[-1] + ".mp3")
         file_path = os.path.join(file_dir, file_name)
 
         if os.path.exists(file_path) and os.path.getsize(file_path) > 0:

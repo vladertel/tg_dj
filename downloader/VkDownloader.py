@@ -3,13 +3,13 @@ import requests
 import json
 from time import sleep
 
-from unidecode import unidecode
 from user_agent import generate_user_agent
 
 from .AbstractDownloader import AbstractDownloader
 from .config import mediaDir, _DEBUG_, DATMUSIC_API_ENDPOINT, MAXIMUM_FILE_SIZE
 from .exceptions import *
 from .storage_checker import filter_storage
+from utils import sanitize_file_name
 
 
 class CaptchaNeeded(ApiError):
@@ -106,10 +106,8 @@ class VkDownloader(AbstractDownloader):
             return
 
         title = song["artist"] + " — " + song["title"]
-        file_name = unidecode(title + '.mp3')
-        valid_chars = '-_.() abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'
-        sanitized_file_name = ''.join([c if c in valid_chars else "_" for c in file_name])
-        file_path = os.path.join(os.getcwd(), mediaDir, sanitized_file_name)
+        file_name = sanitize_file_name(title + '.mp3')
+        file_path = os.path.join(os.getcwd(), mediaDir, file_name)
 
         if self.is_in_cache(file_path):
             print("INFO [VkDownloader]: File %s already in cache" % result_id)

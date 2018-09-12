@@ -1,5 +1,6 @@
 import os
 from mutagen.mp3 import MP3
+from unidecode import unidecode
 
 
 def get_mp3_title_and_duration(path):
@@ -36,3 +37,10 @@ def make_caption(number, word_forms):
         if number % 10 == i:
             return word_forms[0] + word_forms[i]
     return word_forms[0] + word_forms[5]
+
+
+def sanitize_file_name(file_name):
+    valid_chars = '-_.() abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'
+
+    file_name = unidecode(file_name + '.mp3')
+    return ''.join([c if c in valid_chars else "_" for c in file_name])
