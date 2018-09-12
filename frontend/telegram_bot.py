@@ -575,7 +575,10 @@ class TgFrontend:
             return
 
         text = message.text
-
+        if re.search(r'$@\w+ ', text) is not None:
+            self.bot.send_message(user.tg_id, """Выберите из интерактивного меню, пожалуйста.
+Интерактивное меню появляется во вреся ввода сообщения""")
+            return
         reply = self.bot.send_message(user.tg_id, "Запрос обрабатывается...")
         request = {
             "action": "download",
