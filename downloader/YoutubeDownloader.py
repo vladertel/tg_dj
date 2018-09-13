@@ -66,8 +66,6 @@ class YoutubeDownloader(AbstractDownloader):
         if video_id is None:
             raise UrlProblem()
 
-        print(dir(video.vid_info))
-
         file_size = stream.filesize
         if int(file_size) > MAXIMUM_FILE_SIZE:
             raise MediaIsTooBig()
