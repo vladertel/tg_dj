@@ -76,7 +76,7 @@ class TgFrontend:
             except Exception as e:
                 print("ERROR [Bot]: CONNECTION PROBLEM")
                 print(e)
-                sleep(5)
+                sleep(15)
 
     def init_handlers(self):
         self.bot.message_handler(commands=['start'])(self.start_handler)
@@ -435,6 +435,7 @@ class TgFrontend:
 
             print("DEBUG [Bot]: Task done: %s" % str(task))
             self.input_queue.task_done()
+
 
 # BRAIN LISTENERS  #####
     def listened_user_init_done(self, task):

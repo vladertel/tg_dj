@@ -2,6 +2,7 @@
 # -*- coding: UTF-8 -*-
 
 import peewee
+import time
 
 import datetime
 from threading import Thread
@@ -208,8 +209,8 @@ class DJ_Brain:
         path = task["path"]
 
         if path[0] == "skip_song":
-            self.play_next_track()
-            self.send_menu_main(user)
+            track, next_track = self.play_next_track()
+            self.send_menu_main(user, track, next_track)
 
         elif path[0] == "delete":
             pos = self.scheduler.remove_from_queue(int(path[1]))
@@ -316,15 +317,25 @@ class DJ_Brain:
                     "message": "Играет " + track.title,
                     "user_id": track.user
                 })
+        return track, next_track
 
-    def send_menu_main(self, user):
+    def send_menu_main(self, user, current_track=None, next_track=None):
+        if current_track is not None:
+            #  cruthcy conversions! YAAAY
+            current_track = {
+                "title": current_track.title,
+                "duration": current_track.duration,
+                "start_time": time.time(),
+                "user_id": current_track.user,
+
+            }
         self.frontend.input_queue.put({
             "action": "menu",
             "user_id": user.id,
             "entry": "main",
             "queue_len": self.scheduler.queue_length(),
-            "now_playing": self.backend.now_playing,
-            "next_in_queue": self.scheduler.get_next_song(),
+            "now_playing": current_track or self.backend.now_playing,
+            "next_in_queue": next_track or self.scheduler.get_next_song(),
             "superuser": user.superuser,
         })
 
