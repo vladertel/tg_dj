@@ -1,13 +1,15 @@
 import threading
 from queue import Queue
 from collections import OrderedDict
+import os
+
 
 from .YoutubeDownloader import YoutubeDownloader
 from .VkDownloader import VkDownloader
 from .FileDownloader import FileDownloader
 from .LinkDownloader import LinkDownloader
 from .exceptions import *
-from .config import MAXIMUM_FILE_SIZE, SEARCH_RESULTS_LIMIT
+from .config import MAXIMUM_FILE_SIZE, SEARCH_RESULTS_LIMIT, mediaDir
 
 
 class MasterDownloader:
@@ -183,6 +185,11 @@ class MasterDownloader:
             ("vk", VkDownloader()),
             ("link", LinkDownloader()),
         ])
+
+        cacheDir = os.path.join(os.getcwd(), mediaDir)
+        if not os.path.exists(cacheDir):
+            os.mkdir(cacheDir)
+
         self.input_queue = Queue()
         self.output_queue = Queue()
 
