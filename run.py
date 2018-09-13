@@ -8,6 +8,7 @@ from downloader.MasterDownloader import MasterDownloader
 from frontend.telegram_bot import TgFrontend
 
 sys.stdout = open(sys.stdout.fileno(), mode='w', encoding='utf8', buffering=1)
+sys.stderr = sys.stdout
 
 args = [TgFrontend(), MasterDownloader(), VLCStreamer()]
 
@@ -21,7 +22,7 @@ brain = DJ_Brain(*args)
 try:
     atexit.register(brain.cleanup)
 except AttributeError:
-        pass
+    pass
 
 print("Running infinite loop in main thread...")
 try:
