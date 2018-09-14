@@ -5,6 +5,7 @@ import re
 import peewee
 from time import sleep
 import time
+import jinja2
 
 from .private_config import token
 from utils import make_caption
@@ -270,12 +271,84 @@ class TgFrontend:
             except Exception as e:
                 print("WARNING [Bot]: delete_message exception: " + str(e))
 
+    def build_markup(self, text):
+        lines = text.splitlines(False)
+        btn_re = re.compile(r"(?:^|\|\|)\s*(?P<text>(?:[^|\\]|\\\|)+)|"
+                            r"(?P<attr>(?:[^|\\=]|\\.)+)\s*=\s*(?P<val>(?:[^|\\]|\\.)*)")
+
+        markup = telebot.types.InlineKeyboardMarkup()
+
+        for line in lines:
+            line = line.strip()
+            if line == "":
+                continue
+
+            matches = btn_re.findall(line)
+
+            print(str(matches))
+            buttons = []
+            btn = None
+
+            for match in matches:
+                text = match[0].strip()
+                if text != "":
+                    btn = {"text": text}
+                    buttons.append(btn)
+                else:
+                    btn[match[1].strip()] = match[2].strip()
+
+            m_row = []
+            for b in buttons:
+                if "callback_data" in b:
+                    m_row.append(telebot.types.InlineKeyboardButton(
+                        text=b["text"],
+                        callback_data=b["callback_data"]
+                    ))
+                elif "switch_inline_query_current_chat" in b:
+                    m_row.append(telebot.types.InlineKeyboardButton(
+                        text=b["text"],
+                        switch_inline_query_current_chat=b["switch_inline_query_current_chat"]
+                    ))
+
+            markup.row(*m_row)
+            print("ROW")
+        return markup
+
     def send_menu_main(self, task, user):
+        menu_template = """
+            {% if now_playing is not none %}
+                {% if superuser %}
+                    ⏹ Остановить | callback_data=admin:stop_playing || ▶️ Переключить | callback_data=admin:skip_song
+                {% endif %}
+                📂 Очередь: {{ queue_len_str }} | callback_data=queue:0
+            {% else %}
+                {% if superuser %}
+                    ▶️ Запустить | callback_data=admin:skip_song
+                {% endif %}
+            {% endif %}
+            {% if superuser %}
+                👥 Пользователи | callback_data=admin:list_users:0
+            {% endif %}
+            🔍 Поиск музыки | switch_inline_query_current_chat=
+            {{ STR_REFRESH }} | callback_data=main
+        """
+
+        msg_template = """
+            {% if now_playing is not none %}
+                🔊 [{{ str_played }} / {{ str_duration }}]    👤 {{ author_str }}\n
+                {{ now_playing["title"] }}\n\n
+            {% endif %}
+            {% if superuser and next_in_queue is not none %}
+                Следующая в очереди:\n
+                ⏱ {{ str_duration }}    👤 {{ author_str }}\n
+                {{ next_in_queue.title }}
+            {% endif %}
+        """
+
         superuser = task["superuser"]
         queue_len = task["queue_len"]
         now_playing = task["now_playing"]
 
-        kb = telebot.types.InlineKeyboardMarkup(row_width=2)
         message_text = ""
 
         if now_playing is not None:
@@ -295,21 +368,11 @@ class TgFrontend:
 
             message_text += "🔊 [%s / %s]    👤 %s\n" % (str_played, str_duration, author_str) + \
                             "%s\n\n" % title
-            if superuser:
-                kb.row(
-                    telebot.types.InlineKeyboardButton(text="⏹ Остановить", callback_data="admin:stop_playing"),
-                    telebot.types.InlineKeyboardButton(text="▶️ Переключить", callback_data="admin:skip_song"),
-                )
             queue_len_str = "%d %s" % (queue_len, make_caption(queue_len, ['трек', '', 'а', 'а', 'а', 'ов']))
-            kb.row(telebot.types.InlineKeyboardButton(text="📂 Очередь: %s" % queue_len_str,
-                                                      callback_data="queue:0"))
+
         else:
             message_text += "🔇 Пока ничего не играет. Будь первым!"
-            if superuser:
-                kb.row(
-                    telebot.types.InlineKeyboardButton(text="▶️ Запустить", callback_data="admin:skip_song"),
-                )
-                kb.row(telebot.types.InlineKeyboardButton(text="📂 Очередь", callback_data="queue:0"))
+            queue_len_str = ""
 
         next_in_queue = task["next_in_queue"]
 
@@ -325,11 +388,14 @@ class TgFrontend:
                             "⏱ %s    👤 %s\n" % (str_duration, author_str) + \
                             "%s\n" % next_in_queue.title
 
-        if superuser:
-            kb.row(telebot.types.InlineKeyboardButton(text="👥 Пользователи", callback_data="admin:list_users:0"))
-
-        kb.row(telebot.types.InlineKeyboardButton(text="🔍 Поиск музыки", switch_inline_query_current_chat=""))
-        kb.row(telebot.types.InlineKeyboardButton(text=STR_REFRESH, callback_data="main"))
+        template = jinja2.Template(menu_template)
+        rendered = template.render(
+            now_playing=now_playing,
+            superuser=superuser,
+            queue_len_str=queue_len_str,
+            STR_REFRESH=STR_REFRESH,
+        )
+        kb = self.build_markup(rendered)
 
         self.remove_old_menu(user)
         self.bot.send_message(user.tg_id, message_text, reply_markup=kb)
