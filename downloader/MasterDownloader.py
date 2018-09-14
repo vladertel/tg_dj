@@ -137,9 +137,9 @@ class MasterDownloader:
 
                 self.output_queue.put({
                     "action": "search_results",
-                    "qid": task["qid"],
+                    "gen": task["gen"],
                     "user_id": user_id,
-                    "results": search_results,
+                    "result": search_results,
                 })
 
             except BadReturnStatus as e:
@@ -152,9 +152,9 @@ class MasterDownloader:
             except NothingFound:
                 self.output_queue.put({
                     "action": "search_results",
-                    "qid": task["qid"],
+                    "gen": task["gen"],
                     "user_id": user_id,
-                    "results": []
+                    "result": []
                 })
             except Exception as e:
                 print("ERROR [MasterDownloader]: " + str(e))

@@ -94,7 +94,7 @@ class TgFrontend:
         self.bot.callback_query_handler(func=lambda x: x.data[0:2] == "//")(lambda x: True)
         self.bot.callback_query_handler(func=lambda x: True)(self.callback_query_handler)
 
-        self.bot.inline_handler(func=lambda x: True)(self.search)
+        self.bot.inline_handler(func=lambda x: True)(lambda data: self.tg_handler(data, self.search))
         self.bot.chosen_inline_handler(func=lambda x: True)(self.search_select)
 
     def cleanup(self):
@@ -123,17 +123,38 @@ class TgFrontend:
             "user_id": user.core_id,
         })
 
-    def search(self, data):
+    def tg_handler(self, data, method):
         user = self.init_user(data.from_user)
         if user is None:
             return
 
-        self.output_queue.put({
+        gen = method(data, user)
+
+        action = next(gen)
+        action["gen"] = gen
+        action["user_id"] = user.core_id
+        self.output_queue.put(action)
+
+    def search(self, data, _user):
+        query = data.query.lstrip()
+
+        results = yield {
             "action": "search",
-            "qid": data.id,
-            "query": data.query.lstrip(),
-            "user_id": user.core_id
-        })
+            "query": query,
+        }
+
+        results_articles = []
+        for song in results:
+            results_articles.append(telebot.types.InlineQueryResultArticle(
+                id=song['downloader'] + " " + song['id'],
+                title=song['artist'],
+                description=song['title'] + " {:d}:{:02d}".format(*list(divmod(song["duration"], 60))),
+                input_message_content=telebot.types.InputTextMessageContent(
+                    "// " + song['artist'] + " - " + song['title']
+                ),
+            ))
+
+        self.bot.answer_inline_query(data.id, results_articles)
 
     def search_select(self, data):
         user = self.init_user(data.from_user)
@@ -417,21 +438,31 @@ class TgFrontend:
 
             print("DEBUG [Bot]: Task from core: %s" % str(task))
 
-            action = task["action"]
-            handlers = {
-                "user_message": self.listened_user_message,
-                "edit_user_message": self.listened_edit_user_message,
-                "no_dl_handler": self.listened_no_dl_handler,
-                "search_results": self.listened_search_results,
-                "access_denied": self.listened_access_denied,
-                "menu": self.listened_menu,
-                "error": self.listened_user_message,
-            }
+            if "gen" in task:
+                res = task["result"] if "result" in task else None
+                try:
+                    task["gen"].send(res)
+                except StopIteration:
+                    pass
 
-            if action in handlers:
-                handlers[action](task, user)
+            elif "action" in task:
+                action = task["action"]
+                handlers = {
+                    "user_message": self.listened_user_message,
+                    "edit_user_message": self.listened_edit_user_message,
+                    "no_dl_handler": self.listened_no_dl_handler,
+                    "access_denied": self.listened_access_denied,
+                    "menu": self.listened_menu,
+                    "error": self.listened_user_message,
+                }
+
+                if action in handlers:
+                    handlers[action](task, user)
+                else:
+                    print("ERROR [Bot]: Unknown action: " + str(task["action"]))
+
             else:
-                print("ERROR [Bot]: Unknown action: " + str(task["action"]))
+                print("ERROR [Bot]: Bad task from core: " + str(task))
 
             print("DEBUG [Bot]: Task done: %s" % str(task))
             self.input_queue.task_done()
@@ -461,20 +492,6 @@ class TgFrontend:
 
     def listened_edit_user_message(self, task, _):
         self.bot.edit_message_text(task["new_text"], task["chat_id"], task["message_id"])
-
-    def listened_search_results(self, task, _):
-        results = []
-        for song in task["results"]:
-            results.append(telebot.types.InlineQueryResultArticle(
-                id=song['downloader'] + " " + song['id'],
-                title=song['artist'],
-                description=song['title'] + " {:d}:{:02d}".format(*list(divmod(song["duration"], 60))),
-                input_message_content=telebot.types.InputTextMessageContent(
-                    "// " + song['artist'] + " - " + song['title']
-                ),
-            ))
-
-        self.bot.answer_inline_query(task["qid"], results)
 
     def listened_no_dl_handler(self, task, user):
         text = task["text"]
