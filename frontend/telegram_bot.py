@@ -5,7 +5,7 @@ import re
 import peewee
 from time import sleep
 import time
-import jinja2
+from .jinja_env import env
 
 from .private_config import token
 from utils import make_caption
@@ -48,6 +48,9 @@ class User(BaseModel):
     last_name = peewee.CharField(null=True)
     menu_message_id = peewee.IntegerField(null=True)
     menu_chat_id = peewee.IntegerField(null=True)
+
+    def full_name(self):
+        return self.first_name + " " + self.last_name
 
 
 db.connect()
@@ -285,7 +288,6 @@ class TgFrontend:
 
             matches = btn_re.findall(line)
 
-            print(str(matches))
             buttons = []
             btn = None
 
@@ -311,7 +313,6 @@ class TgFrontend:
                     ))
 
             markup.row(*m_row)
-            print("ROW")
         return markup
 
     def send_menu_main(self, task, user):
@@ -320,82 +321,60 @@ class TgFrontend:
                 {% if superuser %}
                     ⏹ Остановить | callback_data=admin:stop_playing || ▶️ Переключить | callback_data=admin:skip_song
                 {% endif %}
-                📂 Очередь: {{ queue_len_str }} | callback_data=queue:0
             {% else %}
                 {% if superuser %}
                     ▶️ Запустить | callback_data=admin:skip_song
                 {% endif %}
             {% endif %}
+            {% if queue_len %}
+                📂 Очередь: {{ queue_len | make_caption(['трек', '', 'а', 'а', 'а', 'ов']) }} | callback_data=queue:0
+            {% endif %}
             {% if superuser %}
                 👥 Пользователи | callback_data=admin:list_users:0
             {% endif %}
             🔍 Поиск музыки | switch_inline_query_current_chat=
-            {{ STR_REFRESH }} | callback_data=main
+            🔄 Обновить | callback_data=main
         """
 
         msg_template = """
             {% if now_playing is not none %}
-                🔊 [{{ str_played }} / {{ str_duration }}]    👤 {{ author_str }}\n
-                {{ now_playing["title"] }}\n\n
+                🔊 [{{ now_playing["played"] | format_duration }} / {{ now_playing["duration"] | format_duration }}]    👤 {{ now_playing["author_name"] }}
+                {{ now_playing["title"] }}\n
             {% endif %}
             {% if superuser and next_in_queue is not none %}
-                Следующая в очереди:\n
-                ⏱ {{ str_duration }}    👤 {{ author_str }}\n
+                Следующий трек:
+                ⏱ {{ next_in_queue.duration | format_duration }}    👤 {{ next_in_queue.author }}
                 {{ next_in_queue.title }}
             {% endif %}
         """
 
         superuser = task["superuser"]
         queue_len = task["queue_len"]
+
         now_playing = task["now_playing"]
-
-        message_text = ""
-
         if now_playing is not None:
-            title = now_playing["title"]
-
             if now_playing["user_id"] is not None:
                 track_author = User.get(User.core_id == now_playing["user_id"])
-                author_str = track_author.first_name + " " + track_author.last_name
+                now_playing["author_name"] = track_author.full_name()
             else:
-                author_str = "Студсовет"
+                now_playing["author_name"] = "Студсовет"
 
-            duration = now_playing["duration"]
-            str_duration = "{:d}:{:02d}".format(*list(divmod(duration, 60)))
-
-            played_time = int(time.time() - now_playing["start_time"])
-            str_played = "{:d}:{:02d}".format(*list(divmod(played_time, 60)))
-
-            message_text += "🔊 [%s / %s]    👤 %s\n" % (str_played, str_duration, author_str) + \
-                            "%s\n\n" % title
-            queue_len_str = "%d %s" % (queue_len, make_caption(queue_len, ['трек', '', 'а', 'а', 'а', 'ов']))
-
-        else:
-            message_text += "🔇 Пока ничего не играет. Будь первым!"
-            queue_len_str = ""
+            now_playing["played"] = int(time.time() - now_playing["start_time"])
 
         next_in_queue = task["next_in_queue"]
-
         if superuser and next_in_queue is not None:
             if next_in_queue.user is not None:
                 track_author = User.get(User.core_id == next_in_queue.user)
-                author_str = track_author.first_name + " " + track_author.last_name
+                next_in_queue.author = track_author.full_name
             else:
-                author_str = "[Резерв]"
+                next_in_queue.author = "Студсовет"
 
-            str_duration = "{:d}:{:02d}".format(*list(divmod(next_in_queue.duration, 60)))
-            message_text += "Следующая в очереди:\n" + \
-                            "⏱ %s    👤 %s\n" % (str_duration, author_str) + \
-                            "%s\n" % next_in_queue.title
-
-        template = jinja2.Template(menu_template)
-        rendered = template.render(
-            now_playing=now_playing,
-            superuser=superuser,
-            queue_len_str=queue_len_str,
-            STR_REFRESH=STR_REFRESH,
-        )
+        template = env.from_string(menu_template)
+        rendered = template.render(now_playing=now_playing, superuser=superuser, queue_len=queue_len)
         kb = self.build_markup(rendered)
+
+        template = env.from_string('\n'.join([l.strip() for l in msg_template.splitlines(False)]))
+        message_text = template.render(now_playing=now_playing, next_in_queue=next_in_queue, superuser=superuser)
 
         self.remove_old_menu(user)
         self.bot.send_message(user.tg_id, message_text, reply_markup=kb)
