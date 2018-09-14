@@ -85,8 +85,9 @@ class TgFrontend:
         self.bot.message_handler(commands=['stop_playing', 'stop'])(self.stop_playing)
         self.bot.message_handler(commands=['skip_song', 'skip'])(self.skip_song)
         self.bot.message_handler(commands=['/'])(lambda x: True)
-        self.bot.message_handler(content_types=['text'])(self.text_message_handler)
-        self.bot.message_handler(content_types=['audio'])(self.audio_handler)
+
+        self.bot.message_handler(content_types=['text'])(lambda data: self.tg_handler(data, self.download))
+        self.bot.message_handler(content_types=['audio'])(lambda data: self.tg_handler(data, self.add_audio_file))
         self.bot.message_handler(content_types=['file', 'photo', 'document'])(self.file_handler)
         self.bot.message_handler(content_types=['sticker'])(self.sticker_handler)
 
@@ -95,7 +96,7 @@ class TgFrontend:
         self.bot.callback_query_handler(func=lambda x: True)(self.callback_query_handler)
 
         self.bot.inline_handler(func=lambda x: True)(lambda data: self.tg_handler(data, self.search))
-        self.bot.chosen_inline_handler(func=lambda x: True)(self.search_select)
+        self.bot.chosen_inline_handler(func=lambda x: True)(lambda data: self.tg_handler(data, self.search_select))
 
     def cleanup(self):
         pass
@@ -138,10 +139,12 @@ class TgFrontend:
     def search(self, data, _user):
         query = data.query.lstrip()
 
-        results = yield {
+        response = yield {
             "action": "search",
             "query": query,
         }
+
+        results = response["results"]
 
         results_articles = []
         for song in results:
@@ -156,22 +159,85 @@ class TgFrontend:
 
         self.bot.answer_inline_query(data.id, results_articles)
 
-    def search_select(self, data):
-        user = self.init_user(data.from_user)
-        if user is None:
-            return
-
+    def search_select(self, data, user):
         downloader, result_id = data.result_id.split(" ")
-        reply = self.bot.send_message(data.from_user.id, "Запрос обрабатывается...")
+        reply = self.bot.send_message(user.tg_id, "Запрос обрабатывается...")
 
-        self.output_queue.put({
+        response = yield {
             "action": "download",
-            "user_id": user.core_id,
             "downloader": downloader,
             "result_id": result_id,
-            "message_id": reply.message_id,
-            "chat_id": reply.chat.id,
-        })
+        }
+
+        while True:
+            action = response["action"]
+            if action == "user_message" or action == "user_error":
+                print("DEBUG [Bot]: EDIT MESSAGE: " + str(response["message"]))
+                self.bot.edit_message_text(response["message"], reply.chat.id, reply.message_id)
+            elif action == "no_dl_handler":
+                self.bot.edit_message_text("Ошибка: обработчик не найден", reply.chat.id, reply.message_id)
+            elif action == "download_done":
+                break
+            response = yield
+
+    def download(self, message, user):
+        text = message.text
+
+        if re.search(r'^@\w+ ', text) is not None:
+            self.bot.send_message(user.tg_id, "Выберите из интерактивного меню, пожалуйста."
+                                              "Интерактивное меню появляется во время ввода сообщения")
+            return
+
+        reply = self.bot.send_message(user.tg_id, "Запрос обрабатывается...")
+
+        response = yield {
+            "action": "download",
+            "text": text,
+        }
+
+        while True:
+            action = response["action"]
+            if action == "user_message" or action == "user_error":
+                self.bot.edit_message_text(response["message"], reply.chat.id, reply.message_id)
+            elif action == "no_dl_handler":
+
+                kb = telebot.types.InlineKeyboardMarkup(row_width=2)
+                kb.row(telebot.types.InlineKeyboardButton(
+                    text="🔍 " + text,
+                    switch_inline_query_current_chat=text,
+                ))
+
+                self.bot.edit_message_text("Запрос не распознан. Нажмите на кнопку ниже, чтобы включить поиск",
+                                           reply.chat.id, reply.message_id)
+                self.bot.edit_message_reply_markup(reply.chat.id, reply.message_id, reply_markup=kb)
+            elif action == "download_done":
+                break
+            response = yield
+
+    def add_audio_file(self, message, user):
+        file_info = self.bot.get_file(message.audio.file_id)
+
+        reply = self.bot.send_message(user.tg_id, "Запрос обрабатывается...")
+
+        response = yield {
+            "action": "download",
+            "file": message.audio.file_id,
+            "duration": message.audio.duration,
+            "file_size": message.audio.file_size,
+            "file_info": file_info,
+            "artist": message.audio.performer or "",
+            "title": message.audio.title or "",
+        }
+
+        while True:
+            action = response["action"]
+            if action == "user_message" or action == "user_error":
+                self.bot.edit_message_text(response["message"], reply.chat.id, reply.message_id)
+            elif action == "no_dl_handler":
+                self.bot.edit_message_text("Ошибка: обработчик не найден", reply.chat.id, reply.message_id)
+            elif action == "download_done":
+                break
+            response = yield
 
 
 # MENU RELATED #####
@@ -439,9 +505,8 @@ class TgFrontend:
             print("DEBUG [Bot]: Task from core: %s" % str(task))
 
             if "gen" in task:
-                res = task["result"] if "result" in task else None
                 try:
-                    task["gen"].send(res)
+                    task["gen"].send(task)
                 except StopIteration:
                     pass
 
@@ -449,11 +514,9 @@ class TgFrontend:
                 action = task["action"]
                 handlers = {
                     "user_message": self.listened_user_message,
-                    "edit_user_message": self.listened_edit_user_message,
-                    "no_dl_handler": self.listened_no_dl_handler,
                     "access_denied": self.listened_access_denied,
-                    "menu": self.listened_menu,
                     "error": self.listened_user_message,
+                    "menu": self.listened_menu,
                 }
 
                 if action in handlers:
@@ -467,8 +530,6 @@ class TgFrontend:
             print("DEBUG [Bot]: Task done: %s" % str(task))
             self.input_queue.task_done()
 
-
-# BRAIN LISTENERS  #####
     def listened_user_init_done(self, task):
         user_info = task["frontend_user"]
         user_id = task["user_id"]
@@ -489,24 +550,6 @@ class TgFrontend:
 
     def listened_user_message(self, task, user):
         self.bot.send_message(user.tg_id, task["message"])
-
-    def listened_edit_user_message(self, task, _):
-        self.bot.edit_message_text(task["new_text"], task["chat_id"], task["message_id"])
-
-    def listened_no_dl_handler(self, task, user):
-        text = task["text"]
-
-        kb = telebot.types.InlineKeyboardMarkup(row_width=2)
-        kb.row(telebot.types.InlineKeyboardButton(
-            text="🔍 " + text,
-            switch_inline_query_current_chat=text,
-        ))
-        if "chat_id" in task and "message_id" in task:
-            self.bot.edit_message_text("Запрос не распознан. Нажмите на кнопку ниже, чтобы включить поиск", task["chat_id"], task["message_id"])
-            self.bot.edit_message_reply_markup(task["chat_id"], task["message_id"], reply_markup=kb)
-        else:
-            self.bot.send_message(user.tg_id, "Запрос не распознан. Нажмите на кнопку ниже, чтобы включить поиск",
-                                  reply_markup=kb)
 
     def listened_access_denied(self, _, user):
         self.bot.send_message(user.tg_id, "К вашему сожалению, вы были заблокированы :/")
@@ -589,52 +632,9 @@ class TgFrontend:
             return None
 
 # USER MESSAGES HANDLERS #####
-    def text_message_handler(self, message):
-        user = self.init_user(message.from_user)
-        if user is None:
-            return
-
-        text = message.text
-        if re.search(r'$@\w+ ', text) is not None:
-            self.bot.send_message(user.tg_id, """Выберите из интерактивного меню, пожалуйста.
-Интерактивное меню появляется во вреся ввода сообщения""")
-            return
-        reply = self.bot.send_message(user.tg_id, "Запрос обрабатывается...")
-        request = {
-            "action": "download",
-            "user_id": user.core_id,
-            "text": text,
-            "message_id": reply.message_id,
-            "chat_id": reply.chat.id,
-        }
-        self.output_queue.put(request)
 
     def file_handler(self, message):
         self.bot.send_message(message.from_user.id, "Такое не принимаем. (И вам не советуем)")
 
     def sticker_handler(self, message):
         self.bot.send_sticker(message.from_user.id, data="CAADAgADLwMAApAAAVAg-c0RjgqiVyMC")
-
-    def audio_handler(self, message):
-        user = self.init_user(message.from_user)
-        if user is None:
-            return
-
-        # if message.audio.mime_type == "audio/mpeg3":
-        file_info = self.bot.get_file(message.audio.file_id)
-
-        reply = self.bot.send_message(user.tg_id, "Запрос обрабатывается...")
-        self.output_queue.put({
-            "action": "download",
-            "user_id": user.core_id,
-            "file": message.audio.file_id,
-            "duration": message.audio.duration,
-            "file_size": message.audio.file_size,
-            "file_info": file_info,
-            "artist": message.audio.performer or "",
-            "title": message.audio.title or "",
-            "message_id": reply.message_id,
-            "chat_id": reply.chat.id,
-        })
-        # else:
-        #     self.bot.send_message(message.from_user.id, "Unsupported audio format... For now I accept only mp3 :(")

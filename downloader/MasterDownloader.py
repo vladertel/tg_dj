@@ -13,36 +13,20 @@ from .config import MAXIMUM_FILE_SIZE, SEARCH_RESULTS_LIMIT, mediaDir
 
 
 class MasterDownloader:
-    def download_done(self, user_id, file_path, title, duration):
+    def error(self, user_id, gen, message):
         self.output_queue.put({
-            "action": "download_done",
-            "path": file_path,
-            "title": title,
+            "action": "user_error",
+            "gen": gen,
             "user_id": user_id,
-            "duration": duration
+            "message": message,
         })
 
-    def error(self, user_id, message):
-        self.output_queue.put({
-            "action": "error",
-            "user_id": user_id,
-            "message": message
-        })
-
-    def send_user_message(self, user_id, text):
+    def send_user_message(self, user_id, gen, text):
         self.output_queue.put({
             "action": "user_message",
+            "gen": gen,
             "user_id": user_id,
-            "message": text
-        })
-
-    def edit_user_message(self, user_id, chat_id, message_id, new_text):
-        self.output_queue.put({
-            "action": "edit_user_message",
-            "user_id": user_id,
-            "chat_id": chat_id,
-            "message_id": message_id,
-            "new_text": new_text
+            "message": text,
         })
 
     def thread_download(self, task):
@@ -56,12 +40,8 @@ class MasterDownloader:
             downloaders = self.downloaders
 
         # Define callback for sending status updates to user
-        if "message_id" in task and "chat_id" in task:
-            def user_message(new_text):
-                return self.edit_user_message(user_id, task["chat_id"], task["message_id"], new_text)
-        else:
-            def user_message(new_text):
-                return self.send_user_message(user_id, new_text)
+        def user_message(new_text):
+            return self.send_user_message(user_id, task["gen"], new_text)
 
         accepted = False
         for dwnld_name in downloaders:
@@ -93,15 +73,23 @@ class MasterDownloader:
                 user_message("Ничего не нашел по этому запросу :(")
             except Exception as e:
                 print("ERROR [MasterDownloader]: " + str(e))
-                self.error(user_id, str(e))
+                self.error(user_id, task["gen"], str(e))
             else:
                 print("DEBUG [MasterDownloader]: Download done")
-                self.download_done(user_id, file_path, title, seconds)
+                self.output_queue.put({
+                    "action": "download_done",
+                    "path": file_path,
+                    "title": title,
+                    "user_id": user_id,
+                    "gen": task["gen"],
+                    "duration": seconds,
+                })
             break
         if not accepted:
             self.output_queue.put({
                 "action": "no_dl_handler",
                 "user_id": user_id,
+                "gen": task["gen"],
                 "text": task["text"] if "text" in task else "",
                 "chat_id": task["chat_id"] if "chat_id" in task else None,
                 "message_id": task["message_id"] if "message_id" in task else None,
@@ -113,12 +101,8 @@ class MasterDownloader:
         user_id = task["user_id"]
 
         # Define callback for sending status updates to user
-        if "message_id" in task and "chat_id" in task:
-            def user_message(new_text):
-                return self.edit_user_message(user_id, task["chat_id"], task["message_id"], new_text)
-        else:
-            def user_message(new_text):
-                return self.send_user_message(user_id, new_text)
+        def user_message(new_text):
+            return self.send_user_message(user_id, task["gen"], new_text)
 
         for dwnld_name in self.downloaders:
             downloader = self.downloaders[dwnld_name]
@@ -137,9 +121,9 @@ class MasterDownloader:
 
                 self.output_queue.put({
                     "action": "search_results",
-                    "gen": task["gen"],
                     "user_id": user_id,
-                    "result": search_results,
+                    "gen": task["gen"],
+                    "results": search_results,
                 })
 
             except BadReturnStatus as e:
@@ -152,13 +136,13 @@ class MasterDownloader:
             except NothingFound:
                 self.output_queue.put({
                     "action": "search_results",
-                    "gen": task["gen"],
                     "user_id": user_id,
-                    "result": []
+                    "gen": task["gen"],
+                    "results": [],
                 })
             except Exception as e:
                 print("ERROR [MasterDownloader]: " + str(e))
-                self.error(user_id, str(e))
+                self.error(user_id, task["gen"], str(e))
 
         self.input_queue.task_done()
 
@@ -175,7 +159,7 @@ class MasterDownloader:
                 threading.Thread(daemon=True, target=self.thread_search, args=(task,)).start()
             else:
                 print("ERROR [MasterDownloader]: Unknown action: \"" + task["action"] + "\"")
-                self.error(user_id, "Ошибка загрузчика: неизвестное действие \"" + task["action"] + "\"")
+                self.error(user_id, task["gen"], "Ошибка загрузчика: неизвестное действие \"" + task["action"] + "\"")
 
     def __init__(self):
         # https://youtu.be/qAeybdD5UoQ

@@ -264,7 +264,9 @@ class DJ_Brain:
                     if not self.backend.is_playing:
                         self.play_next_track()
 
-            elif action in ['user_message', 'edit_user_message', 'no_dl_handler', 'search_results', 'error']:
+                self.frontend.input_queue.put(task)
+
+            elif action in ['user_message', 'user_error', 'no_dl_handler', 'search_results']:
                 print("DEBUG [Core]: pushed task to frontend: " + str(task))
                 self.frontend.input_queue.put(task)
             else:
