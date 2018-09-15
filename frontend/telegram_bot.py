@@ -317,12 +317,10 @@ class TgFrontend:
 
     def send_menu_main(self, task, user):
         menu_template = """
-            {% if now_playing is not none %}
-                {% if superuser %}
+            {% if superuser %}
+                {% if now_playing is not none %}
                     ⏹ Остановить | callback_data=admin:stop_playing || ▶️ Переключить | callback_data=admin:skip_song
-                {% endif %}
-            {% else %}
-                {% if superuser %}
+                {% else %}
                     ▶️ Запустить | callback_data=admin:skip_song
                 {% endif %}
             {% endif %}
