@@ -13,18 +13,18 @@ from .config import MAXIMUM_FILE_SIZE, SEARCH_RESULTS_LIMIT, mediaDir
 
 
 class MasterDownloader:
-    def error(self, user_id, gen, message):
+    def error(self, user_id, request_id, message):
         self.output_queue.put({
             "action": "user_error",
-            "gen": gen,
+            "request_id": request_id,
             "user_id": user_id,
             "message": message,
         })
 
-    def send_user_message(self, user_id, gen, text):
+    def send_user_message(self, user_id, request_id, text):
         self.output_queue.put({
             "action": "user_message",
-            "gen": gen,
+            "request_id": request_id,
             "user_id": user_id,
             "message": text,
         })
@@ -41,7 +41,7 @@ class MasterDownloader:
 
         # Define callback for sending status updates to user
         def user_message(new_text):
-            return self.send_user_message(user_id, task["gen"], new_text)
+            return self.send_user_message(user_id, task["request_id"], new_text)
 
         accepted = False
         for dwnld_name in downloaders:
@@ -73,7 +73,7 @@ class MasterDownloader:
                 user_message("Ничего не нашел по этому запросу :(")
             except Exception as e:
                 print("ERROR [MasterDownloader]: " + str(e))
-                self.error(user_id, task["gen"], str(e))
+                self.error(user_id, task["request_id"], str(e))
             else:
                 print("DEBUG [MasterDownloader]: Download done")
                 self.output_queue.put({
@@ -81,7 +81,7 @@ class MasterDownloader:
                     "path": file_path,
                     "title": title,
                     "user_id": user_id,
-                    "gen": task["gen"],
+                    "request_id": task["request_id"],
                     "duration": seconds,
                 })
             break
@@ -89,7 +89,7 @@ class MasterDownloader:
             self.output_queue.put({
                 "action": "no_dl_handler",
                 "user_id": user_id,
-                "gen": task["gen"],
+                "request_id": task["request_id"],
                 "text": task["text"] if "text" in task else "",
                 "chat_id": task["chat_id"] if "chat_id" in task else None,
                 "message_id": task["message_id"] if "message_id" in task else None,
@@ -102,7 +102,7 @@ class MasterDownloader:
 
         # Define callback for sending status updates to user
         def user_message(new_text):
-            return self.send_user_message(user_id, task["gen"], new_text)
+            return self.send_user_message(user_id, task["request_id"], new_text)
 
         for dwnld_name in self.downloaders:
             downloader = self.downloaders[dwnld_name]
@@ -122,7 +122,7 @@ class MasterDownloader:
                 self.output_queue.put({
                     "action": "search_results",
                     "user_id": user_id,
-                    "gen": task["gen"],
+                    "request_id": task["request_id"],
                     "results": search_results,
                 })
 
@@ -137,12 +137,12 @@ class MasterDownloader:
                 self.output_queue.put({
                     "action": "search_results",
                     "user_id": user_id,
-                    "gen": task["gen"],
+                    "request_id": task["request_id"],
                     "results": [],
                 })
             except Exception as e:
                 print("ERROR [MasterDownloader]: " + str(e))
-                self.error(user_id, task["gen"], str(e))
+                self.error(user_id, task["request_id"], str(e))
 
         self.input_queue.task_done()
 
@@ -159,7 +159,7 @@ class MasterDownloader:
                 threading.Thread(daemon=True, target=self.thread_search, args=(task,)).start()
             else:
                 print("ERROR [MasterDownloader]: Unknown action: \"" + task["action"] + "\"")
-                self.error(user_id, task["gen"], "Ошибка загрузчика: неизвестное действие \"" + task["action"] + "\"")
+                self.error(user_id, task["request_id"], "Ошибка загрузчика: неизвестное действие \"" + task["action"] + "\"")
 
     def __init__(self):
         # https://youtu.be/qAeybdD5UoQ

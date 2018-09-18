@@ -8,7 +8,6 @@ import time
 from .jinja_env import env
 
 from .private_config import token
-from utils import make_caption
 
 
 compiled_regex = re.compile(r"^\d+")
@@ -68,6 +67,9 @@ class TgFrontend:
         self.brainThread.start()
         self.init_handlers()
         self.init_callbacks()
+
+        self.generators = {}
+        self.gen_cnt = 0
 
         self.bamboozled_users = []
 
@@ -134,9 +136,12 @@ class TgFrontend:
             return
 
         gen = method(data, user)
+        request_id = self.gen_cnt
+        self.gen_cnt += 1
+        self.generators[request_id] = gen
 
         action = next(gen)
-        action["gen"] = gen
+        action["request_id"] = request_id
         action["user_id"] = user.core_id
         self.output_queue.put(action)
 
@@ -547,9 +552,9 @@ class TgFrontend:
 
             print("DEBUG [Bot]: Task from core: %s" % str(task))
 
-            if "gen" in task:
+            if "request_id" in task:
                 try:
-                    task["gen"].send(task)
+                    self.generators[task["request_id"]].send(task)
                 except StopIteration:
                     pass
 
