@@ -99,7 +99,7 @@ class TgFrontend:
 
     def init_callbacks(self):
         self.bot.callback_query_handler(func=lambda x: x.data[0:2] == "//")(lambda x: True)
-        self.bot.callback_query_handler(func=lambda x: True)(self.callback_query_handler)
+        self.bot.callback_query_handler(func=lambda x: True)(lambda data: self.tg_handler(data, self.callback_query))
 
         self.bot.inline_handler(func=lambda x: True)(lambda data: self.tg_handler(data, self.search))
         self.bot.chosen_inline_handler(func=lambda x: True)(lambda data: self.tg_handler(data, self.search_select))
@@ -110,11 +110,27 @@ class TgFrontend:
 
 #######################
 # TG CALLBACK HANDLERS
-    def callback_query_handler(self, data):
-        user = self.init_user(data.from_user)
-        if user is None:
-            return
+    def tg_handler(self, data, method):
+        try:
+            user = User.get(User.tg_id == data.from_user.id)
+        except peewee.DoesNotExist:
+            method = self.init_user
+            user = None
 
+        gen = method(data, user)
+        request_id = self.gen_cnt
+        self.gen_cnt += 1
+        self.generators[request_id] = gen
+
+        try:
+            action = next(gen)
+            action["request_id"] = request_id
+            action["user_id"] = getattr(user, "core_id", None)
+            self.output_queue.put(action)
+        except StopIteration:
+            pass
+
+    def callback_query(self, data, user):
         user.menu_message_id = data.message.message_id
         user.menu_chat_id = data.message.chat.id
         user.save()
@@ -124,34 +140,88 @@ class TgFrontend:
             print("ERROR [Bot]: Bad menu path: " + str(path))
             return
 
-        self.output_queue.put({
-            "action": "menu_event",
-            "path": path,
-            "user_id": user.core_id,
-        })
+        if path[0] == "main":
+            response = yield {"action": "get_status"}
+            self.send_menu_main(response, user)
+        elif path[0] == "queue":
+            page = int(path[1])
+            response = yield {"action": "get_queue", "page": page}
+            self.send_menu_queue(response, user)
+        elif path[0] == "song":
+            sid = int(path[1])
+            response = yield {"action": "get_song_info", "song_id": sid}
+            if response["song_id"] is not None:
+                self.send_menu_song(response, user)
+            else:
+                response = yield {"action": "get_queue", "page": response["page"]}
+                self.send_menu_queue(response, user)
+        elif path[0] == "vote":
+            sign = path[1]
+            sid = int(path[2])
+            if sign == "up":
+                yield {"action": "vote", "sign": "+", "song_id": sid}
+            else:
+                yield {"action": "vote", "sign": "-", "song_id": sid}
+            response = yield {"action": "get_song_info", "song_id": sid}
+            self.send_menu_song(response, user)
+        elif path[0] == "admin" and user.superuser:
+            path.pop(0)
+            pass
+        else:
+            print('ERROR [Core]: Callback query is not supported:', str(path))
 
-    def tg_handler(self, data, method):
-        user = self.init_user(data.from_user)
-        if user is None:
-            return
+    def admin_query(self, path, user):
+        if path[0] == "skip_song":
+            yield {"action": "skip_song"}
+            response = yield {"action": "get_status"}
+            self.send_menu_main(response, user)
+        elif path[0] == "delete":
+            sid = int(path[1])
+            response = yield {"action": "get_song_info", "song_id": sid}
+            response = yield {"action": "get_queue", "page": response["pos"] // 10}
+            self.send_menu_queue(response, user)
+        elif path[0] == 'stop_playing':
+            yield {"action": "stop_playing"}
+            response = yield {"action": "get_status"}
+            self.send_menu_main(response, user)
+        elif path[0] == "list_users":
+            page = int(path[1])
+            response = yield {"action": "get_users_list", "page": page}
+            self.send_menu_admin_list_users(response, user)
+        elif path[0] == "user_info":
+            uid = int(path[1])
+            response = yield {"action": "get_user_info", "handled_user_id": uid}
+            if response["handled_user_id"] is not None:
+                self.send_menu_admin_user(response, user)
+            else:
+                print("ERROR [Core]: User does not exists: can't obtain user info")
+                response = yield {"action": "get_users_list", "page": response["page"]}
+                self.send_menu_admin_list_users(response, user)
+        elif path[0] == "ban_user":
+            uid = int(path[1])
+            yield {"action": "ban_user", "handled_user_id": uid}
+            response = yield {"action": "get_user_info", "handled_user_id": uid}
+            self.send_menu_admin_user(response, user)
+        elif path[0] == "unban_user":
+            uid = int(path[1])
+            yield {"action": "unban_user", "handled_user_id": uid}
+            response = yield {"action": "get_user_info", "handled_user_id": uid}
+            self.send_menu_admin_user(response, user)
+        else:
+            print('ERROR [Core]: Admin query is not supported:', str(path))
 
-        gen = method(data, user)
-        request_id = self.gen_cnt
-        self.gen_cnt += 1
-        self.generators[request_id] = gen
-
-        action = next(gen)
-        action["request_id"] = request_id
-        action["user_id"] = user.core_id
-        self.output_queue.put(action)
-
-    def search(self, data, _user):
+    def search(self, data, user):
         query = data.query.lstrip()
 
         response = yield {
             "action": "search",
             "query": query,
         }
+
+        action = response["action"]
+        if action == "user_message" or action == "user_error":
+            self.bot.send_message(user.tg_id, response["message"])
+            return
 
         results = response["results"]
 
@@ -250,22 +320,6 @@ class TgFrontend:
 
 
 # MENU RELATED #####
-    def listened_menu(self, task, user):
-        menu = task["entry"]
-
-        handlers = {
-            "main": self.send_menu_main,
-            "queue": self.send_menu_queue,
-            "song_details": self.send_menu_song,
-            "admin_list_users": self.send_menu_admin_list_users,
-            "admin_user": self.send_menu_admin_user,
-        }
-
-        if menu in handlers:
-            handlers[menu](task, user)
-        else:
-            print("ERROR [Bot]: Unknown menu: " + str(menu))
-
     def remove_old_menu(self, user):
 
         # self.bot.edit_message_reply_markup(
@@ -320,7 +374,7 @@ class TgFrontend:
             markup.row(*m_row)
         return markup
 
-    def send_menu_main(self, task, user):
+    def send_menu_main(self, data, user):
         menu_template = """
             {% if superuser %}
                 {% if now_playing is not none %}
@@ -351,10 +405,10 @@ class TgFrontend:
             {% endif %}
         """
 
-        superuser = task["superuser"]
-        queue_len = task["queue_len"]
+        superuser = data["superuser"]
+        queue_len = data["queue_len"]
 
-        now_playing = task["now_playing"]
+        now_playing = data["now_playing"]
         if now_playing is not None:
             if now_playing["user_id"] is not None:
                 track_author = User.get(User.core_id == now_playing["user_id"])
@@ -364,7 +418,7 @@ class TgFrontend:
 
             now_playing["played"] = int(time.time() - now_playing["start_time"])
 
-        next_in_queue = task["next_in_queue"]
+        next_in_queue = data["next_in_queue"]
         if superuser and next_in_queue is not None:
             if next_in_queue.user is not None:
                 track_author = User.get(User.core_id == next_in_queue.user)
@@ -382,10 +436,10 @@ class TgFrontend:
         self.remove_old_menu(user)
         self.bot.send_message(user.tg_id, message_text, reply_markup=kb)
 
-    def send_menu_queue(self, task, user):
-        page = task["page"]
-        songs_list = task["songs_list"]
-        is_last_page = task["is_last_page"]
+    def send_menu_queue(self, data, user):
+        page = data["page"]
+        songs_list = data["songs_list"]
+        is_last_page = data["is_last_page"]
 
         if not songs_list:
             message_text = "В очереди воспроизведения ничего нет"
@@ -419,14 +473,14 @@ class TgFrontend:
         self.remove_old_menu(user)
         self.bot.send_message(user.tg_id, message_text, reply_markup=kb)
 
-    def send_menu_song(self, task, user):
-        superuser = task['superuser']
-        sid = task["number"]
-        duration = task["duration"]
-        rating = task["rating"]
-        position = task["position"]
-        page = task["page"]
-        title = task["title"]
+    def send_menu_song(self, data, user):
+        superuser = data['superuser']
+        sid = data["song_id"]
+        duration = data["duration"]
+        rating = data["rating"]
+        position = data["position"]
+        page = data["page"]
+        title = data["title"]
 
         str_duration = "{:d}:{:02d}".format(*list(divmod(duration, 60)))
         base_str = "Песня: {}\nПродолжительность: {}\nРейтинг: {:d}\nМесто в очереди: {:d}"
@@ -444,11 +498,11 @@ class TgFrontend:
         self.remove_old_menu(user)
         self.bot.send_message(user.tg_id, message_text, reply_markup=kb)
 
-    def send_menu_admin_list_users(self, task, user):
-        page = task["page"]
-        users_list = task["users_list"]
-        users_cnt = task["users_cnt"]
-        is_last_page = task["is_last_page"]
+    def send_menu_admin_list_users(self, data, user):
+        page = data["page"]
+        users_list = data["users_list"]
+        users_cnt = data["users_cnt"]
+        is_last_page = data["is_last_page"]
 
         if users_cnt == 0:
             message_text = "Нет ни одного пользователя"
@@ -487,8 +541,8 @@ class TgFrontend:
         self.remove_old_menu(user)
         self.bot.send_message(user.tg_id, message_text, reply_markup=kb)
 
-    def send_menu_admin_user(self, task, user):
-        about_user_core = task["about_user"]
+    def send_menu_admin_user(self, data, user):
+        about_user_core = data["about_user"]
         try:
             about_user = User.get(User.core_id == about_user_core.id)
         except KeyError:
@@ -517,9 +571,9 @@ class TgFrontend:
         if about_user.login is not None:
             message_text += " (@%s)\n" % about_user.login
         message_text += "\n"
-        if task['req_cnt'] > 0:
+        if data['req_cnt'] > 0:
             message_text = "\nПоследние запросы:\n"
-            for r in task['requests']:
+            for r in data['requests']:
                 message_text += r.text + "\n"
 
         self.remove_old_menu(user)
@@ -556,6 +610,7 @@ class TgFrontend:
                 try:
                     self.generators[task["request_id"]].send(task)
                 except StopIteration:
+                    self.generators[task["request_id"]] = None
                     pass
 
             elif "action" in task:
@@ -564,7 +619,6 @@ class TgFrontend:
                     "user_message": self.listened_user_message,
                     "access_denied": self.listened_access_denied,
                     "error": self.listened_user_message,
-                    "menu": self.listened_menu,
                 }
 
                 if action in handlers:
@@ -577,24 +631,6 @@ class TgFrontend:
 
             print("DEBUG [Bot]: Task done: %s" % str(task))
             self.input_queue.task_done()
-
-    def listened_user_init_done(self, task):
-        user_info = task["frontend_user"]
-        user_id = task["user_id"]
-        user = User.create(
-            tg_id=user_info.id,
-            core_id=user_id,
-            login=user_info.username,
-            first_name=user_info.first_name,
-            last_name=user_info.last_name,
-        )
-
-        self.bot.send_message(user.tg_id, help_message, disable_web_page_preview=True)
-        self.output_queue.put({
-            "action": "menu_event",
-            "path": ["main"],
-            "user_id": user.core_id,
-        })
 
     def listened_user_message(self, task, user):
         self.bot.send_message(user.tg_id, task["message"])
@@ -668,16 +704,25 @@ class TgFrontend:
             "user_id": user.core_id,
         })
 
-    def init_user(self, from_user):
-        try:
-            user = User.get(User.tg_id == from_user.id)
-            return user
-        except peewee.DoesNotExist:
-            self.output_queue.put({
-                "action": "init_user",
-                "frontend_user": from_user,
-            })
-            return None
+    def init_user(self, data, _null):
+
+        response = yield {
+            "action": "init_user",
+            "frontend_user": data.from_user,
+        }
+
+        user_info = response["frontend_user"]
+        user_id = response["user_id"]
+        user = User.create(
+            tg_id=user_info.id,
+            core_id=user_id,
+            login=user_info.username,
+            first_name=user_info.first_name,
+            last_name=user_info.last_name,
+        )
+
+        self.bot.send_message(user.tg_id, help_message, disable_web_page_preview=True)
+        return user
 
 # USER MESSAGES HANDLERS #####
 

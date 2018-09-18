@@ -136,6 +136,8 @@ class DJ_Brain:
                 })
                 continue
 
+            request_id = task["request_id"]
+
             print("DEBUG [Core]: Task from frontend: %s" % str(task))
 
             action = task['action']
@@ -144,6 +146,53 @@ class DJ_Brain:
             elif action == "search":
                 print("DEBUG [Core]: pushed search task to downloader: " + str(task))
                 self.downloader.input_queue.put(task)
+            elif action == "get_status":
+                self.send_menu_main(user, request_id=request_id)
+            elif action == "get_queue":
+                page = task["page"]
+                songs_list, _, is_last_page = self.scheduler.get_queue_page(page)
+                self.frontend.input_queue.put({
+                    "request_id": request_id,
+                    "user_id": user.id,
+                    "page": page,
+                    "songs_list": songs_list,
+                    "is_last_page": is_last_page
+                })
+            elif action == "get_song_info":
+                song_id = task["song_id"]
+                (song, position) = self.scheduler.get_song(song_id)
+                if song is not None:
+                    self.frontend.input_queue.put({
+                        "request_id": request_id,
+                        "user_id": user.id,
+                        "song_id": song_id,
+                        "title": song.title,
+                        "duration": song.duration,
+                        "rating": sum([song.votes[k] for k in song.votes]),
+                        "position": position,
+                        "page": position // PAGE_SIZE,
+                        "superuser": user.superuser,
+                    })
+                else:
+                    self.frontend.input_queue.put({
+                        "request_id": request_id,
+                        "user_id": user.id,
+                        "song_id": None,
+                        "page": position // PAGE_SIZE,
+                    })
+            elif action == "vote":
+                sign = task["sign"]
+                song_id = task["song_id"]
+
+                print("DEBUG [Core]: User %d votes %s for song %d" % (user.id, sign, song_id))
+                if sign == "+":
+                    self.scheduler.vote_up(user.id, song_id)
+                else:
+                    self.scheduler.vote_down(user.id, song_id)
+                self.frontend.input_queue.put({
+                    "request_id": request_id,
+                    "user_id": user.id,
+                })
             elif action == "menu_event":
                 self.menu_action(task)
             else:
@@ -170,34 +219,7 @@ class DJ_Brain:
         path = task["path"]
         print("DEBUG [Core]: menu action %s from user %s" % (path, user_id))
 
-        if path[0] == "main":
-            self.send_menu_main(user)
-        elif path[0] == "queue":
-            cur_page = int(path[1])
-            songs_list, _, is_last_page = self.scheduler.get_queue_page(cur_page)
-            self.send_menu_songs_queue(user, cur_page, songs_list, is_last_page)
-
-        elif path[0] == "song":
-            sel_song = int(path[1])
-            (song, position) = self.scheduler.get_song(sel_song)
-            if song is not None:
-                self.send_menu_song_info(user, path[1], song, position, position // PAGE_SIZE)
-            else:
-                cur_page = 0
-                songs_list, _, is_last_page = self.scheduler.get_queue_page(cur_page)
-                self.send_menu_songs_queue(user, cur_page, songs_list, is_last_page)
-
-        elif path[0] == "vote":
-            sign = path[1]
-            sid = int(path[2])
-            print("DEBUG [Core]: User %d votes %s for song %d" % (user_id, sign, sid))
-            if sign == "up":
-                song, position = self.scheduler.vote_up(user_id, sid)
-            else:
-                song, position = self.scheduler.vote_down(user_id, sid)
-            self.send_menu_song_info(user, path[2], song, position, position // PAGE_SIZE)
-
-        elif path[0] == "admin" and user.superuser:
+        if path[0] == "admin" and user.superuser:
             path.pop(0)
             self.menu_admin_action(task)
         else:
@@ -321,7 +343,7 @@ class DJ_Brain:
                 })
         return track, next_track
 
-    def send_menu_main(self, user, current_track=None, next_track=None):
+    def send_menu_main(self, user, current_track=None, next_track=None, request_id=None):
         if current_track is not None:
             #  cruthcy conversions! YAAAY
             current_track = {
@@ -334,6 +356,7 @@ class DJ_Brain:
         self.frontend.input_queue.put({
             "action": "menu",
             "user_id": user.id,
+            "request_id": request_id,
             "entry": "main",
             "queue_len": self.scheduler.queue_length(),
             "now_playing": current_track or self.backend.now_playing,
