@@ -368,7 +368,7 @@ class TgFrontend:
         if superuser and next_in_queue is not None:
             if next_in_queue.user is not None:
                 track_author = User.get(User.core_id == next_in_queue.user)
-                next_in_queue.author = track_author.full_name
+                next_in_queue.author = track_author.full_name()
             else:
                 next_in_queue.author = "Студсовет"
 
