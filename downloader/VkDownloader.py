@@ -102,8 +102,7 @@ class VkDownloader(AbstractDownloader):
             song = self.songs_cache[result_id]
         except KeyError:
             print("ERROR [VkDownloader]: No search cache entry for id " + result_id)
-            user_message("Внутренняя ошибка (запрошенная песня отсутствует в кэше поиска)")
-            return
+            raise Exception("Внутренняя ошибка (запрошенная песня отсутствует в кэше поиска)")
 
         title = song["artist"] + " — " + song["title"]
         file_name = sanitize_file_name("vk-" + str(result_id) + '.mp3')
