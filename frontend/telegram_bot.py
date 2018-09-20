@@ -166,7 +166,7 @@ class TgFrontend:
             self.send_menu_song(response, user)
         elif path[0] == "admin" and user.superuser:
             path.pop(0)
-            pass
+            self.admin_query(path, user)
         else:
             print('ERROR [Core]: Callback query is not supported:', str(path))
 
@@ -175,15 +175,15 @@ class TgFrontend:
             yield {"action": "skip_song"}
             response = yield {"action": "get_status"}
             self.send_menu_main(response, user)
-        elif path[0] == "delete":
-            sid = int(path[1])
-            response = yield {"action": "get_song_info", "song_id": sid}
-            response = yield {"action": "get_queue", "page": response["pos"] // 10}
-            self.send_menu_queue(response, user)
         elif path[0] == 'stop_playing':
             yield {"action": "stop_playing"}
             response = yield {"action": "get_status"}
             self.send_menu_main(response, user)
+        elif path[0] == "delete":
+            sid = int(path[1])
+            response = yield {"action": "remove_song", "song_id": sid}
+            response = yield {"action": "get_queue", "page": response["pos"] // 10}
+            self.send_menu_queue(response, user)
         elif path[0] == "list_users":
             page = int(path[1])
             response = yield {"action": "get_users_list", "page": page}
@@ -191,7 +191,7 @@ class TgFrontend:
         elif path[0] == "user_info":
             uid = int(path[1])
             response = yield {"action": "get_user_info", "handled_user_id": uid}
-            if response["handled_user_id"] is not None:
+            if response["handled_user"] is not None:
                 self.send_menu_admin_user(response, user)
             else:
                 print("ERROR [Core]: User does not exists: can't obtain user info")
@@ -542,7 +542,7 @@ class TgFrontend:
         self.bot.send_message(user.tg_id, message_text, reply_markup=kb)
 
     def send_menu_admin_user(self, data, user):
-        about_user_core = data["about_user"]
+        about_user_core = data["handled_user"]
         try:
             about_user = User.get(User.core_id == about_user_core.id)
         except KeyError:
@@ -583,26 +583,11 @@ class TgFrontend:
     def brain_listener(self):
         while True:
             task = self.input_queue.get(block=True)
-            if task["user_id"] == "System":
-                print("INFO [Bot]: Skipping task: %s" % str(task))
-                self.input_queue.task_done()
-                continue
 
             try:
                 user = User.get(User.core_id == task["user_id"])
             except peewee.DoesNotExist:
                 user = None
-
-            if user is None and task["action"] != "user_init_done":
-                print("ERROR [Bot]: Task for unknown user: %d" % task["user_id"])
-                self.input_queue.task_done()
-                continue
-
-            if task["action"] == "user_init_done":
-                print("INFO [Bot]: User init done: %s" % str(task))
-                self.listened_user_init_done(task)
-                self.input_queue.task_done()
-                continue
 
             print("DEBUG [Bot]: Task from core: %s" % str(task))
 

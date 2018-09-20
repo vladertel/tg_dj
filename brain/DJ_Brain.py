@@ -113,6 +113,7 @@ class DJ_Brain:
     def frontend_listener(self):
         while True:
             task = self.frontend.output_queue.get()
+            request_id = task["request_id"]
 
             if "user_id" not in task and task['action'] != "init_user":
                 print('ERROR [Core]: Message from frontend with no user id:', str(task))
@@ -121,7 +122,7 @@ class DJ_Brain:
             if task['action'] == "init_user":
                 u = User.create()
                 self.frontend.input_queue.put({
-                    "action": "user_init_done",
+                    "request_id": request_id,
                     "user_id": u.id,
                     "frontend_user": task["frontend_user"],
                 })
@@ -131,12 +132,11 @@ class DJ_Brain:
             user = User.get(id=task["user_id"])
             if user.banned:
                 self.frontend.input_queue.put({
-                    "action": "access_denied",
+                    "request_id": request_id,
                     "user_id": user.id,
+                    "action": "access_denied",
                 })
                 continue
-
-            request_id = task["request_id"]
 
             print("DEBUG [Core]: Task from frontend: %s" % str(task))
 
@@ -193,14 +193,62 @@ class DJ_Brain:
                     "request_id": request_id,
                     "user_id": user.id,
                 })
-            elif action == "menu_event":
-                self.menu_action(task)
+            elif action == "skip_song":
+                if user.superuser:
+                    self.play_next_track()
+                    self.frontend.input_queue.put({"request_id": request_id, "user_id": user.id})
+            elif action == "stop_playing":
+                if user.superuser:
+                    self.backend.input_queue.put({"action": "stop_playing"})
+                    self.frontend.input_queue.put({"request_id": request_id, "user_id": user.id})
+            elif action == "remove_song":
+                if user.superuser:
+                    song_id = task["song_id"]
+                    position = self.scheduler.remove_from_queue(song_id)
+                    self.frontend.input_queue.put({"request_id": request_id, "user_id": user.id, "pos": position})
+            elif action == "get_users_list":
+                if user.superuser:
+                    page = task["page"]
+                    self.send_menu_users_list(user, page, request_id)
+            elif action == "get_user_info":
+                if user.superuser:
+                    handled_uid = task["handled_user_id"]
+                    try:
+                        handled_user = User.get(id=handled_uid)
+                        self.send_menu_user_info(user, handled_user, request_id)
+                    except KeyError:
+                        self.frontend.input_queue.put({
+                            "request_id": request_id,
+                            "user_id": user.id,
+                            "handled_user": None,
+                        })
+            elif action == "ban_user":
+                if user.superuser:
+                    handled_uid = task["handled_user_id"]
+                    try:
+                        handled_user = User.get(id=handled_uid)
+                        handled_user.banned = True
+                        handled_user.save()
+                    except KeyError:
+                        pass
+                    self.frontend.input_queue.put({"request_id": request_id, "user_id": user.id})
+            elif action == "unban_user":
+                if user.superuser:
+                    handled_uid = task["handled_user_id"]
+                    try:
+                        handled_user = User.get(id=handled_uid)
+                        handled_user.banned = False
+                        handled_user.save()
+                    except KeyError:
+                        pass
+                    self.frontend.input_queue.put({"request_id": request_id, "user_id": user.id})
             else:
                 print('ERROR [Core]: Message not supported:', str(task))
             self.frontend.output_queue.task_done()
 
     def download_action(self, task):
         user_id = task["user_id"]
+        request_id = task["request_id"]
         user, _ = User.get_or_create(id=user_id)
 
         if user.check_requests_quota() or user.superuser:
@@ -208,66 +256,11 @@ class DJ_Brain:
             self.downloader.input_queue.put(task)
         else:
             self.frontend.input_queue.put({
-                'action': 'user_message',
+                "request_id": request_id,
                 "user_id": user_id,
+                'action': 'user_message',
                 'message': 'Превышен лимит запросов, попробуйте позже'
             })
-
-    def menu_action(self, task):
-        user_id = task["user_id"]
-        user, _ = User.get_or_create(id=user_id)
-        path = task["path"]
-        print("DEBUG [Core]: menu action %s from user %s" % (path, user_id))
-
-        if path[0] == "admin" and user.superuser:
-            path.pop(0)
-            self.menu_admin_action(task)
-        else:
-            print('ERROR [Core]: Menu not supported:', str(path))
-
-    def menu_admin_action(self, task):
-        user_id = task["user_id"]
-        user, _ = User.get_or_create(id=user_id)
-        path = task["path"]
-
-        if path[0] == "skip_song":
-            track, next_track = self.play_next_track()
-            self.send_menu_main(user, track, next_track)
-
-        elif path[0] == "delete":
-            pos = self.scheduler.remove_from_queue(int(path[1]))
-            songs_list, page, is_last_page = self.scheduler.get_queue_page(pos // 10)
-            self.send_menu_songs_queue(user, page, songs_list, is_last_page)
-
-        elif path[0] == 'stop_playing':
-            self.backend.input_queue.put({"action": "stop_playing"})
-            self.send_menu_main(user)
-
-        elif path[0] == "list_users":
-            self.send_menu_users_list(user, int(path[1]))
-
-        elif path[0] == "user_info":
-            try:
-                handled_user = User.get(id=int(path[1]))
-                self.send_menu_user_info(user, handled_user)
-            except KeyError:
-                print("ERROR [Core]: User does not exists: can't obtain user info")
-
-        elif path[0] == "ban_user" or path[0] == "unban_user":
-            try:
-                handled_user = User.get(id=int(path[1]))
-
-                if path[0] == "ban_user":
-                    handled_user.banned = True
-                    print("DEBUG [Core]: User banned")
-                if path[0] == "unban_user":
-                    handled_user.banned = False
-                    print("DEBUG [Core]: User unbanned")
-                handled_user.save()
-
-                self.send_menu_user_info(user, handled_user)
-            except KeyError:
-                print("ERROR [Core]: User does not exists: can't ban/unban user")
 
     # DOWNLOADER QUEUE
     def downloader_listener(self):
@@ -388,7 +381,7 @@ class DJ_Brain:
             "superuser": user.superuser
         })
 
-    def send_menu_users_list(self, user, page):
+    def send_menu_users_list(self, user, page, request_id):
 
         users_cnt = User.select().count()
         if users_cnt == 0:
@@ -407,8 +400,7 @@ class DJ_Brain:
         users = User.select().offset(start).limit(PAGE_SIZE)
 
         self.frontend.input_queue.put({
-            "action": "menu",
-            "entry": "admin_list_users",
+            "request_id": request_id,
             "user_id": user.id,
             "page": page,
             "users_list": users,
@@ -416,16 +408,15 @@ class DJ_Brain:
             "is_last_page": end >= users_cnt
         })
 
-    def send_menu_user_info(self, user, handled_user):
+    def send_menu_user_info(self, user, handled_user, request_id):
 
         requests = Request.select().filter(Request.user == handled_user).order_by(-Request.time).limit(10)
         req_cnt = Request.select().count()
 
         self.frontend.input_queue.put({
-            "action": "menu",
-            "entry": "admin_user",
+            "request_id": request_id,
             "user_id": user.id,
-            "about_user": handled_user,
+            "handled_user": handled_user,
             "requests": [r for r in requests],
             "req_cnt": req_cnt,
         })
