@@ -85,11 +85,11 @@ class TgFrontend:
                 sleep(15)
 
     def init_handlers(self):
-        self.bot.message_handler(commands=['start'])(self.start_handler)
+        self.bot.message_handler(commands=['start'])(lambda data: self.tg_handler(data, self.start_handler))
         self.bot.message_handler(commands=['broadcast'])(self.broadcast_to_all_users)
         self.bot.message_handler(commands=['get_info'])(self.get_user_info)
-        self.bot.message_handler(commands=['stop_playing', 'stop'])(self.stop_playing)
-        self.bot.message_handler(commands=['skip_song', 'skip'])(self.skip_song)
+        self.bot.message_handler(commands=['stop_playing', 'stop'])(lambda data: self.tg_handler(data, self.stop_playing))
+        self.bot.message_handler(commands=['skip_song', 'skip'])(lambda data: self.tg_handler(data, self.skip_song))
         self.bot.message_handler(commands=['/'])(lambda x: True)
 
         self.bot.message_handler(content_types=['text'])(lambda data: self.tg_handler(data, self.download))
@@ -164,13 +164,14 @@ class TgFrontend:
                 yield {"action": "vote", "sign": "-", "song_id": sid}
             response = yield {"action": "get_song_info", "song_id": sid}
             self.send_menu_song(response, user)
-        elif path[0] == "admin" and user.superuser:
+        elif path[0] == "admin":
             path.pop(0)
-            self.admin_query(path, user)
+            yield from self.admin_query(path, user)
         else:
-            print('ERROR [Core]: Callback query is not supported:', str(path))
+            print('ERROR [Bot]: Callback query is not supported:', str(path))
 
     def admin_query(self, path, user):
+        print('INFO [Bot]: Admin query from user %d: %s' % (user.tg_id, str(path)))
         if path[0] == "skip_song":
             yield {"action": "skip_song"}
             response = yield {"action": "get_status"}
@@ -591,14 +592,7 @@ class TgFrontend:
 
             print("DEBUG [Bot]: Task from core: %s" % str(task))
 
-            if "request_id" in task:
-                try:
-                    self.generators[task["request_id"]].send(task)
-                except StopIteration:
-                    self.generators[task["request_id"]] = None
-                    pass
-
-            elif "action" in task:
+            if "action" in task and user is not None:
                 action = task["action"]
                 handlers = {
                     "user_message": self.listened_user_message,
@@ -610,7 +604,16 @@ class TgFrontend:
                     handlers[action](task, user)
                 else:
                     print("ERROR [Bot]: Unknown action: " + str(task["action"]))
-
+            elif "request_id" in task:
+                try:
+                    new_task = self.generators[task["request_id"]].send(task)
+                    if new_task is not None:
+                        new_task["request_id"] = task["request_id"]
+                        new_task["user_id"] = getattr(user, "core_id", None)
+                        self.output_queue.put(new_task)
+                except StopIteration:
+                    self.generators[task["request_id"]] = None
+                    pass
             else:
                 print("ERROR [Bot]: Bad task from core: " + str(task))
 
@@ -655,42 +658,18 @@ class TgFrontend:
         #     self.bot.send_message(message.from_user.id, "You have no power here")
 
 # COMMANDS #####
-    def stop_playing(self, message):
-        user = self.init_user(message.from_user)
-        if user is None:
-            return
+    def stop_playing(self, _message, _user):
+        yield {"action": "stop_playing"}
 
-        self.output_queue.put({
-            "action": "menu_event",
-            "path": "admin:stop_playing",
-            "user_id": user.core_id,
-        })
+    def skip_song(self, _message, _user):
+        yield {"action": "skip_song"}
 
-    def skip_song(self, message):
-        user = self.init_user(message.from_user)
-        if user is None:
-            return
-
-        self.output_queue.put({
-            "action": "menu_event",
-            "path": "admin:skip_song",
-            "user_id": user.core_id,
-        })
-
-    def start_handler(self, message):
-        user = self.init_user(message.from_user)
-        if user is None:
-            return
-
+    def start_handler(self, message, user):
         self.bot.send_message(user.tg_id, help_message, disable_web_page_preview=True)
-        self.output_queue.put({
-            "action": "menu_event",
-            "path": ["main"],
-            "user_id": user.core_id,
-        })
+        response = yield {"action": "get_status"}
+        self.send_menu_main(response, user)
 
     def init_user(self, data, _null):
-
         response = yield {
             "action": "init_user",
             "frontend_user": data.from_user,
@@ -707,7 +686,8 @@ class TgFrontend:
         )
 
         self.bot.send_message(user.tg_id, help_message, disable_web_page_preview=True)
-        return user
+        response = yield {"action": "get_status"}
+        self.send_menu_main(response, user)
 
 # USER MESSAGES HANDLERS #####
 

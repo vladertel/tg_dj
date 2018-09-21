@@ -347,7 +347,6 @@ class DJ_Brain:
 
             }
         self.frontend.input_queue.put({
-            "action": "menu",
             "user_id": user.id,
             "request_id": request_id,
             "entry": "main",
@@ -359,7 +358,6 @@ class DJ_Brain:
 
     def send_menu_songs_queue(self, user, number, songs_list, is_last_page):
         self.frontend.input_queue.put({
-            "action": "menu",
             "entry": "queue",
             "user_id": user.id,
             "page": number,
@@ -369,7 +367,6 @@ class DJ_Brain:
 
     def send_menu_song_info(self, user, number, song, position, page):
         self.frontend.input_queue.put({
-            "action": "menu",
             "entry": "song_details",
             "user_id": user.id,
             "number": number,
