@@ -219,8 +219,8 @@ class TgFrontend:
             "query": query,
         }
 
-        action = response["action"]
-        if action == "user_message" or action == "user_error":
+        state = response["state"]
+        if state == "user_message" or state == "error":
             self.bot.send_message(user.tg_id, response["message"])
             return
 
@@ -250,13 +250,13 @@ class TgFrontend:
         }
 
         while True:
-            action = response["action"]
-            if action == "user_message" or action == "user_error":
+            state = response["state"]
+            if state == "user_message" or state == "error":
                 print("DEBUG [Bot]: EDIT MESSAGE: " + str(response["message"]))
                 self.bot.edit_message_text(response["message"], reply.chat.id, reply.message_id)
-            elif action == "no_dl_handler":
+            elif state == "no_dl_handler":
                 self.bot.edit_message_text("Ошибка: обработчик не найден", reply.chat.id, reply.message_id)
-            elif action == "download_done":
+            elif state == "download_done":
                 break
             response = yield
 
@@ -276,10 +276,10 @@ class TgFrontend:
         }
 
         while True:
-            action = response["action"]
-            if action == "user_message" or action == "user_error":
+            state = response["action"]
+            if state == "user_message" or state == "error":
                 self.bot.edit_message_text(response["message"], reply.chat.id, reply.message_id)
-            elif action == "no_dl_handler":
+            elif state == "no_dl_handler":
 
                 kb = telebot.types.InlineKeyboardMarkup(row_width=2)
                 kb.row(telebot.types.InlineKeyboardButton(
@@ -290,7 +290,7 @@ class TgFrontend:
                 self.bot.edit_message_text("Запрос не распознан. Нажмите на кнопку ниже, чтобы включить поиск",
                                            reply.chat.id, reply.message_id)
                 self.bot.edit_message_reply_markup(reply.chat.id, reply.message_id, reply_markup=kb)
-            elif action == "download_done":
+            elif state == "download_done":
                 break
             response = yield
 
@@ -310,12 +310,12 @@ class TgFrontend:
         }
 
         while True:
-            action = response["action"]
-            if action == "user_message" or action == "user_error":
+            state = response["action"]
+            if state == "user_message" or state == "error":
                 self.bot.edit_message_text(response["message"], reply.chat.id, reply.message_id)
-            elif action == "no_dl_handler":
+            elif state == "no_dl_handler":
                 self.bot.edit_message_text("Ошибка: обработчик не найден", reply.chat.id, reply.message_id)
-            elif action == "download_done":
+            elif state == "download_done":
                 break
             response = yield
 

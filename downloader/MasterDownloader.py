@@ -15,7 +15,7 @@ from .config import MAXIMUM_FILE_SIZE, SEARCH_RESULTS_LIMIT, mediaDir
 class MasterDownloader:
     def error(self, user_id, request_id, message):
         self.output_queue.put({
-            "action": "user_error",
+            "state": "error",
             "request_id": request_id,
             "user_id": user_id,
             "message": message,
@@ -23,7 +23,7 @@ class MasterDownloader:
 
     def send_user_message(self, user_id, request_id, text):
         self.output_queue.put({
-            "action": "user_message",
+            "state": "user_message",
             "request_id": request_id,
             "user_id": user_id,
             "message": text,
@@ -77,7 +77,7 @@ class MasterDownloader:
             else:
                 print("DEBUG [MasterDownloader]: Download done")
                 self.output_queue.put({
-                    "action": "download_done",
+                    "state": "download_done",
                     "path": file_path,
                     "title": title,
                     "user_id": user_id,
@@ -87,7 +87,7 @@ class MasterDownloader:
             break
         if not accepted:
             self.output_queue.put({
-                "action": "no_dl_handler",
+                "state": "no_dl_handler",
                 "user_id": user_id,
                 "request_id": task["request_id"],
                 "text": task["text"] if "text" in task else "",
@@ -120,7 +120,7 @@ class MasterDownloader:
                     r["downloader"] = dwnld_name
 
                 self.output_queue.put({
-                    "action": "search_results",
+                    "state": "search_results",
                     "user_id": user_id,
                     "request_id": task["request_id"],
                     "results": search_results,
@@ -135,7 +135,7 @@ class MasterDownloader:
                              "Попробуйте повторить позже")
             except NothingFound:
                 self.output_queue.put({
-                    "action": "search_results",
+                    "state": "search_results",
                     "user_id": user_id,
                     "request_id": task["request_id"],
                     "results": [],
