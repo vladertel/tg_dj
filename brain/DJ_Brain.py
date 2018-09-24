@@ -112,28 +112,50 @@ class DJ_Brain:
         except FileNotFoundError:
             print("WARNING [Core]: save not found for brain")
 
-    def handle_request(self, request_id, user_id, task=None):
-        gen = self.requests[request_id]["handler"]
+    def handle_request(self, task, user=None, new_handler=None):
+
+        if user is None:
+            if "user_id" not in task:
+                print('ERROR [Core]: Message with no user id:', str(task))
+                return
+            if user != 0:
+                user = User.get(id=task["user_id"])
+
+        if "action" in task:
+            request_id = self.gen_cnt
+            self.gen_cnt += 1
+            gen = new_handler(task, user)
+            self.requests[request_id] = gen
+            new = True
+        elif "request_id" in task:
+            request_id = task["request_id"]
+            gen = self.requests[request_id]
+            new = False
+        else:
+            print('ERROR [Core]: Message has nor action nor request_id:', str(task))
+            return
 
         try:
-            response = gen.send(task)
+            response = gen.send(None if new else task)
             if response is None:
                 return
             (target, new_task) = response
-        except StopIteration as e:
-            new_task = e.value
-            request = self.requests[request_id]
-            target = request["from"]
-            source_id = request["source_id"]
+        except StopIteration:
             self.requests[request_id] = None
-            request_id = source_id
+            return
 
         if new_task is None:
             new_task = {}
 
         new_task["request_id"] = request_id
-        new_task["user_id"] = user_id
+        new_task["user_id"] = 0 if user is None else user.id
         target.input_queue.put(new_task)
+
+    @staticmethod
+    def reply(target, request, response):
+        response["request_id"] = request["request_id"]
+        response["user_id"] = request["user_id"]
+        target.input_queue.put(response)
 
     # FRONTEND QUEUE
     def frontend_listener(self):
@@ -166,14 +188,7 @@ class DJ_Brain:
 
             print("DEBUG [Core]: Task from frontend: %s" % str(task))
 
-            request_id = self.gen_cnt
-            self.gen_cnt += 1
-            self.requests[request_id] = {
-                "handler": self.frontend_handler(task, user),
-                "from": self.frontend,
-                "source_id": source_id,
-            }
-            self.handle_request(request_id, user.id)
+            self.handle_request(task, user, self.frontend_handler)
             self.frontend.output_queue.task_done()
 
     def frontend_handler(self, task, user):
@@ -198,20 +213,20 @@ class DJ_Brain:
         if action in handlers:
             g = handlers[action](task, user)
             if isinstance(g, types.GeneratorType):
-                result = yield from handlers[action](task, user)
-                return result
-            else:
-                return g
+                yield from handlers[action](task, user)
         else:
             print('ERROR [Core]: Request not supported:', str(task))
-            return {}
+            self.reply(self.frontend, task, {})
 
     def handler_download(self, task, user):
         if user.check_requests_quota() or user.superuser:
-            result = yield (self.downloader, task)
+            yield (self.downloader, dict(task))
 
-            while result['state'] != 'download_done':
+            while True:
                 result = yield
+                if result['state'] == 'download_done':
+                    break
+                self.reply(self.frontend, task, result)
 
             path = result['path']
             if self.isWindows:
@@ -223,37 +238,38 @@ class DJ_Brain:
                 if not self.backend.is_playing:
                     self.play_next_track()
 
-            return result
+            self.reply(self.frontend, task, result)
         else:
-            return {'action': 'user_message', 'message': 'Превышен лимит запросов. Попробуйте позже'}
+            self.reply(self.frontend, task,
+                       {'action': 'user_message', 'message': 'Превышен лимит запросов. Попробуйте позже'})
 
     def handler_search(self, task, _user):
-        result = yield (self.downloader, task)
-        return result
+        result = yield (self.downloader, dict(task))
+        self.reply(self.frontend, task, result)
 
-    def handler_get_status(self, _task, user):
-        return {
+    def handler_get_status(self, task, user):
+        self.reply(self.frontend, task, {
             "entry": "main",
             "queue_len": self.scheduler.queue_length(),
             "now_playing": self.backend.now_playing,
             "next_in_queue": self.scheduler.get_next_song(),
             "superuser": user.superuser,
-        }
+        })
 
     def handler_get_queue(self, task, _user):
         page = task["page"]
         songs_list, _, is_last_page = self.scheduler.get_queue_page(page)
-        return {
+        self.reply(self.frontend, task, {
             "page": page,
             "songs_list": songs_list,
             "is_last_page": is_last_page
-        }
+        })
 
     def handler_get_song_info(self, task, user):
         song_id = task["song_id"]
         (song, position) = self.scheduler.get_song(song_id)
         if song is not None:
-            return {
+            self.reply(self.frontend, task, {
                 "song_id": song_id,
                 "title": song.title,
                 "duration": song.duration,
@@ -261,12 +277,12 @@ class DJ_Brain:
                 "position": position,
                 "page": position // PAGE_SIZE,
                 "superuser": user.superuser,
-            }
+            })
         else:
-            return {
+            self.reply(self.frontend, task, {
                 "song_id": None,
                 "page": position // PAGE_SIZE,
-            }
+            })
 
     def handler_vote(self, task, user):
         sign = task["sign"]
@@ -277,121 +293,136 @@ class DJ_Brain:
             self.scheduler.vote_up(user.id, song_id)
         else:
             self.scheduler.vote_down(user.id, song_id)
-        return {}
+        self.reply(self.frontend, task, {})
 
-    def handler_skip_song(self, _task, user):
-        if user.superuser:
-            self.play_next_track()
-        return {}
+    def handler_skip_song(self, task, user):
+        if not user.superuser:
+            self.reply(self.frontend, task, {})
+            return
 
-    def handler_stop_playing(self, _task, user):
-        if user.superuser:
-            self.backend.input_queue.put({"action": "stop_playing"})
-        return {}
+        self.play_next_track()
+        self.reply(self.frontend, task, {})
+
+    def handler_stop_playing(self, task, user):
+        if not user.superuser:
+            self.reply(self.frontend, task, {})
+            return
+
+        self.backend.input_queue.put({"action": "stop_playing"})
+        self.reply(self.frontend, task, {})
 
     def handler_remove_song(self, task, user):
-        if user.superuser:
-            song_id = task["song_id"]
-            position = self.scheduler.remove_from_queue(song_id)
-            return {"pos": position}
-        return {}
+        if not user.superuser:
+            self.reply(self.frontend, task, {})
+            return
+
+        song_id = task["song_id"]
+        position = self.scheduler.remove_from_queue(song_id)
+        self.reply(self.frontend, task, {"pos": position})
 
     def handler_get_users_list(self, task, user):
-        if user.superuser:
-            page = task["page"]
+        if not user.superuser:
+            self.reply(self.frontend, task, {})
+            return
 
-            users_cnt = User.select().count()
-            if users_cnt == 0:
-                return {
-                    "page": 0,
-                    "users_list": [],
-                    "users_cnt": 0,
-                    "is_last_page": True,
-                }
+        page = task["page"]
 
-            start = page * PAGE_SIZE
-            if start >= users_cnt:
-                div, mod = divmod(users_cnt, PAGE_SIZE)
-                start = div * PAGE_SIZE
-                page = div
-            elif start < 0:
-                start = 0
-                page = 0
-            end = start + PAGE_SIZE
+        users_cnt = User.select().count()
+        if users_cnt == 0:
+            self.reply(self.frontend, task, {
+                "page": 0,
+                "users_list": [],
+                "users_cnt": 0,
+                "is_last_page": True,
+            })
 
-            users = User.select().offset(start).limit(PAGE_SIZE)
+        start = page * PAGE_SIZE
+        if start >= users_cnt:
+            div, mod = divmod(users_cnt, PAGE_SIZE)
+            start = div * PAGE_SIZE
+            page = div
+        elif start < 0:
+            start = 0
+            page = 0
+        end = start + PAGE_SIZE
 
-            return {
-                "page": page,
-                "users_list": users,
-                "users_cnt": users_cnt,
-                "is_last_page": end >= users_cnt,
-            }
-        return {}
+        users = User.select().offset(start).limit(PAGE_SIZE)
+
+        self.reply(self.frontend, task, {
+            "page": page,
+            "users_list": users,
+            "users_cnt": users_cnt,
+            "is_last_page": end >= users_cnt,
+        })
 
     def handler_get_user_info(self, task, user):
-        if user.superuser:
-            handled_uid = task["handled_user_id"]
-            try:
-                handled_user = User.get(id=handled_uid)
-                requests = Request.select().filter(Request.user == handled_user).order_by(-Request.time).limit(10)
-                req_cnt = Request.select().count()
+        if not user.superuser:
+            self.reply(self.frontend, task, {})
+            return
 
-                return {
-                    "handled_user": handled_user,
-                    "requests": [r for r in requests],
-                    "req_cnt": req_cnt,
-                }
-            except KeyError:
-                return {"handled_user": None}
-        return {}
+        handled_uid = task["handled_user_id"]
+        try:
+            handled_user = User.get(id=handled_uid)
+            requests = Request.select().filter(Request.user == handled_user).order_by(-Request.time).limit(10)
+            req_cnt = Request.select().count()
+
+            self.reply(self.frontend, task, {
+                "handled_user": handled_user,
+                "requests": [r for r in requests],
+                "req_cnt": req_cnt,
+            })
+        except KeyError:
+            self.reply(self.frontend, task, {"handled_user": None})
 
     def handler_ban_user(self, task, user):
-        if user.superuser:
-            handled_uid = task["handled_user_id"]
-            try:
-                handled_user = User.get(id=handled_uid)
-                handled_user.banned = True
-                handled_user.save()
-            except KeyError:
-                pass
-        return {}
+        if not user.superuser:
+            self.reply(self.frontend, task, {})
+            return
+
+        handled_uid = task["handled_user_id"]
+        try:
+            handled_user = User.get(id=handled_uid)
+            handled_user.banned = True
+            handled_user.save()
+        except KeyError:
+            pass
+        self.reply(self.frontend, task, {})
 
     def handler_unban_user(self, task, user):
-        if user.superuser:
-            handled_uid = task["handled_user_id"]
-            try:
-                handled_user = User.get(id=handled_uid)
-                handled_user.banned = False
-                handled_user.save()
-            except KeyError:
-                pass
-        return {}
+        if not user.superuser:
+            self.reply(self.frontend, task, {})
+            return
+
+        handled_uid = task["handled_user_id"]
+        try:
+            handled_user = User.get(id=handled_uid)
+            handled_user.banned = False
+            handled_user.save()
+        except KeyError:
+            pass
+        self.reply(self.frontend, task, {})
 
 # end handlers
 
     def downloader_listener(self):
         while True:
             task = self.downloader.output_queue.get()
-
             print("DEBUG [Core]: Task from downloader: %s" % str(task))
-
-            if "request_id" in task:
-                self.handle_request(task["request_id"], task["user_id"], task)
-            else:
-                print('ERROR [Core]: Bad response from downloader: ', str(task))
-
+            self.handle_request(task)
             self.downloader.output_queue.task_done()
 
     def backend_listener(self):
         while True:
             task = self.backend.output_queue.get()
-            action = task['action']
-            if action == "song_finished":
-                self.play_next_track()
-            else:
-                print('ERROR [Core]: Message not supported:', str(task))
+            print("DEBUG [Core]: Task from backend: %s" % str(task))
+            self.handle_request(task, new_handler=self.backend_handler)
             self.backend.output_queue.task_done()
+
+    def backend_handler(self, task, _user):
+        action = task['action']
+
+        if action == "song_finished":
+            self.play_next_track()
 
     def play_next_track(self):
         track = self.scheduler.pop_first_track()

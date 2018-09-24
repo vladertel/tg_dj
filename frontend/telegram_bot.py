@@ -617,7 +617,6 @@ class TgFrontend:
             else:
                 print("ERROR [Bot]: Bad task from core: " + str(task))
 
-            print("DEBUG [Bot]: Task done: %s" % str(task))
             self.input_queue.task_done()
 
     def listened_user_message(self, task, user):
