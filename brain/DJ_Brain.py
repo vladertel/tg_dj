@@ -11,6 +11,8 @@ import platform
 from .config import *
 from .scheduler import Scheduler
 
+from utils import make_endless_unfailable
+
 
 class UserQuotaReached(Exception):
     pass
@@ -110,45 +112,45 @@ class DJ_Brain:
             print("WARNING [Core]: save not found for brain")
 
     # FRONTEND QUEUE
+    @make_endless_unfailable
     def frontend_listener(self):
-        while True:
-            task = self.frontend.output_queue.get()
+        task = self.frontend.output_queue.get()
 
-            if "user_id" not in task and task['action'] != "init_user":
-                print('ERROR [Core]: Message from frontend with no user id:', str(task))
-                continue
+        if "user_id" not in task and task['action'] != "init_user":
+            print('ERROR [Core]: Message from frontend with no user id:', str(task))
+            continue
 
-            if task['action'] == "init_user":
-                u = User.create()
-                self.frontend.input_queue.put({
-                    "action": "user_init_done",
-                    "user_id": u.id,
-                    "frontend_user": task["frontend_user"],
-                })
-                print('INFO [Core]: User(id=%d) init done' % u.id)
-                continue
+        if task['action'] == "init_user":
+            u = User.create()
+            self.frontend.input_queue.put({
+                "action": "user_init_done",
+                "user_id": u.id,
+                "frontend_user": task["frontend_user"],
+            })
+            print('INFO [Core]: User(id=%d) init done' % u.id)
+            continue
 
-            user = User.get(id=task["user_id"])
-            if user.banned:
-                self.frontend.input_queue.put({
-                    "action": "access_denied",
-                    "user_id": user.id,
-                })
-                continue
+        user = User.get(id=task["user_id"])
+        if user.banned:
+            self.frontend.input_queue.put({
+                "action": "access_denied",
+                "user_id": user.id,
+            })
+            continue
 
-            print("DEBUG [Core]: Task from frontend: %s" % str(task))
+        print("DEBUG [Core]: Task from frontend: %s" % str(task))
 
-            action = task['action']
-            if action == 'download':
-                self.download_action(task)
-            elif action == "search":
-                print("DEBUG [Core]: pushed search task to downloader: " + str(task))
-                self.downloader.input_queue.put(task)
-            elif action == "menu_event":
-                self.menu_action(task)
-            else:
-                print('ERROR [Core]: Message not supported:', str(task))
-            self.frontend.output_queue.task_done()
+        action = task['action']
+        if action == 'download':
+            self.download_action(task)
+        elif action == "search":
+            print("DEBUG [Core]: pushed search task to downloader: " + str(task))
+            self.downloader.input_queue.put(task)
+        elif action == "menu_event":
+            self.menu_action(task)
+        else:
+            print('ERROR [Core]: Message not supported:', str(task))
+        self.frontend.output_queue.task_done()
 
     def download_action(self, task):
         user_id = task["user_id"]
@@ -248,40 +250,40 @@ class DJ_Brain:
                 print("ERROR [Core]: User does not exists: can't ban/unban user")
 
     # DOWNLOADER QUEUE
+    @make_endless_unfailable
     def downloader_listener(self):
-        while True:
-            task = self.downloader.output_queue.get()
-            action = task['action']
-            if action == 'download_done':
-                path = task['path']
-                if self.isWindows:
-                    path = path[2:]
+        task = self.downloader.output_queue.get()
+        action = task['action']
+        if action == 'download_done':
+            path = task['path']
+            if self.isWindows:
+                path = path[2:]
 
-                author = User.get(id=int(task["user_id"]))
-                Request.create(user=author, text=task['title'])
-                if author.check_requests_quota() or author.superuser:
-                    self.scheduler.add_track_to_end_of_queue(path, task['title'], task['duration'], task["user_id"])
-                    if not self.backend.is_playing:
-                        self.play_next_track()
+            author = User.get(id=int(task["user_id"]))
+            Request.create(user=author, text=task['title'])
+            if author.check_requests_quota() or author.superuser:
+                self.scheduler.add_track_to_end_of_queue(path, task['title'], task['duration'], task["user_id"])
+                if not self.backend.is_playing:
+                    self.play_next_track()
 
-                self.frontend.input_queue.put(task)
+            self.frontend.input_queue.put(task)
 
-            elif action in ['user_message', 'user_error', 'no_dl_handler', 'search_results']:
-                print("DEBUG [Core]: pushed task to frontend: " + str(task))
-                self.frontend.input_queue.put(task)
-            else:
-                print('ERROR [Core]: Message not supported: ', str(task))
-            self.downloader.output_queue.task_done()
+        elif action in ['user_message', 'user_error', 'no_dl_handler', 'search_results']:
+            print("DEBUG [Core]: pushed task to frontend: " + str(task))
+            self.frontend.input_queue.put(task)
+        else:
+            print('ERROR [Core]: Message not supported: ', str(task))
+        self.downloader.output_queue.task_done()
 
+    @make_endless_unfailable
     def backend_listener(self):
-        while True:
-            task = self.backend.output_queue.get()
-            action = task['action']
-            if action == "song_finished":
-                self.play_next_track()
-            else:
-                print('ERROR [Core]: Message not supported:', str(task))
-            self.backend.output_queue.task_done()
+        task = self.backend.output_queue.get()
+        action = task['action']
+        if action == "song_finished":
+            self.play_next_track()
+        else:
+            print('ERROR [Core]: Message not supported:', str(task))
+        self.backend.output_queue.task_done()
 
     def play_next_track(self):
         track = self.scheduler.pop_first_track()

@@ -4,6 +4,8 @@ import time
 import vlc
 
 from .private_config import vlc_options
+from utils import make_endless_unfailable
+
 # vlc_options = 'sout=#transcode{acodec=mp3,ab=320,channels=2,samplerate=44100}' \
 #               ':duplicate{dst=gather:http{mux=ts,dst=:1233/},dst=display}'
 
@@ -32,30 +34,30 @@ class VLCStreamer():
             "action": "song_finished",
         })
 
+    @make_endless_unfailable
     def queue_listener(self):
-        while True:
-            task = self.input_queue.get()
-            action = task['action']
-            if action == 'play_song':
-                uri = task['uri']
-                media = self.vlc_instance.media_new(uri, vlc_options, "sout-keep")
-                # media = self.vlc_instance.media_new(uri)
-                self.player.set_media(media)
-                self.player.play()
-                self.is_playing = True
-                self.now_playing = {
-                    "title": task["title"],
-                    "duration": task["duration"],
-                    "start_time": time.time(),
-                    "user_id": task["user_id"],
-                }
-            elif action == 'stop_playing':
-                self.player.stop()
-                self.is_playing = False
-                self.now_playing = None
-            else:
-                print('ERROR [VLC]: Message not supported:', task)
-            self.input_queue.task_done()
+        task = self.input_queue.get()
+        action = task['action']
+        if action == 'play_song':
+            uri = task['uri']
+            media = self.vlc_instance.media_new(uri, vlc_options, "sout-keep")
+            # media = self.vlc_instance.media_new(uri)
+            self.player.set_media(media)
+            self.player.play()
+            self.is_playing = True
+            self.now_playing = {
+                "title": task["title"],
+                "duration": task["duration"],
+                "start_time": time.time(),
+                "user_id": task["user_id"],
+            }
+        elif action == 'stop_playing':
+            self.player.stop()
+            self.is_playing = False
+            self.now_playing = None
+        else:
+            print('ERROR [VLC]: Message not supported:', task)
+        self.input_queue.task_done()
 
 
 # found example

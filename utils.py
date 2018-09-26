@@ -3,6 +3,16 @@ from mutagen.mp3 import MP3
 from unidecode import unidecode
 
 
+def make_endless_unfailable(func):
+    def wrapper(*args, **kwargs):
+        while True:
+            try:
+                func(*args, **kwargs)
+            except Exception as e:
+                print(e)
+    return wrapper
+
+
 def get_mp3_title_and_duration(path):
     audio = MP3(path)
 

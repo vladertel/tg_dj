@@ -11,6 +11,8 @@ from .LinkDownloader import LinkDownloader
 from .exceptions import *
 from .config import MAXIMUM_FILE_SIZE, SEARCH_RESULTS_LIMIT, mediaDir
 
+from utils import make_endless_unfailable
+
 
 class MasterDownloader:
     def error(self, user_id, request_id, message):
@@ -146,20 +148,20 @@ class MasterDownloader:
 
         self.input_queue.task_done()
 
+    @make_endless_unfailable
     def queue_listener(self):
-        while True:
-            task = self.input_queue.get()
-            user_id = task["user_id"]
+        task = self.input_queue.get()
+        user_id = task["user_id"]
 
-            if task["action"] == "download":
-                print("INFO [MasterDownloader]: Download action")
-                threading.Thread(daemon=True, target=self.thread_download, args=(task,)).start()
-            elif task["action"] == "search":
-                print("INFO [MasterDownloader]: Search action")
-                threading.Thread(daemon=True, target=self.thread_search, args=(task,)).start()
-            else:
-                print("ERROR [MasterDownloader]: Unknown action: \"" + task["action"] + "\"")
-                self.error(user_id, task["request_id"], "Ошибка загрузчика: неизвестное действие \"" + task["action"] + "\"")
+        if task["action"] == "download":
+            print("INFO [MasterDownloader]: Download action")
+            threading.Thread(daemon=True, target=self.thread_download, args=(task,)).start()
+        elif task["action"] == "search":
+            print("INFO [MasterDownloader]: Search action")
+            threading.Thread(daemon=True, target=self.thread_search, args=(task,)).start()
+        else:
+            print("ERROR [MasterDownloader]: Unknown action: \"" + task["action"] + "\"")
+            self.error(user_id, task["request_id"], "Ошибка загрузчика: неизвестное действие \"" + task["action"] + "\"")
 
     def __init__(self):
         # https://youtu.be/qAeybdD5UoQ
