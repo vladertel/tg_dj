@@ -8,6 +8,7 @@ import time
 from .jinja_env import env
 
 from .private_config import token
+from utils import make_endless_unfailable
 
 
 compiled_regex = re.compile(r"^\d+")
@@ -139,11 +140,13 @@ class TgFrontend:
         request_id = self.gen_cnt
         self.gen_cnt += 1
         self.generators[request_id] = gen
-
-        action = next(gen)
-        action["request_id"] = request_id
-        action["user_id"] = user.core_id
-        self.output_queue.put(action)
+        try:
+            action = next(gen)
+            action["request_id"] = request_id
+            action["user_id"] = user.core_id
+            self.output_queue.put(action)
+        except StopIteration:
+            pass
 
     def search(self, data, _user):
         query = data.query.lstrip()
@@ -193,35 +196,34 @@ class TgFrontend:
         text = message.text
 
         if re.search(r'^@\w+ ', text) is not None:
-            self.bot.send_message(user.tg_id, "Выберите из интерактивного меню, пожалуйста."
+            self.bot.send_message(user.tg_id, "Выберите из интерактивного меню, пожалуйста. "
                                               "Интерактивное меню появляется во время ввода сообщения")
-            return
+        else:
+            reply = self.bot.send_message(user.tg_id, "Запрос обрабатывается...")
 
-        reply = self.bot.send_message(user.tg_id, "Запрос обрабатывается...")
+            response = yield {
+                "action": "download",
+                "text": text,
+            }
 
-        response = yield {
-            "action": "download",
-            "text": text,
-        }
+            while True:
+                action = response["action"]
+                if action == "user_message" or action == "user_error":
+                    self.bot.edit_message_text(response["message"], reply.chat.id, reply.message_id)
+                elif action == "no_dl_handler":
 
-        while True:
-            action = response["action"]
-            if action == "user_message" or action == "user_error":
-                self.bot.edit_message_text(response["message"], reply.chat.id, reply.message_id)
-            elif action == "no_dl_handler":
+                    kb = telebot.types.InlineKeyboardMarkup(row_width=2)
+                    kb.row(telebot.types.InlineKeyboardButton(
+                        text="🔍 " + text,
+                        switch_inline_query_current_chat=text,
+                    ))
 
-                kb = telebot.types.InlineKeyboardMarkup(row_width=2)
-                kb.row(telebot.types.InlineKeyboardButton(
-                    text="🔍 " + text,
-                    switch_inline_query_current_chat=text,
-                ))
-
-                self.bot.edit_message_text("Запрос не распознан. Нажмите на кнопку ниже, чтобы включить поиск",
-                                           reply.chat.id, reply.message_id)
-                self.bot.edit_message_reply_markup(reply.chat.id, reply.message_id, reply_markup=kb)
-            elif action == "download_done":
-                break
-            response = yield
+                    self.bot.edit_message_text("Запрос не распознан. Нажмите на кнопку ниже, чтобы включить поиск",
+                                               reply.chat.id, reply.message_id)
+                    self.bot.edit_message_reply_markup(reply.chat.id, reply.message_id, reply_markup=kb)
+                elif action == "download_done":
+                    break
+                response = yield
 
     def add_audio_file(self, message, user):
         file_info = self.bot.get_file(message.audio.file_id)
@@ -526,57 +528,57 @@ class TgFrontend:
         self.bot.send_message(user.tg_id, message_text, reply_markup=kb)
 
 # BRAIN LISTENER #####
+    @make_endless_unfailable
     def brain_listener(self):
-        while True:
-            task = self.input_queue.get(block=True)
-            if task["user_id"] == "System":
-                print("INFO [Bot]: Skipping task: %s" % str(task))
-                self.input_queue.task_done()
-                continue
-
-            try:
-                user = User.get(User.core_id == task["user_id"])
-            except peewee.DoesNotExist:
-                user = None
-
-            if user is None and task["action"] != "user_init_done":
-                print("ERROR [Bot]: Task for unknown user: %d" % task["user_id"])
-                self.input_queue.task_done()
-                continue
-
-            if task["action"] == "user_init_done":
-                print("INFO [Bot]: User init done: %s" % str(task))
-                self.listened_user_init_done(task)
-                self.input_queue.task_done()
-                continue
-
-            print("DEBUG [Bot]: Task from core: %s" % str(task))
-
-            if "request_id" in task:
-                try:
-                    self.generators[task["request_id"]].send(task)
-                except StopIteration:
-                    pass
-
-            elif "action" in task:
-                action = task["action"]
-                handlers = {
-                    "user_message": self.listened_user_message,
-                    "access_denied": self.listened_access_denied,
-                    "error": self.listened_user_message,
-                    "menu": self.listened_menu,
-                }
-
-                if action in handlers:
-                    handlers[action](task, user)
-                else:
-                    print("ERROR [Bot]: Unknown action: " + str(task["action"]))
-
-            else:
-                print("ERROR [Bot]: Bad task from core: " + str(task))
-
-            print("DEBUG [Bot]: Task done: %s" % str(task))
+        task = self.input_queue.get(block=True)
+        if task["user_id"] == "System":
+            print("INFO [Bot]: Skipping task: %s" % str(task))
             self.input_queue.task_done()
+            return
+
+        try:
+            user = User.get(User.core_id == task["user_id"])
+        except peewee.DoesNotExist:
+            user = None
+
+        if user is None and task["action"] != "user_init_done":
+            print("ERROR [Bot]: Task for unknown user: %d" % task["user_id"])
+            self.input_queue.task_done()
+            return
+
+        if task["action"] == "user_init_done":
+            print("INFO [Bot]: User init done: %s" % str(task))
+            self.listened_user_init_done(task)
+            self.input_queue.task_done()
+            return
+
+        print("DEBUG [Bot]: Task from core: %s" % str(task))
+
+        if "request_id" in task:
+            try:
+                self.generators[task["request_id"]].send(task)
+            except StopIteration:
+                pass
+
+        elif "action" in task:
+            action = task["action"]
+            handlers = {
+                "user_message": self.listened_user_message,
+                "access_denied": self.listened_access_denied,
+                "error": self.listened_user_message,
+                "menu": self.listened_menu,
+            }
+
+            if action in handlers:
+                handlers[action](task, user)
+            else:
+                print("ERROR [Bot]: Unknown action: " + str(task["action"]))
+
+        else:
+            print("ERROR [Bot]: Bad task from core: " + str(task))
+
+        print("DEBUG [Bot]: Task done: %s" % str(task))
+        self.input_queue.task_done()
 
     def listened_user_init_done(self, task):
         user_info = task["frontend_user"]
