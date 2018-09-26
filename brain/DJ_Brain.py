@@ -118,7 +118,7 @@ class DJ_Brain:
 
         if "user_id" not in task and task['action'] != "init_user":
             print('ERROR [Core]: Message from frontend with no user id:', str(task))
-            continue
+            return
 
         if task['action'] == "init_user":
             u = User.create()
@@ -128,7 +128,7 @@ class DJ_Brain:
                 "frontend_user": task["frontend_user"],
             })
             print('INFO [Core]: User(id=%d) init done' % u.id)
-            continue
+            return
 
         user = User.get(id=task["user_id"])
         if user.banned:
@@ -136,7 +136,7 @@ class DJ_Brain:
                 "action": "access_denied",
                 "user_id": user.id,
             })
-            continue
+            return
 
         print("DEBUG [Core]: Task from frontend: %s" % str(task))
 

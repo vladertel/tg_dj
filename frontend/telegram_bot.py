@@ -8,6 +8,7 @@ import time
 from .jinja_env import env
 
 from .private_config import token
+from utils import make_endless_unfailable
 
 
 compiled_regex = re.compile(r"^\d+")
@@ -526,57 +527,57 @@ class TgFrontend:
         self.bot.send_message(user.tg_id, message_text, reply_markup=kb)
 
 # BRAIN LISTENER #####
+    @make_endless_unfailable
     def brain_listener(self):
-        while True:
-            task = self.input_queue.get(block=True)
-            if task["user_id"] == "System":
-                print("INFO [Bot]: Skipping task: %s" % str(task))
-                self.input_queue.task_done()
-                continue
-
-            try:
-                user = User.get(User.core_id == task["user_id"])
-            except peewee.DoesNotExist:
-                user = None
-
-            if user is None and task["action"] != "user_init_done":
-                print("ERROR [Bot]: Task for unknown user: %d" % task["user_id"])
-                self.input_queue.task_done()
-                continue
-
-            if task["action"] == "user_init_done":
-                print("INFO [Bot]: User init done: %s" % str(task))
-                self.listened_user_init_done(task)
-                self.input_queue.task_done()
-                continue
-
-            print("DEBUG [Bot]: Task from core: %s" % str(task))
-
-            if "request_id" in task:
-                try:
-                    self.generators[task["request_id"]].send(task)
-                except StopIteration:
-                    pass
-
-            elif "action" in task:
-                action = task["action"]
-                handlers = {
-                    "user_message": self.listened_user_message,
-                    "access_denied": self.listened_access_denied,
-                    "error": self.listened_user_message,
-                    "menu": self.listened_menu,
-                }
-
-                if action in handlers:
-                    handlers[action](task, user)
-                else:
-                    print("ERROR [Bot]: Unknown action: " + str(task["action"]))
-
-            else:
-                print("ERROR [Bot]: Bad task from core: " + str(task))
-
-            print("DEBUG [Bot]: Task done: %s" % str(task))
+        task = self.input_queue.get(block=True)
+        if task["user_id"] == "System":
+            print("INFO [Bot]: Skipping task: %s" % str(task))
             self.input_queue.task_done()
+            return
+
+        try:
+            user = User.get(User.core_id == task["user_id"])
+        except peewee.DoesNotExist:
+            user = None
+
+        if user is None and task["action"] != "user_init_done":
+            print("ERROR [Bot]: Task for unknown user: %d" % task["user_id"])
+            self.input_queue.task_done()
+            return
+
+        if task["action"] == "user_init_done":
+            print("INFO [Bot]: User init done: %s" % str(task))
+            self.listened_user_init_done(task)
+            self.input_queue.task_done()
+            return
+
+        print("DEBUG [Bot]: Task from core: %s" % str(task))
+
+        if "request_id" in task:
+            try:
+                self.generators[task["request_id"]].send(task)
+            except StopIteration:
+                pass
+
+        elif "action" in task:
+            action = task["action"]
+            handlers = {
+                "user_message": self.listened_user_message,
+                "access_denied": self.listened_access_denied,
+                "error": self.listened_user_message,
+                "menu": self.listened_menu,
+            }
+
+            if action in handlers:
+                handlers[action](task, user)
+            else:
+                print("ERROR [Bot]: Unknown action: " + str(task["action"]))
+
+        else:
+            print("ERROR [Bot]: Bad task from core: " + str(task))
+
+        print("DEBUG [Bot]: Task done: %s" % str(task))
+        self.input_queue.task_done()
 
     def listened_user_init_done(self, task):
         user_info = task["frontend_user"]
