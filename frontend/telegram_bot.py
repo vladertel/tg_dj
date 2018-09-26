@@ -140,11 +140,13 @@ class TgFrontend:
         request_id = self.gen_cnt
         self.gen_cnt += 1
         self.generators[request_id] = gen
-
-        action = next(gen)
-        action["request_id"] = request_id
-        action["user_id"] = user.core_id
-        self.output_queue.put(action)
+        try:
+            action = next(gen)
+            action["request_id"] = request_id
+            action["user_id"] = user.core_id
+            self.output_queue.put(action)
+        except StopIteration:
+            pass
 
     def search(self, data, _user):
         query = data.query.lstrip()
@@ -194,35 +196,34 @@ class TgFrontend:
         text = message.text
 
         if re.search(r'^@\w+ ', text) is not None:
-            self.bot.send_message(user.tg_id, "Выберите из интерактивного меню, пожалуйста."
+            self.bot.send_message(user.tg_id, "Выберите из интерактивного меню, пожалуйста. "
                                               "Интерактивное меню появляется во время ввода сообщения")
-            return
+        else:
+            reply = self.bot.send_message(user.tg_id, "Запрос обрабатывается...")
 
-        reply = self.bot.send_message(user.tg_id, "Запрос обрабатывается...")
+            response = yield {
+                "action": "download",
+                "text": text,
+            }
 
-        response = yield {
-            "action": "download",
-            "text": text,
-        }
+            while True:
+                action = response["action"]
+                if action == "user_message" or action == "user_error":
+                    self.bot.edit_message_text(response["message"], reply.chat.id, reply.message_id)
+                elif action == "no_dl_handler":
 
-        while True:
-            action = response["action"]
-            if action == "user_message" or action == "user_error":
-                self.bot.edit_message_text(response["message"], reply.chat.id, reply.message_id)
-            elif action == "no_dl_handler":
+                    kb = telebot.types.InlineKeyboardMarkup(row_width=2)
+                    kb.row(telebot.types.InlineKeyboardButton(
+                        text="🔍 " + text,
+                        switch_inline_query_current_chat=text,
+                    ))
 
-                kb = telebot.types.InlineKeyboardMarkup(row_width=2)
-                kb.row(telebot.types.InlineKeyboardButton(
-                    text="🔍 " + text,
-                    switch_inline_query_current_chat=text,
-                ))
-
-                self.bot.edit_message_text("Запрос не распознан. Нажмите на кнопку ниже, чтобы включить поиск",
-                                           reply.chat.id, reply.message_id)
-                self.bot.edit_message_reply_markup(reply.chat.id, reply.message_id, reply_markup=kb)
-            elif action == "download_done":
-                break
-            response = yield
+                    self.bot.edit_message_text("Запрос не распознан. Нажмите на кнопку ниже, чтобы включить поиск",
+                                               reply.chat.id, reply.message_id)
+                    self.bot.edit_message_reply_markup(reply.chat.id, reply.message_id, reply_markup=kb)
+                elif action == "download_done":
+                    break
+                response = yield
 
     def add_audio_file(self, message, user):
         file_info = self.bot.get_file(message.audio.file_id)
