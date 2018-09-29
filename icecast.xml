@@ -66,7 +66,7 @@
     <!-- You may have multiple <listener> elements -->
     <listen-socket>
         <port>1234</port>
-        <bind-address>212.86.109.84</bind-address>
+        <!--<bind-address>212.86.109.84</bind-address>-->
         <!--<shoutcast-mount>/</shoutcast-mount>-->
     </listen-socket>
     <!--
@@ -109,7 +109,16 @@
          The default is 0 -->
     <!--<relays-on-demand>1</relays-on-demand>-->
 
-    
+    <relay>
+        <server>127.0.0.1</server>
+        <port>1233</port>
+        <mount>/music</mount>
+        <local-mount>/stream</local-mount>
+        <on-demand>0</on-demand>
+
+        <relay-shoutcast-metadata>0</relay-shoutcast-metadata>
+    </relay>
+    <!--
     <relay>
         <server>212.86.109.84</server>
         <port>1233</port>
@@ -119,7 +128,7 @@
 
         <relay-shoutcast-metadata>1</relay-shoutcast-metadata>
     </relay>
-    
+    -->
 
 
     <!-- Mountpoints
@@ -189,6 +198,30 @@
 
     <fileserve>1</fileserve>
 
+    <paths>
+      <!-- basedir is only used if chroot is enabled -->
+        <basedir>/usr/share/icecast2</basedir>
+
+        <!-- Note that if <chroot> is turned on below, these paths must both
+             be relative to the new root, not the original root -->
+        <logdir>/var/log/icecast2</logdir>
+        <webroot>/usr/share/icecast2/web</webroot>
+        <adminroot>/usr/share/icecast2/admin</adminroot>
+        <!-- <pidfile>/usr/share/icecast2/icecast.pid</pidfile> -->
+
+        <!-- Aliases: treat requests for 'source' path as being for 'dest' path
+             May be made specific to a port or bound address using the "port"
+             and "bind-address" attributes.
+          -->
+        <!--
+        <alias source="/foo" dest="/bar"/>
+          -->
+        <!-- Aliases: can also be used for simple redirections as well,
+             this example will redirect all requests for http://server:port/ to
+             the status page
+          -->
+        <alias source="/" dest="/status.xsl"/>
+    </paths>
 
     <logging>
         <accesslog>access.log</accesslog>
