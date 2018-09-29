@@ -3,6 +3,8 @@
 
 import peewee
 import time
+import json
+import os
 
 import datetime
 from threading import Thread
@@ -291,13 +293,20 @@ class DJ_Brain:
         if track is None:
             return
 
-        self.backend.input_queue.put({
+        next_track_task = {
             "action": "play_song",
             "uri": track.media,
             "title": track.title,
             "duration": track.duration,
             "user_id": track.user,
-        })
+        }
+
+        self.backend.input_queue.put(next_track_task)
+
+        json_file_path = os.path.join(os.path.dirname(__file__), "web", "dynamic", "current_song_info.json")
+        with open(json_file_path, 'w') as json_file:
+            data_to_save = json.dumps(next_track_task)
+            json_file.write(data_to_save)
 
         user_curr = track.user
         user_next = None if next_track is None else next_track.user
