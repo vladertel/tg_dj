@@ -303,7 +303,7 @@ class DJ_Brain:
 
         self.backend.input_queue.put(next_track_task)
 
-        json_file_path = os.path.join(os.path.dirname(__file__), "web", "dynamic", "current_song_info.json")
+        json_file_path = os.path.join(os.getcwd(), "web", "dynamic", "current_song_info.json")
         with open(json_file_path, 'w') as json_file:
             data_to_save = json.dumps(next_track_task)
             json_file.write(data_to_save)
