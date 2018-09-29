@@ -113,8 +113,8 @@
     <relay>
         <server>212.86.109.84</server>
         <port>1233</port>
-        <mount>/</mount>
-        <local-mount>/playlist</local-mount>
+        <mount>/stream</mount>
+        <local-mount>/</local-mount>
         <on-demand>1</on-demand>
 
         <relay-shoutcast-metadata>0</relay-shoutcast-metadata>
