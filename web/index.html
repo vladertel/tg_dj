@@ -1,9 +1,36 @@
 <!DOCTYPE html>
 <html>
 <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>INBICST DJ</title>
+    <link href="https://fonts.googleapis.com/css?family=Raleway:200,400,700,900" rel="stylesheet">
+    <link href="static/main.css" rel="stylesheet">
 </head>
 <body>
-    IT WORKS!
+    <header>
+        <h1>INBICST DJ</h1>
+        <img id="logo" src="static/logo_white.png">
+    </header>
+    <section>
+        <div id="now-playing">
+            <div id="title">{{ song_info["title"] }}</div>
+            <div id="info">
+                <span id="duration">{{ song_info["duration"] }}</span> / <span id="author">{{ song_info["author"] }}</span>
+            </div>
+        </div>
+        <div id="playback">
+            <audio controls>
+                <source src="http://ic7.101.ru:8000/a200">
+            </audio>
+        </div>
+        <div id="links">
+            <a href="https://t.me/inbicst_dj_bot" target="_blank">@inbicst_dj_bot</a>
+        </div>
+    </section>
+    <footer>
+        <p>ИНБИКСТ МФТИ</p>
+        <p><a href="https://inbicst.ru/">https://inbicst.ru/</a></p>
+    </footer>
 </body>
 </html>
