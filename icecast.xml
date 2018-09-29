@@ -67,7 +67,7 @@
     <listen-socket>
         <port>1234</port>
         <bind-address>212.86.109.84</bind-address>
-        <shoutcast-mount>/</shoutcast-mount>
+        <!--<shoutcast-mount>/</shoutcast-mount>-->
     </listen-socket>
     <!--
     <listen-socket>
@@ -117,7 +117,7 @@
         <local-mount>/</local-mount>
         <on-demand>1</on-demand>
 
-        <relay-shoutcast-metadata>0</relay-shoutcast-metadata>
+        <relay-shoutcast-metadata>1</relay-shoutcast-metadata>
     </relay>
     
 
