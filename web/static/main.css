@@ -2,6 +2,7 @@ body{
     font-family: 'Raleway', sans-serif;
     background-image: linear-gradient(292deg,#136a8a,#267871);
     color: white;
+    min-width: 320px;
 }
 
 a{
