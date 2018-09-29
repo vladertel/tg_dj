@@ -4,7 +4,7 @@ import tornado.ioloop
 import tornado.web
 import tornado.websocket
 from tornado import gen
-from .config import stream_url
+from config import stream_url
 
 ws_clients = []
 info_file_path = ""
