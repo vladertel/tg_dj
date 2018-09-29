@@ -4,7 +4,7 @@ import tornado.ioloop
 import tornado.web
 import tornado.websocket
 from tornado import gen
-
+from .config import stream_url
 
 ws_clients = []
 info_file_path = ""
@@ -72,7 +72,7 @@ class WSH(tornado.websocket.WebSocketHandler):
 class MainHandler(tornado.web.RequestHandler):
     def get(self):
         data = read_data(info_file_path)
-        self.render("index.html", song_info=data)
+        self.render("index.html", song_info=data, stream_url=stream_url)
 
 
 if __name__ == "__main__":
