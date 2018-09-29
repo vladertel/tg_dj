@@ -7,13 +7,18 @@ from tornado import gen
 
 
 ws_clients = []
+info_file_path = ""
+
+
+def read_data(filename):
+    f = open(filename, 'r', encoding="utf8")
+    text = f.read()
+    f.close()
+    return json.loads(text)
 
 
 def broadcast_update(filename):
-    f = open(filename, 'r')
-    text = f.read()
-    f.close()
-    data = json.load(text)
+    data = read_data(filename)
     for c in ws_clients:
         c.send("update", data)
 
@@ -66,7 +71,8 @@ class WSH(tornado.websocket.WebSocketHandler):
 
 class MainHandler(tornado.web.RequestHandler):
     def get(self):
-        self.render("index.html")
+        data = read_data(info_file_path)
+        self.render("index.html", song_info=data)
 
 
 if __name__ == "__main__":
@@ -89,7 +95,7 @@ if __name__ == "__main__":
 
     app.listen(args.port, address=args.address)
 
-    file_path = os.path.realpath(args.file)
+    info_file_path = os.path.realpath(args.file)
 
-    tornado.ioloop.IOLoop.instance().add_callback(watch_file, file_path)
+    tornado.ioloop.IOLoop.instance().add_callback(watch_file, info_file_path)
     tornado.ioloop.IOLoop.current().start()
