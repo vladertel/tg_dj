@@ -50,7 +50,10 @@ class User(BaseModel):
     menu_chat_id = peewee.IntegerField(null=True)
 
     def full_name(self):
-        return self.first_name + " " + self.last_name
+        if self.last_name is None:
+            return self.first_name
+        else:
+            return str(self.first_name) + " " + str(self.last_name)
 
 
 db.connect()
