@@ -687,7 +687,7 @@ class TgFrontend:
 # USER MESSAGES HANDLERS #####
 
     def file_handler(self, message):
-        self.bot.send_message(message.from_user.id, "Такое не принимаем. (И вам не советуем)")
+        self.bot.send_message(message.from_user.id, "К сожалению, ваш файл не определяется как музыкальный")
 
     def sticker_handler(self, message):
         self.bot.send_sticker(message.from_user.id, data="CAADAgADLwMAApAAAVAg-c0RjgqiVyMC")
