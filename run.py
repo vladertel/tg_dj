@@ -2,7 +2,7 @@ import sys
 import atexit
 import time
 
-from brain.DJ_Brain import DJ_Brain
+from brain.DJ_Brain import DjBrain
 from streamer.VLCStreamer import VLCStreamer
 from downloader.MasterDownloader import MasterDownloader
 from frontend.telegram_bot import TgFrontend
@@ -18,11 +18,7 @@ for arg in args:
     except AttributeError:
         pass
 
-brain = DJ_Brain(*args)
-try:
-    atexit.register(brain.cleanup)
-except AttributeError:
-    pass
+brain = DjBrain(*args)
 
 print("Running infinite loop in main thread...")
 try:

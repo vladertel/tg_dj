@@ -1,14 +1,15 @@
 import telebot
 import threading
-from queue import Queue
 import re
 import peewee
-from time import sleep
 import time
+
 from .jinja_env import env
+import asyncio
 
 from .private_config import token
-from utils import make_endless_unfailable
+
+from brain.DJ_Brain import UserBanned, UserRequestQuotaReached
 
 
 compiled_regex = re.compile(r"^\d+")
@@ -62,31 +63,69 @@ db.connect()
 class TgFrontend:
 
     def __init__(self):
+        self.last_update_id = 0
+        self.error_interval = .25
+        self.interval = 0
+        self.timeout = 20
+
         self.bot = telebot.TeleBot(token)
         self.botThread = threading.Thread(daemon=True, target=self.bot_init)
         self.botThread.start()
-        self.input_queue = Queue()
-        self.output_queue = Queue()
-        self.brainThread = threading.Thread(daemon=True, target=self.brain_listener)
-        self.brainThread.start()
         self.init_handlers()
         self.init_callbacks()
 
-        self.generators = {}
-        self.gen_cnt = 0
+        self.core = None
 
         self.bamboozled_users = []
 
+    def bind_core(self, core):
+        self.core = core
+
 # INIT #####
     def bot_init(self):
+        print("INFO [Bot]: Starting polling...")
+        loop = asyncio.new_event_loop()
+        loop.create_task(self.bot_polling())
+        loop.run_forever()
+        print("INFO [Bot]: LOOP COMPLETED")
+
+    async def bot_polling(self):
         while True:
-            try:
-                print("INFO [Bot]: Loading bot")
-                self.bot.polling(none_stop=True)
-            except Exception as e:
-                print("ERROR [Bot]: CONNECTION PROBLEM")
-                print(e)
-                sleep(15)
+            await asyncio.sleep(self.interval)
+            loop = asyncio.get_event_loop()
+            print("DEBUG [Bot]: Starting updates thread...")
+            await loop.run_in_executor(None, self.get_updates, loop)
+
+    def get_updates(self, loop):
+        try:
+            print("DEBUG [Bot]: Requesting updates...")
+            updates = self.bot.get_updates(offset=(self.last_update_id + 1), timeout=self.timeout)
+            self.error_interval = .25
+            loop.create_task(self.updates_handler(updates))
+            print("DEBUG [Bot]: Updates received: %s" % str(updates))
+        except telebot.apihelper.ApiException as e:
+            print("ERROR [Bot]: API Exception")
+            print(e)
+            print("DEBUG [Bot]: Waiting for %d seconds until retry" % self.error_interval)
+            time.sleep(self.error_interval)
+            self.error_interval *= 2
+        except KeyboardInterrupt:
+            print("INFO [Bot]: KeyboardInterrupt received")
+
+    async def updates_handler(self, updates):
+        print("DEBUG [Bot]: Processing updates...")
+        for update in updates:
+            if update.update_id > self.last_update_id:
+                self.last_update_id = update.update_id
+            if update.message:
+                print("DEBUG [Bot]: Message received: %s" % str(update.message.text))
+            if update.inline_query:
+                print("DEBUG [Bot]: Inline query received: %s" % str(update.inline_query.query.lstrip()))
+            if update.chosen_inline_result:
+                print("DEBUG [Bot]: Inline query result received: %s" % str(update.chosen_inline_result.result_id))
+            if update.callback_query:
+                print("DEBUG [Bot]: Callback query received: %s" % str(update.callback_query.data))
+                await self.callback_query_handler(update.callback_query)
 
     def init_handlers(self):
         self.bot.message_handler(commands=['start'])(self.start_handler)
@@ -114,7 +153,7 @@ class TgFrontend:
 
 #######################
 # TG CALLBACK HANDLERS
-    def callback_query_handler(self, data):
+    async def callback_query_handler(self, data):
         user = self.init_user(data.from_user)
         if user is None:
             return
@@ -128,38 +167,50 @@ class TgFrontend:
             print("ERROR [Bot]: Bad menu path: " + str(path))
             return
 
-        self.output_queue.put({
-            "action": "menu_event",
-            "path": path,
-            "user_id": user.core_id,
-        })
+        print("DEBUG [Bot]: Requesting menu data from core: " + str(path))
+        data = self.core.menu_action(path, user.core_id)
+        print("DEBUG [Bot]: Menu data: " + str(data))
+
+        print("DEBUG [Bot]: Sleeping for 2 sec...")
+        await asyncio.sleep(2)
+        print("DEBUG [Bot]: Continuing...")
+
+        if path[0] == "main":
+            handler = self.send_menu_main
+        elif path[0] == "queue":
+            handler = self.send_menu_queue
+        elif path[0] == "song" or path[0] == "vote":
+            handler = self.send_menu_song
+        elif path[0] == "admin":
+            if path[1] == "skip_song" or path[1] == "stop_playing":
+                handler = self.send_menu_main
+            elif path[1] == "delete":
+                handler = self.send_menu_queue
+            elif path[1] == "list_users":
+                handler = self.send_menu_admin_list_users
+            elif path[1] == "user_info" or path[1] == "ban_user" or path[1] == "unban_user":
+                handler = self.send_menu_admin_user
+            else:
+                print("ERROR [Bot]: Unknown admin menu: " + str(path))
+                return
+        else:
+            print("ERROR [Bot]: Unknown menu: " + str(path))
+            return
+
+        handler(data, user)
 
     def tg_handler(self, data, method):
         user = self.init_user(data.from_user)
-        if user is None:
-            return
-
-        gen = method(data, user)
-        request_id = self.gen_cnt
-        self.gen_cnt += 1
-        self.generators[request_id] = gen
         try:
-            action = next(gen)
-            action["request_id"] = request_id
-            action["user_id"] = user.core_id
-            self.output_queue.put(action)
-        except StopIteration:
-            pass
+            method(data, user)
+        except UserBanned:
+            self.show_access_denied_msg(user)
 
-    def search(self, data, _user):
+    async def search(self, data, user):
         query = data.query.lstrip()
 
-        response = yield {
-            "action": "search",
-            "query": query,
-        }
-
-        results = response["results"]
+        task = await self.core.search_action(user.id, query=query)
+        results = task["results"]
 
         results_articles = []
         for song in results:
@@ -171,29 +222,24 @@ class TgFrontend:
                     "// " + song['artist'] + " - " + song['title']
                 ),
             ))
-
         self.bot.answer_inline_query(data.id, results_articles)
 
     def search_select(self, data, user):
         downloader, result_id = data.result_id.split(" ")
         reply = self.bot.send_message(user.tg_id, "Запрос обрабатывается...")
 
-        response = yield {
-            "action": "download",
-            "downloader": downloader,
-            "result_id": result_id,
-        }
-
-        while True:
-            action = response["action"]
+        def callback(task):
+            action = task["action"]
             if action == "user_message" or action == "user_error":
-                print("DEBUG [Bot]: EDIT MESSAGE: " + str(response["message"]))
-                self.bot.edit_message_text(response["message"], reply.chat.id, reply.message_id)
+                print("DEBUG [Bot]: EDIT MESSAGE: " + str(task["message"]))
+                self.bot.edit_message_text(task["message"], reply.chat.id, reply.message_id)
+                return False
             elif action == "no_dl_handler":
                 self.bot.edit_message_text("Ошибка: обработчик не найден", reply.chat.id, reply.message_id)
             elif action == "download_done":
-                break
-            response = yield
+                pass
+
+        self.core.download_action(user.id, callback, downloader=downloader, result_id=result_id)
 
     def download(self, message, user):
         text = message.text
@@ -255,21 +301,6 @@ class TgFrontend:
 
 
 # MENU RELATED #####
-    def listened_menu(self, task, user):
-        menu = task["entry"]
-
-        handlers = {
-            "main": self.send_menu_main,
-            "queue": self.send_menu_queue,
-            "song_details": self.send_menu_song,
-            "admin_list_users": self.send_menu_admin_list_users,
-            "admin_user": self.send_menu_admin_user,
-        }
-
-        if menu in handlers:
-            handlers[menu](task, user)
-        else:
-            print("ERROR [Bot]: Unknown menu: " + str(menu))
 
     def remove_old_menu(self, user):
 
@@ -530,86 +561,21 @@ class TgFrontend:
         self.remove_old_menu(user)
         self.bot.send_message(user.tg_id, message_text, reply_markup=kb)
 
-# BRAIN LISTENER #####
-    @make_endless_unfailable
-    def brain_listener(self):
-        task = self.input_queue.get(block=True)
-        if task["user_id"] == "System":
-            print("INFO [Bot]: Skipping task: %s" % str(task))
-            self.input_queue.task_done()
-            return
-
-        try:
-            user = User.get(User.core_id == task["user_id"])
-        except peewee.DoesNotExist:
-            user = None
-
-        if user is None and task["action"] != "user_init_done":
-            print("ERROR [Bot]: Task for unknown user: %d" % task["user_id"])
-            self.input_queue.task_done()
-            return
-
-        if task["action"] == "user_init_done":
-            print("INFO [Bot]: User init done: %s" % str(task))
-            self.listened_user_init_done(task)
-            self.input_queue.task_done()
-            return
-
-        print("DEBUG [Bot]: Task from core: %s" % str(task))
-
-        if "request_id" in task:
-            try:
-                self.generators[task["request_id"]].send(task)
-            except StopIteration:
-                pass
-
-        elif "action" in task:
-            action = task["action"]
-            handlers = {
-                "user_message": self.listened_user_message,
-                "access_denied": self.listened_access_denied,
-                "error": self.listened_user_message,
-                "menu": self.listened_menu,
-            }
-
-            if action in handlers:
-                handlers[action](task, user)
-            else:
-                print("ERROR [Bot]: Unknown action: " + str(task["action"]))
-
-        else:
-            print("ERROR [Bot]: Bad task from core: " + str(task))
-
-        print("DEBUG [Bot]: Task done: %s" % str(task))
-        self.input_queue.task_done()
-
-    def listened_user_init_done(self, task):
-        user_info = task["frontend_user"]
-        user_id = task["user_id"]
-        user = User.create(
-            tg_id=user_info.id,
-            core_id=user_id,
-            login=user_info.username,
-            first_name=user_info.first_name,
-            last_name=user_info.last_name,
-        )
-
-        self.bot.send_message(user.tg_id, help_message, disable_web_page_preview=True)
-        self.output_queue.put({
-            "action": "menu_event",
-            "path": ["main"],
-            "user_id": user.core_id,
-        })
-
-    def listened_user_message(self, task, user):
+    def show_status(self, task, user):
         self.bot.send_message(user.tg_id, task["message"])
 
-    def listened_access_denied(self, _, user):
+    def show_error(self, task, user):
+        self.bot.send_message(user.tg_id, task["message"])
+
+    def show_access_denied_msg(self, user):
         self.bot.send_message(user.tg_id, "К вашему сожалению, вы были заблокированы :/")
 
         if user.tg_id not in self.bamboozled_users:
             self.bamboozled_users.append(user.tg_id)
             self.bot.send_sticker(user.tg_id, data="CAADAgADiwgAArcKFwABQMmDfPtchVkC")
+
+    def show_quota_reached_msg(self, user):
+        self.bot.send_message(user.tg_id, "Превышен лимит запросов, попробуйте позже")
 
 
 # UTILITY FUNCTIONS #####
@@ -644,22 +610,14 @@ class TgFrontend:
         if user is None:
             return
 
-        self.output_queue.put({
-            "action": "menu_event",
-            "path": "admin:stop_playing",
-            "user_id": user.core_id,
-        })
+        self.core.menu_action(["admin", "stop_playing"], user.core_id)
 
     def skip_song(self, message):
         user = self.init_user(message.from_user)
         if user is None:
             return
 
-        self.output_queue.put({
-            "action": "menu_event",
-            "path": "admin:skip_song",
-            "user_id": user.core_id,
-        })
+        self.core.menu_action(["admin", "skip_song"], user.core_id)
 
     def start_handler(self, message):
         user = self.init_user(message.from_user)
@@ -667,22 +625,23 @@ class TgFrontend:
             return
 
         self.bot.send_message(user.tg_id, help_message, disable_web_page_preview=True)
-        self.output_queue.put({
-            "action": "menu_event",
-            "path": ["main"],
-            "user_id": user.core_id,
-        })
+        data = self.core.menu_action(["main"], user.core_id)
+        self.send_menu_main(data, user)
 
-    def init_user(self, from_user):
+    def init_user(self, user_info):
         try:
-            user = User.get(User.tg_id == from_user.id)
+            user = User.get(User.tg_id == user_info.id)
             return user
         except peewee.DoesNotExist:
-            self.output_queue.put({
-                "action": "init_user",
-                "frontend_user": from_user,
-            })
-            return None
+            core_id = self.core.user_init_action()
+            user = User.create(
+                tg_id=user_info.id,
+                core_id=core_id,
+                login=user_info.username,
+                first_name=user_info.first_name,
+                last_name=user_info.last_name,
+            )
+            self.bot.send_message(user.tg_id, help_message, disable_web_page_preview=True)
 
 # USER MESSAGES HANDLERS #####
 
