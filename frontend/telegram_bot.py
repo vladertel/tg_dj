@@ -72,7 +72,6 @@ class TgFrontend:
         self.botThread = threading.Thread(daemon=True, target=self.bot_init)
         self.botThread.start()
         self.init_handlers()
-        self.init_callbacks()
 
         self.core = None
 
@@ -87,22 +86,22 @@ class TgFrontend:
         loop = asyncio.new_event_loop()
         loop.create_task(self.bot_polling())
         loop.run_forever()
-        print("INFO [Bot]: LOOP COMPLETED")
+        print("FATAL [Bot]: Polling loop ended")
+        loop.close()
 
     async def bot_polling(self):
         while True:
             await asyncio.sleep(self.interval)
             loop = asyncio.get_event_loop()
-            print("DEBUG [Bot]: Starting updates thread...")
             await loop.run_in_executor(None, self.get_updates, loop)
 
     def get_updates(self, loop):
         try:
-            print("DEBUG [Bot]: Requesting updates...")
             updates = self.bot.get_updates(offset=(self.last_update_id + 1), timeout=self.timeout)
             self.error_interval = .25
             loop.create_task(self.updates_handler(updates))
-            print("DEBUG [Bot]: Updates received: %s" % str(updates))
+            if len(updates):
+                print("DEBUG [Bot]: Updates received: %s" % str(updates))
         except telebot.apihelper.ApiException as e:
             print("ERROR [Bot]: API Exception")
             print(e)
@@ -110,19 +109,22 @@ class TgFrontend:
             time.sleep(self.error_interval)
             self.error_interval *= 2
         except KeyboardInterrupt:
+            loop.stop()
             print("INFO [Bot]: KeyboardInterrupt received")
 
     async def updates_handler(self, updates):
-        print("DEBUG [Bot]: Processing updates...")
         for update in updates:
             if update.update_id > self.last_update_id:
                 self.last_update_id = update.update_id
             if update.message:
                 print("DEBUG [Bot]: Message received: %s" % str(update.message.text))
+                await self.message_handler(update.message)
             if update.inline_query:
                 print("DEBUG [Bot]: Inline query received: %s" % str(update.inline_query.query.lstrip()))
+                await self.inline_query_handler(update.inline_query)
             if update.chosen_inline_result:
                 print("DEBUG [Bot]: Inline query result received: %s" % str(update.chosen_inline_result.result_id))
+                await self.chosen_inline_result_handler(update.chosen_inline_result)
             if update.callback_query:
                 print("DEBUG [Bot]: Callback query received: %s" % str(update.callback_query.data))
                 await self.callback_query_handler(update.callback_query)
@@ -135,25 +137,29 @@ class TgFrontend:
         self.bot.message_handler(commands=['skip_song', 'skip'])(self.skip_song)
         self.bot.message_handler(commands=['/'])(lambda x: True)
 
-        self.bot.message_handler(content_types=['text'])(lambda data: self.tg_handler(data, self.download))
-        self.bot.message_handler(content_types=['audio'])(lambda data: self.tg_handler(data, self.add_audio_file))
-        self.bot.message_handler(content_types=['file', 'photo', 'document'])(self.file_handler)
-        self.bot.message_handler(content_types=['sticker'])(self.sticker_handler)
-
-    def init_callbacks(self):
-        self.bot.callback_query_handler(func=lambda x: x.data[0:2] == "//")(lambda x: True)
-        self.bot.callback_query_handler(func=lambda x: True)(self.callback_query_handler)
-
-        self.bot.inline_handler(func=lambda x: True)(lambda data: self.tg_handler(data, self.search))
-        self.bot.chosen_inline_handler(func=lambda x: True)(lambda data: self.tg_handler(data, self.search_select))
-
     def cleanup(self):
         pass
 
+    async def message_handler(self, message):
+        if message.text:
+            await self.tg_handler(message, self.download)
+        elif message.audio:
+            await self.tg_handler(message, self.add_audio_file)
+        elif message.sticker:
+            self.sticker_handler(message)
+        else:
+            self.file_handler(message)
 
-#######################
-# TG CALLBACK HANDLERS
+    async def inline_query_handler(self, inline_query):
+        await self.tg_handler(inline_query, self.search)
+
+    async def chosen_inline_result_handler(self, chosen_inline_result):
+        await self.tg_handler(chosen_inline_result, self.search_select)
+
     async def callback_query_handler(self, data):
+        if data.data[0:2] == "//":
+            return
+
         user = self.init_user(data.from_user)
         if user is None:
             return
@@ -170,10 +176,6 @@ class TgFrontend:
         print("DEBUG [Bot]: Requesting menu data from core: " + str(path))
         data = self.core.menu_action(path, user.core_id)
         print("DEBUG [Bot]: Menu data: " + str(data))
-
-        print("DEBUG [Bot]: Sleeping for 2 sec...")
-        await asyncio.sleep(2)
-        print("DEBUG [Bot]: Continuing...")
 
         if path[0] == "main":
             handler = self.send_menu_main
@@ -199,18 +201,20 @@ class TgFrontend:
 
         handler(data, user)
 
-    def tg_handler(self, data, method):
+    async def tg_handler(self, data, method):
         user = self.init_user(data.from_user)
         try:
-            method(data, user)
+            await method(data, user)
         except UserBanned:
             self.show_access_denied_msg(user)
 
     async def search(self, data, user):
         query = data.query.lstrip()
 
+        print("DEBUG [Bot]: Awaiting core: " + query)
         task = await self.core.search_action(user.id, query=query)
         results = task["results"]
+        print("DEBUG [Bot]: Response from core: " + str(results))
 
         results_articles = []
         for song in results:
@@ -224,81 +228,62 @@ class TgFrontend:
             ))
         self.bot.answer_inline_query(data.id, results_articles)
 
-    def search_select(self, data, user):
+    async def search_select(self, data, user):
         downloader, result_id = data.result_id.split(" ")
         reply = self.bot.send_message(user.tg_id, "Запрос обрабатывается...")
 
-        def callback(task):
-            action = task["action"]
-            if action == "user_message" or action == "user_error":
-                print("DEBUG [Bot]: EDIT MESSAGE: " + str(task["message"]))
-                self.bot.edit_message_text(task["message"], reply.chat.id, reply.message_id)
-                return False
-            elif action == "no_dl_handler":
-                self.bot.edit_message_text("Ошибка: обработчик не найден", reply.chat.id, reply.message_id)
-            elif action == "download_done":
+        def progress_callback(progress_msg):
+            try:
+                self.bot.edit_message_text(progress_msg, reply.chat.id, reply.message_id)
+            except telebot.apihelper.ApiException:
                 pass
 
-        self.core.download_action(user.id, callback, downloader=downloader, result_id=result_id)
+        await self.core.download_action(user.id, callback, downloader=downloader, result_id=result_id,
+                                        progress_callback=progress_callback)
+        self.bot.edit_message_text("Песня добавлена в очередь", reply.chat.id, reply.message_id)
 
-    def download(self, message, user):
+    async def download(self, message, user):
+        print("DEBUG [Bot]: Download: " + str(message.text))
         text = message.text
 
         if re.search(r'^@\w+ ', text) is not None:
             self.bot.send_message(user.tg_id, "Выберите из интерактивного меню, пожалуйста. "
                                               "Интерактивное меню появляется во время ввода сообщения")
-        else:
-            reply = self.bot.send_message(user.tg_id, "Запрос обрабатывается...")
+            return
 
-            response = yield {
-                "action": "download",
-                "text": text,
-            }
+        reply = self.bot.send_message(user.tg_id, "Запрос обрабатывается...")
 
-            while True:
-                action = response["action"]
-                if action == "user_message" or action == "user_error":
-                    self.bot.edit_message_text(response["message"], reply.chat.id, reply.message_id)
-                elif action == "no_dl_handler":
+        def progress_callback(progress_msg):
+            try:
+                self.bot.edit_message_text(progress_msg, reply.chat.id, reply.message_id)
+            except telebot.apihelper.ApiException:
+                pass
 
-                    kb = telebot.types.InlineKeyboardMarkup(row_width=2)
-                    kb.row(telebot.types.InlineKeyboardButton(
-                        text="🔍 " + text,
-                        switch_inline_query_current_chat=text,
-                    ))
+        await self.core.download_action(user.id, text=text, progress_callback=progress_callback)
+        self.bot.edit_message_text("Песня добавлена в очередь", reply.chat.id, reply.message_id)
 
-                    self.bot.edit_message_text("Запрос не распознан. Нажмите на кнопку ниже, чтобы включить поиск",
-                                               reply.chat.id, reply.message_id)
-                    self.bot.edit_message_reply_markup(reply.chat.id, reply.message_id, reply_markup=kb)
-                elif action == "download_done":
-                    break
-                response = yield
-
-    def add_audio_file(self, message, user):
+    async def add_audio_file(self, message, user):
         file_info = self.bot.get_file(message.audio.file_id)
 
         reply = self.bot.send_message(user.tg_id, "Запрос обрабатывается...")
 
-        response = yield {
-            "action": "download",
-            "file": message.audio.file_id,
+        def progress_callback(progress_msg):
+            try:
+                self.bot.edit_message_text(progress_msg, reply.chat.id, reply.message_id)
+            except telebot.apihelper.ApiException:
+                pass
+
+        file = {
+            "id": message.audio.file_id,
             "duration": message.audio.duration,
-            "file_size": message.audio.file_size,
-            "file_info": file_info,
+            "size": message.audio.file_size,
+            "info": file_info,
             "artist": message.audio.performer or "",
             "title": message.audio.title or "",
         }
 
-        while True:
-            action = response["action"]
-            if action == "user_message" or action == "user_error":
-                self.bot.edit_message_text(response["message"], reply.chat.id, reply.message_id)
-            elif action == "no_dl_handler":
-                self.bot.edit_message_text("Ошибка: обработчик не найден", reply.chat.id, reply.message_id)
-            elif action == "download_done":
-                break
-            response = yield
-
+        await self.core.download_action(user.id, file=file, progress_callback=progress_callback)
+        self.bot.edit_message_text("Песня добавлена в очередь", reply.chat.id, reply.message_id)
 
 # MENU RELATED #####
 
@@ -576,6 +561,16 @@ class TgFrontend:
 
     def show_quota_reached_msg(self, user):
         self.bot.send_message(user.tg_id, "Превышен лимит запросов, попробуйте позже")
+
+    def suggest_search(self, text, chat_id, message_id):
+        kb = telebot.types.InlineKeyboardMarkup(row_width=2)
+        kb.row(telebot.types.InlineKeyboardButton(
+            text="🔍 " + text,
+            switch_inline_query_current_chat=text,
+        ))
+        self.bot.edit_message_text("Запрос не распознан. Нажмите на кнопку ниже, чтобы включить поиск",
+                                   chat_id, message_id)
+        self.bot.edit_message_reply_markup(chat_id, message_id, reply_markup=kb)
 
 
 # UTILITY FUNCTIONS #####

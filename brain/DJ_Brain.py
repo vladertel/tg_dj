@@ -29,6 +29,10 @@ class UserBanned(Exception):
     pass
 
 
+class DownloadFailed(Exception):
+    pass
+
+
 db = peewee.SqliteDatabase("db/dj_brain.db")
 
 
@@ -127,38 +131,58 @@ class DjBrain:
             raise UserBanned
         return u
 
-    def download_action(self, user_id, callback, downloader, result_id):
+    async def download_action(self, user_id, text=None, result=None, file=None, progress_callback=None):
         user = self.get_user(user_id)
 
-        def download_callback(task):
-            action = task["action"]
-
-            if action == 'download_done':
-                path = task['path']
-                if self.isWindows:
-                    path = path[2:]
-
-                author = User.get(id=int(task["user_id"]))
-                Request.create(user=author, text=task['title'])
-                if author.check_requests_quota() or author.superuser:
-                    self.scheduler.add_track_to_end_of_queue(path, task['title'], task['duration'], task["user_id"])
-                if not self.backend.is_playing:
-                    self.play_next_track()
-
-            callback(task)
-
-        if user.check_requests_quota() or user.superuser:
-            print("DEBUG [Core]: New download %s#%d from user#%d (%s)" % (downloader, result_id, user.id, user.name))
-            request_id = self.add_request_callback(download_callback)
-            self.downloader.input_queue.put({
-                "request_id": request_id,
-                "action": "download",
-                "downloader": downloader,
-                "result_id": result_id,
-            })
-        else:
+        if not user.check_requests_quota() and not user.superuser:
             print("DEBUG [Core]: Request quota reached by user#%d (%s)" % (user.id, user.name))
             raise UserRequestQuotaReached
+
+        if text:
+            print("DEBUG [Core]: New download (%s) from user#%d (%s)" % (text, user.id, user.name))
+            response = await self.call_downloader({
+                "action": "download",
+                "text": text,
+                "progress_callback": progress_callback or (lambda _state: None)
+            })
+        elif result:
+            print("DEBUG [Core]: New download %s#%d from user#%d (%s)" % (result["downloader"], result["id"],
+                                                                          user.id, user.name))
+            response = await self.call_downloader({
+                "action": "download",
+                "downloader": result["downloader"],
+                "result_id": result["id"],
+                "progress_callback": progress_callback or (lambda _state: None)
+            })
+        elif file:
+            print("DEBUG [Core]: New file #%s from user#%d (%s)" % (file["id"], user.id, user.name))
+            response = await self.call_downloader({
+                "action": "download",
+                "file": file["id"],
+                "duration": file["duration"],
+                "file_size": file["size"],
+                "file_info": file["info"],
+                "artist": file["artist"],
+                "title": file["title"],
+                "progress_callback": progress_callback or (lambda _state: None)
+            })
+        else:
+            raise ValueError("No data for downloader")
+
+        print("DEBUG [Core]: Response from downloader: (%s)" % str(response))
+
+        path = response['path']
+        if self.isWindows:
+            path = path[2:]
+
+        author = User.get(id=int(user_id))
+        Request.create(user=author, text=response['title'])
+        if author.check_requests_quota() or author.superuser:
+            self.scheduler.add_track_to_end_of_queue(path, response['title'], response['duration'], user_id)
+        if not self.backend.is_playing:
+            self.play_next_track()
+
+        return response
 
     async def search_action(self, user_id, query):
         user = self.get_user(user_id)
@@ -168,7 +192,7 @@ class DjBrain:
             "query": query,
         })
 
-    async def call_downloader(self, request):
+    def call_downloader(self, request):
         self.request_counter += 1
         request_id = self.request_counter
         request["request_id"] = request_id
@@ -298,31 +322,12 @@ class DjBrain:
             if task["request_id"] not in self.request_futures:
                 print('ERROR [Core]: Response to unknown request#%d: %s' % (task["request_id"], str(task)))
                 return
-            self.request_futures[task["request_id"]].set_result(task)
+            if task["state"] == "error":
+                self.request_futures[task["request_id"]].set_exception(DownloadFailed(task["message"]))
+            else:
+                self.request_futures[task["request_id"]].set_result(task)
             del self.request_futures[task["request_id"]]
             return
-
-        action = task['action']
-        if action == 'download_done':
-            path = task['path']
-            if self.isWindows:
-                path = path[2:]
-
-            author = User.get(id=int(task["user_id"]))
-            Request.create(user=author, text=task['title'])
-            if author.check_requests_quota() or author.superuser:
-                self.scheduler.add_track_to_end_of_queue(path, task['title'], task['duration'], task["user_id"])
-                if not self.backend.is_playing:
-                    self.play_next_track()
-
-            self.frontend.input_queue.put(task)
-
-        elif action in ['user_message', 'user_error', 'no_dl_handler', 'search_results']:
-            print("DEBUG [Core]: pushed task to frontend: " + str(task))
-            self.frontend.input_queue.put(task)
-        else:
-            print('ERROR [Core]: Message not supported: ', str(task))
-        self.downloader.output_queue.task_done()
 
     @make_endless_unfailable
     def backend_listener(self):
