@@ -113,35 +113,27 @@ class TgFrontend:
             print("INFO [Bot]: KeyboardInterrupt received")
 
     async def updates_handler(self, updates):
+        loop = asyncio.get_event_loop()
         for update in updates:
             if update.update_id > self.last_update_id:
                 self.last_update_id = update.update_id
-            if update.message:
-                print("DEBUG [Bot]: Message received: %s" % str(update.message.text))
-                await self.message_handler(update.message)
-            if update.inline_query:
-                print("DEBUG [Bot]: Inline query received: %s" % str(update.inline_query.query.lstrip()))
-                await self.inline_query_handler(update.inline_query)
-            if update.chosen_inline_result:
-                print("DEBUG [Bot]: Inline query result received: %s" % str(update.chosen_inline_result.result_id))
-                await self.chosen_inline_result_handler(update.chosen_inline_result)
-            if update.callback_query:
-                print("DEBUG [Bot]: Callback query received: %s" % str(update.callback_query.data))
-                await self.callback_query_handler(update.callback_query)
 
-    def init_handlers(self):
-        self.bot.message_handler(commands=['start'])(self.start_handler)
-        self.bot.message_handler(commands=['broadcast'])(self.broadcast_to_all_users)
-        self.bot.message_handler(commands=['get_info'])(self.get_user_info)
-        self.bot.message_handler(commands=['stop_playing', 'stop'])(self.stop_playing)
-        self.bot.message_handler(commands=['skip_song', 'skip'])(self.skip_song)
-        self.bot.message_handler(commands=['/'])(lambda x: True)
+            if update.message:
+                loop.create_task(self.message_handler(update.message))
+            elif update.inline_query:
+                loop.create_task(self.inline_query_handler(update.inline_query))
+            elif update.chosen_inline_result:
+                loop.create_task(self.chosen_inline_result_handler(update.chosen_inline_result))
+            elif update.callback_query:
+                loop.create_task(self.callback_query_handler(update.callback_query))
 
     def cleanup(self):
         pass
 
     async def message_handler(self, message):
-        if message.text:
+        if message.entities and any(e.type == "bot_command" for e in message.entities):
+            await self.tg_handler(message, self.command)
+        elif message.text:
             await self.tg_handler(message, self.download)
         elif message.audio:
             await self.tg_handler(message, self.add_audio_file)
@@ -238,9 +230,34 @@ class TgFrontend:
             except telebot.apihelper.ApiException:
                 pass
 
-        await self.core.download_action(user.id, callback, downloader=downloader, result_id=result_id,
+        await self.core.download_action(user.id, downloader=downloader, result_id=result_id,
                                         progress_callback=progress_callback)
         self.bot.edit_message_text("Песня добавлена в очередь", reply.chat.id, reply.message_id)
+
+    async def command(self, message, user):
+
+        handlers = {
+           'start': self.start_handler,
+           'broadcast': self.broadcast_to_all_users,
+           'get_info': self.get_user_info,
+           'stop_playing': self.stop_playing,
+           'stop': self.stop_playing,
+           'skip_song': self.skip_song,
+           'skip': self.skip_song,
+           '/': (lambda x: True),
+        }
+
+        for e in message.entities:
+            if e.type != "bot_command":
+                continue
+
+            command = message.text[e.offset + 1:e.length - 1]
+
+            if command not in handlers:
+                print("WARNING [Bot]: Unknown command: %s" % command)
+                return
+
+            handlers[command](message)
 
     async def download(self, message, user):
         print("DEBUG [Bot]: Download: " + str(message.text))
