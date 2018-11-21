@@ -9,7 +9,7 @@ import asyncio
 
 from .private_config import token
 
-from brain.DJ_Brain import UserBanned, UserRequestQuotaReached
+from brain.DJ_Brain import UserBanned, UserRequestQuotaReached, DownloadFailed
 
 
 compiled_regex = re.compile(r"^\d+")
@@ -242,7 +242,6 @@ class TgFrontend:
            'stop': self.stop_playing,
            'skip_song': self.skip_song,
            'skip': self.skip_song,
-           '/': (lambda x: True),
         }
 
         for e in message.entities:
@@ -261,6 +260,9 @@ class TgFrontend:
         print("DEBUG [Bot]: Download: " + str(message.text))
         text = message.text
 
+        if text[0:2] == "//":
+            return
+
         if re.search(r'^@\w+ ', text) is not None:
             self.bot.send_message(user.tg_id, "Выберите из интерактивного меню, пожалуйста. "
                                               "Интерактивное меню появляется во время ввода сообщения")
@@ -274,8 +276,11 @@ class TgFrontend:
             except telebot.apihelper.ApiException:
                 pass
 
-        await self.core.download_action(user.id, text=text, progress_callback=progress_callback)
-        self.bot.edit_message_text("Песня добавлена в очередь", reply.chat.id, reply.message_id)
+        try:
+            await self.core.download_action(user.id, text=text, progress_callback=progress_callback)
+            self.bot.edit_message_text("Песня добавлена в очередь", reply.chat.id, reply.message_id)
+        except DownloadFailed:
+            self._suggest_search(text, reply.chat.id, reply.message_id)
 
     async def add_audio_file(self, message, user):
         file_info = self.bot.get_file(message.audio.file_id)
