@@ -110,7 +110,6 @@ class HtmlDownloader(AbstractDownloader):
 
         if self.is_in_cache(file_path):
             print("INFO [HtmlDownloader]: File %s already in cache" % result_id)
-            user_message("Песня добавлена в очередь\n%s" % title)
             return file_path, title, song["duration"]
 
         if not os.path.exists(os.path.join(os.getcwd(), mediaDir)):
@@ -154,5 +153,4 @@ class HtmlDownloader(AbstractDownloader):
         if _DEBUG_:
             print("DEBUG [HtmlDownloader]: File stored in path: " + file_path)
 
-        user_message("Песня добавлена в очередь\n%s" % title)
         return file_path, title, song["duration"]

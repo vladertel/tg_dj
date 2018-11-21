@@ -221,9 +221,16 @@ class TgFrontend:
             except telebot.apihelper.ApiException:
                 pass
 
-        await self.core.download_action(user.id, result={"downloader": downloader, "id": result_id},
-                                        progress_callback=progress_callback)
-        self.bot.edit_message_text("Песня добавлена в очередь", reply.chat.id, reply.message_id)
+        response = await self.core.download_action(
+            user.id,
+            result={"downloader": downloader, "id": result_id},
+            progress_callback=progress_callback
+        )
+
+        self.bot.edit_message_text(
+            "Песня в очереди. Позиция: %d\n%s" % (response['position'], response['title']),
+            reply.chat.id, reply.message_id
+        )
 
     async def command(self, message, user):
 

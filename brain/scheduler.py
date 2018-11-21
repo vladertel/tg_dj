@@ -114,6 +114,7 @@ class Scheduler:
         self.lock.acquire()
         self.playing_queue.append(Song.new(path, title, duration, user))
         self.lock.release()
+        return len(self.playing_queue)
 
     def pop_first_track(self):
         self.lock.acquire()

@@ -178,7 +178,9 @@ class DjBrain:
         author = User.get(id=int(user_id))
         Request.create(user=author, text=response['title'])
         if author.check_requests_quota() or author.superuser:
-            self.scheduler.add_track_to_end_of_queue(path, response['title'], response['duration'], user_id)
+            response["position"] = self.scheduler.add_track_to_end_of_queue(
+                path, response['title'], response['duration'], user_id
+            )
         if not self.backend.is_playing:
             self.play_next_track()
 
