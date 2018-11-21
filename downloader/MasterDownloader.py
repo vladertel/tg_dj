@@ -5,7 +5,7 @@ import os
 
 
 from .YoutubeDownloader import YoutubeDownloader
-from .VkDownloader import VkDownloader
+from .HtmlDownloader import HtmlDownloader
 from .FileDownloader import FileDownloader
 from .LinkDownloader import LinkDownloader
 from .exceptions import *
@@ -151,7 +151,7 @@ class MasterDownloader:
         self.downloaders = OrderedDict([
             ("yt", YoutubeDownloader()),
             ("file", FileDownloader()),
-            ("vk", VkDownloader()),
+            ("html", HtmlDownloader()),
             ("link", LinkDownloader()),
         ])
 
