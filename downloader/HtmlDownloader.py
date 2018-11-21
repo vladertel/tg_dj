@@ -102,7 +102,7 @@ class HtmlDownloader(AbstractDownloader):
         if search_request.status_code != 200:
             raise BadReturnStatus(search_request.status_code)
         tree = lxml.html.fromstring(search_request.text)
-        download_uri = tree.xpath(download_xpath)[0]
+        download_uri = base_uri + tree.xpath(download_xpath)[0]
 
         title = song["artist"] + " — " + song["title"]
         file_name = sanitize_file_name("html-" + str(result_id) + '.mp3')
@@ -118,7 +118,7 @@ class HtmlDownloader(AbstractDownloader):
             if _DEBUG_:
                 print("DEBUG [HtmlDownloader]: Media dir have been created: %s" % os.path.join(os.getcwd(), mediaDir))
 
-        print("INFO [HtmlDownloader]: Downloading vk song #" + result_id)
+        print("INFO [HtmlDownloader]: Downloading song #" + result_id)
         user_message("Скачиваем...\n%s" % title)
 
         response_head = requests.head(
