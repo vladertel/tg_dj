@@ -92,6 +92,8 @@ class DjBrain:
 
         self.scheduler = Scheduler()
 
+        self.loop = asyncio.get_event_loop()
+
         self.frontend.bind_core(self)
 
         self.downloader_thread = Thread(daemon=True, target=self.downloader_listener)
@@ -102,15 +104,12 @@ class DjBrain:
 
         self.play_next_track()
 
-        self.request_callbacks = {}
         self.request_futures = {}
         self.request_counter = 0
 
-    def add_request_callback(self, callback):
-        self.request_counter += 1
-        request_id = self.request_counter
-        self.request_callbacks[request_id] = callback
-        return request_id
+        self.loop.run_forever()
+        print("FATAL [Bot]: Polling loop ended")
+        self.loop.close()
 
     @staticmethod
     def user_init_action():
@@ -381,25 +380,19 @@ class DjBrain:
         user_curr = track.user
         user_next = None if next_track is None else next_track.user
 
+        print('DEBUG [Core]: Users: %s, %s' % (str(user_curr), str(user_next)))
+
         if user_curr is not None and user_next is not None and user_curr == user_next:
-            self.frontend.input_queue.put({
-                "action": "user_message",
-                "message": "Играет " + track.title + "\n\nСледующий трек тоже ваш!\nБудет играть " + next_track.title,
-                "user_id": next_track.user
-            })
+            self.frontend.notify_user(
+                "Играет %s\n\nСледующий трек тоже ваш!\nБудет играть %s" % (track.title, next_track.title),
+                user_curr
+            )
         else:
             if user_next is not None:
-                self.frontend.input_queue.put({
-                    "action": "user_message",
-                    "message": "Следующий трек ваш!\nБудет играть " + next_track.title,
-                    "user_id": next_track.user
-                })
+                self.frontend.notify_user("Следующий трек ваш!\nБудет играть %s" % next_track.title, user_next)
             if user_curr is not None:
-                self.frontend.input_queue.put({
-                    "action": "user_message",
-                    "message": "Играет " + track.title,
-                    "user_id": track.user
-                })
+                self.frontend.notify_user("Играет %s" % track.title, user_curr,)
+
         return track, next_track
 
     def get_menu_main(self, user, current_track=None, next_track=None):

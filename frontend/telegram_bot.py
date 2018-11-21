@@ -68,26 +68,21 @@ class TgFrontend:
         self.interval = 0
         self.timeout = 20
 
-        self.bot = telebot.TeleBot(token)
-        self.botThread = threading.Thread(daemon=True, target=self.bot_init)
-        self.botThread.start()
-
         self.core = None
-        self.loop = None
+        self.bot = None
 
         self.bamboozled_users = []
 
     def bind_core(self, core):
         self.core = core
 
+        self.bot = telebot.TeleBot(token)
+        self.bot_init()
+
 # INIT #####
     def bot_init(self):
         print("INFO [Bot %s]: Starting polling..." % threading.get_ident())
-        self.loop = asyncio.new_event_loop()
-        self.loop.create_task(self.bot_polling())
-        self.loop.run_forever()
-        print("FATAL [Bot]: Polling loop ended")
-        self.loop.close()
+        self.core.loop.create_task(self.bot_polling())
 
     async def bot_polling(self):
         await asyncio.sleep(self.interval)
@@ -106,9 +101,6 @@ class TgFrontend:
             print("DEBUG [Bot]: Waiting for %d seconds until retry" % self.error_interval)
             time.sleep(self.error_interval)
             self.error_interval *= 2
-        except KeyboardInterrupt:
-            self.loop.stop()
-            print("INFO [Bot]: KeyboardInterrupt received")
 
     def updates_handler(self, updates):
         for update in updates:
@@ -116,15 +108,15 @@ class TgFrontend:
                 self.last_update_id = update.update_id
 
             if update.message:
-                asyncio.run_coroutine_threadsafe(self.message_handler(update.message), self.loop)
+                asyncio.run_coroutine_threadsafe(self.message_handler(update.message), self.core.loop)
             elif update.inline_query:
-                asyncio.run_coroutine_threadsafe(self.inline_query_handler(update.inline_query), self.loop)
+                asyncio.run_coroutine_threadsafe(self.inline_query_handler(update.inline_query), self.core.loop)
             elif update.chosen_inline_result:
-                asyncio.run_coroutine_threadsafe(self.chosen_inline_result_handler(update.chosen_inline_result), self.loop)
+                asyncio.run_coroutine_threadsafe(self.chosen_inline_result_handler(update.chosen_inline_result), self.core.loop)
             elif update.callback_query:
-                asyncio.run_coroutine_threadsafe(self.callback_query_handler(update.callback_query), self.loop)
+                asyncio.run_coroutine_threadsafe(self.callback_query_handler(update.callback_query), self.core.loop)
 
-        asyncio.run_coroutine_threadsafe(self.bot_polling(), self.loop)
+        asyncio.run_coroutine_threadsafe(self.bot_polling(), self.core.loop)
 
     def cleanup(self):
         pass
@@ -197,7 +189,7 @@ class TgFrontend:
         try:
             await method(data, user)
         except UserBanned:
-            self.show_access_denied_msg(user)
+            self._show_access_denied_msg(user)
 
     async def search(self, data, user):
         query = data.query.lstrip()
@@ -562,23 +554,32 @@ class TgFrontend:
         self.remove_old_menu(user)
         self.bot.send_message(user.tg_id, message_text, reply_markup=kb)
 
-    def show_status(self, task, user):
-        self.bot.send_message(user.tg_id, task["message"])
+    def notify_user(self, message, uid):
+        print("DEBUG [Bot]: Trying to notify user#%d" % uid)
+        try:
+            user = User.get(User.core_id == uid)
+        except peewee.DoesNotExist:
+            print("WARNING [Bot]: Trying to notify unexistent user#%d" % uid)
+            return
+        self._show_status(message, user)
 
-    def show_error(self, task, user):
-        self.bot.send_message(user.tg_id, task["message"])
+    def _show_status(self, message, user):
+        self.bot.send_message(user.tg_id, message)
 
-    def show_access_denied_msg(self, user):
+    def _show_error(self, message, user):
+        self.bot.send_message(user.tg_id, message)
+
+    def _show_access_denied_msg(self, user):
         self.bot.send_message(user.tg_id, "К вашему сожалению, вы были заблокированы :/")
 
         if user.tg_id not in self.bamboozled_users:
             self.bamboozled_users.append(user.tg_id)
             self.bot.send_sticker(user.tg_id, data="CAADAgADiwgAArcKFwABQMmDfPtchVkC")
 
-    def show_quota_reached_msg(self, user):
+    def _show_quota_reached_msg(self, user):
         self.bot.send_message(user.tg_id, "Превышен лимит запросов, попробуйте позже")
 
-    def suggest_search(self, text, chat_id, message_id):
+    def _suggest_search(self, text, chat_id, message_id):
         kb = telebot.types.InlineKeyboardMarkup(row_width=2)
         kb.row(telebot.types.InlineKeyboardButton(
             text="🔍 " + text,
