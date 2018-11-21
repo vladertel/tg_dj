@@ -67,7 +67,7 @@ class HtmlDownloader(AbstractDownloader):
                 t = t * 60 + int(part)
             s["duration"] = t
 
-        print(str(songs))
+        songs.sort(key=lambda song: -int(song["rating"]))
 
         length = len(songs)
         if length == 0:
