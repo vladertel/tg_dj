@@ -108,7 +108,7 @@ class MasterDownloader:
                     r["downloader"] = dwnld_name
 
                 self.output_queue.put({
-                    "action": "search_results",
+                    "state": "success",
                     "request_id": task["request_id"],
                     "results": search_results,
                 })

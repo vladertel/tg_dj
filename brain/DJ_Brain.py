@@ -146,7 +146,7 @@ class DjBrain:
                 "progress_callback": progress_callback or (lambda _state: None)
             })
         elif result:
-            print("DEBUG [Core]: New download %s#%d from user#%d (%s)" % (result["downloader"], result["id"],
+            print("DEBUG [Core]: New download %s#%s from user#%d (%s)" % (result["downloader"], result["id"],
                                                                           user.id, user.name))
             response = await self.call_downloader({
                 "action": "download",
@@ -167,6 +167,7 @@ class DjBrain:
                 "progress_callback": progress_callback or (lambda _state: None)
             })
         else:
+            print("ERROR [Core]: No data for downloader (%s)" % (str(locals())))
             raise ValueError("No data for downloader")
 
         print("DEBUG [Core]: Response from downloader: (%s)" % str(response))
@@ -198,8 +199,12 @@ class DjBrain:
         request["request_id"] = request_id
         self.downloader.input_queue.put(request)
 
-        f = asyncio.Future()
-        self.request_futures[request_id] = f
+        loop = asyncio.get_event_loop()
+        f = asyncio.Future(loop=loop)
+        self.request_futures[request_id] = {
+            "future": f,
+            "loop": loop,
+        }
         return f
 
     def menu_action(self, path, user_id):
@@ -319,15 +324,28 @@ class DjBrain:
         task = self.downloader.output_queue.get()
 
         if "request_id" in task:
-            if task["request_id"] not in self.request_futures:
+            rid = task["request_id"]
+            if rid not in self.request_futures:
                 print('ERROR [Core]: Response to unknown request#%d: %s' % (task["request_id"], str(task)))
                 return
+            print('ERROR [Core]: Response to request#%d: %s' % (task["request_id"], str(task)))
             if task["state"] == "error":
-                self.request_futures[task["request_id"]].set_exception(DownloadFailed(task["message"]))
+                self.request_futures[rid]["loop"].call_soon_threadsafe(
+                    self.send_exception_to_future, task, DownloadFailed(task["message"])
+                )
             else:
-                self.request_futures[task["request_id"]].set_result(task)
-            del self.request_futures[task["request_id"]]
-            return
+                self.request_futures[rid]["loop"].call_soon_threadsafe(
+                    self.send_result_to_future, task
+                )
+
+    def send_result_to_future(self, task):
+        self.request_futures[task["request_id"]]["future"].set_result(task)
+        del self.request_futures[task["request_id"]]
+
+    def send_exception_to_future(self, task, exception):
+        print('ERROR [Core]: Exception in future#%d: %s' % (task["request_id"], str(exception)))
+        self.request_futures[task["request_id"]]["future"].set_exception(exception)
+        del self.request_futures[task["request_id"]]
 
     @make_endless_unfailable
     def backend_listener(self):

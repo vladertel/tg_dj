@@ -71,9 +71,9 @@ class TgFrontend:
         self.bot = telebot.TeleBot(token)
         self.botThread = threading.Thread(daemon=True, target=self.bot_init)
         self.botThread.start()
-        self.init_handlers()
 
         self.core = None
+        self.loop = None
 
         self.bamboozled_users = []
 
@@ -82,26 +82,24 @@ class TgFrontend:
 
 # INIT #####
     def bot_init(self):
-        print("INFO [Bot]: Starting polling...")
-        loop = asyncio.new_event_loop()
-        loop.create_task(self.bot_polling())
-        loop.run_forever()
+        print("INFO [Bot %s]: Starting polling..." % threading.get_ident())
+        self.loop = asyncio.new_event_loop()
+        self.loop.create_task(self.bot_polling())
+        self.loop.run_forever()
         print("FATAL [Bot]: Polling loop ended")
-        loop.close()
+        self.loop.close()
 
     async def bot_polling(self):
-        while True:
-            await asyncio.sleep(self.interval)
-            loop = asyncio.get_event_loop()
-            await loop.run_in_executor(None, self.get_updates, loop)
+        await asyncio.sleep(self.interval)
+        threading.Thread(daemon=True, target=self.get_updates).start()
 
-    def get_updates(self, loop):
+    def get_updates(self):
         try:
-            updates = self.bot.get_updates(offset=(self.last_update_id + 1), timeout=self.timeout)
+            updates = self.bot.get_updates(self.last_update_id + 1, None, self.timeout, )
             self.error_interval = .25
-            loop.create_task(self.updates_handler(updates))
             if len(updates):
                 print("DEBUG [Bot]: Updates received: %s" % str(updates))
+            self.updates_handler(updates)
         except telebot.apihelper.ApiException as e:
             print("ERROR [Bot]: API Exception")
             print(e)
@@ -109,23 +107,24 @@ class TgFrontend:
             time.sleep(self.error_interval)
             self.error_interval *= 2
         except KeyboardInterrupt:
-            loop.stop()
+            self.loop.stop()
             print("INFO [Bot]: KeyboardInterrupt received")
 
-    async def updates_handler(self, updates):
-        loop = asyncio.get_event_loop()
+    def updates_handler(self, updates):
         for update in updates:
             if update.update_id > self.last_update_id:
                 self.last_update_id = update.update_id
 
             if update.message:
-                loop.create_task(self.message_handler(update.message))
+                asyncio.run_coroutine_threadsafe(self.message_handler(update.message), self.loop)
             elif update.inline_query:
-                loop.create_task(self.inline_query_handler(update.inline_query))
+                asyncio.run_coroutine_threadsafe(self.inline_query_handler(update.inline_query), self.loop)
             elif update.chosen_inline_result:
-                loop.create_task(self.chosen_inline_result_handler(update.chosen_inline_result))
+                asyncio.run_coroutine_threadsafe(self.chosen_inline_result_handler(update.chosen_inline_result), self.loop)
             elif update.callback_query:
-                loop.create_task(self.callback_query_handler(update.callback_query))
+                asyncio.run_coroutine_threadsafe(self.callback_query_handler(update.callback_query), self.loop)
+
+        asyncio.run_coroutine_threadsafe(self.bot_polling(), self.loop)
 
     def cleanup(self):
         pass
@@ -230,7 +229,7 @@ class TgFrontend:
             except telebot.apihelper.ApiException:
                 pass
 
-        await self.core.download_action(user.id, downloader=downloader, result_id=result_id,
+        await self.core.download_action(user.id, result={"downloader": downloader, "id": result_id},
                                         progress_callback=progress_callback)
         self.bot.edit_message_text("Песня добавлена в очередь", reply.chat.id, reply.message_id)
 
