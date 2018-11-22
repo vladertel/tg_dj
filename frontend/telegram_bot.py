@@ -127,22 +127,31 @@ class TgFrontend:
         pass
 
     async def message_handler(self, message):
-        if message.entities and any(e.type == "bot_command" for e in message.entities):
-            await self.tg_handler(message, self.command)
-        elif message.text:
-            await self.tg_handler(message, self.download)
-        elif message.audio:
-            await self.tg_handler(message, self.add_audio_file)
-        elif message.sticker:
-            self.sticker_handler(message)
-        else:
-            self.file_handler(message)
+        try:
+            if message.entities and any(e.type == "bot_command" for e in message.entities):
+                await self.tg_handler(message, self.command)
+            elif message.text:
+                await self.tg_handler(message, self.download)
+            elif message.audio:
+                await self.tg_handler(message, self.add_audio_file)
+            elif message.sticker:
+                self.sticker_handler(message)
+            else:
+                self.file_handler(message)
+        except Exception as e:
+            traceback.print_exc()
 
     async def inline_query_handler(self, inline_query):
-        await self.tg_handler(inline_query, self.search)
+        try:
+            await self.tg_handler(inline_query, self.search)
+        except Exception as e:
+            traceback.print_exc()
 
     async def chosen_inline_result_handler(self, chosen_inline_result):
-        await self.tg_handler(chosen_inline_result, self.search_select)
+        try:
+            await self.tg_handler(chosen_inline_result, self.search_select)
+        except Exception as e:
+            traceback.print_exc()
 
     async def callback_query_handler(self, callback_query):
         try:
