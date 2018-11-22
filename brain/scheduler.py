@@ -158,7 +158,7 @@ class Scheduler:
         if limit == 0:
             return list(self.playing_queue)[offset:]
         else:
-            return list(self.playing_queue)[offset:limit]
+            return list(self.playing_queue)[offset:offset+limit]
 
     def get_queue_length(self):
         return len(self.playing_queue)

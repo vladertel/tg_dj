@@ -289,7 +289,7 @@ class TgFrontend:
             if e.type != "bot_command":
                 continue
 
-            command = message.text[e.offset + 1:e.length - 1]
+            command = message.text[e.offset + 1:e.offset + e.length]
 
             if command not in handlers:
                 print("WARNING [Bot]: Unknown command: %s" % command)
