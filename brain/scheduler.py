@@ -154,24 +154,13 @@ class Scheduler:
                 return song, k
         return None, None
 
-    def get_queue(self):
-        return list(self.playing_queue)
+    def get_queue(self, offset=0, limit=0):
+        if limit == 0:
+            return list(self.playing_queue)[offset:]
+        else:
+            return list(self.playing_queue)[offset:limit]
 
-    def get_queue_page(self, page):
-        queue = list(self.playing_queue)
-        queue_length = len(queue)
-        if queue_length == 0:
-            return [], 0, True
-        start = page * 10
-        if start >= queue_length:
-            div, _ = divmod(queue_length, 10)
-            return queue[div * 10:], div, True
-        if start < 0:
-            start = 0
-        end = start + 10
-        return queue[start:end], page, queue_length <= end
-
-    def get_queue_len(self):
+    def get_queue_length(self):
         return len(self.playing_queue)
 
     def remove_from_queue(self, sid):

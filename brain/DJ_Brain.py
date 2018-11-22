@@ -2,7 +2,6 @@
 # -*- coding: UTF-8 -*-
 
 import peewee
-import time
 import json
 import os
 import asyncio
@@ -26,6 +25,10 @@ class UserRequestQuotaReached(UserQuotaReached):
 
 
 class UserBanned(Exception):
+    pass
+
+
+class PermissionDenied(Exception):
     pass
 
 
@@ -208,117 +211,6 @@ class DjBrain:
         }
         return f
 
-    def menu_action(self, path, user_id):
-        user = self.get_user(user_id)
-        print("DEBUG [Core]: menu action %s from user %s" % (path, user_id))
-
-        if path[0] == "main":
-            return self.get_menu_main(user)
-        elif path[0] == "queue":
-            cur_page = int(path[1])
-            songs_list, _, is_last_page = self.scheduler.get_queue_page(cur_page)
-            return {
-                "user_id": user.id,
-                "page": cur_page,
-                "songs_list": songs_list,
-                "is_last_page": is_last_page
-            }
-
-        elif path[0] == "song":
-            sel_song = int(path[1])
-            (song, position) = self.scheduler.get_song(sel_song)
-            if song is not None:
-                return {
-                    "user_id": user.id,
-                    "number": path[1],
-                    "duration": song.duration,
-                    "rating": sum([song.votes[k] for k in song.votes]),
-                    "position": position,
-                    "page": position // PAGE_SIZE,
-                    "title": song.title,
-                    "superuser": user.superuser
-                }
-            else:
-                cur_page = 0
-                songs_list, _, is_last_page = self.scheduler.get_queue_page(cur_page)
-                return {
-                    "user_id": user.id,
-                    "page": cur_page,
-                    "songs_list": songs_list,
-                    "is_last_page": is_last_page
-                }
-
-        elif path[0] == "vote":
-            sign = path[1]
-            sid = int(path[2])
-            print("DEBUG [Core]: User %d votes %s for song %d" % (user_id, sign, sid))
-            if sign == "up":
-                song, position = self.scheduler.vote_up(user_id, sid)
-            else:
-                song, position = self.scheduler.vote_down(user_id, sid)
-            return {
-                "user_id": user.id,
-                "number": path[2],
-                "duration": song.duration,
-                "rating": sum([song.votes[k] for k in song.votes]),
-                "position": position,
-                "page": position // PAGE_SIZE,
-                "title": song.title,
-                "superuser": user.superuser
-            }
-
-        elif path[0] == "admin" and user.superuser:
-            return self.menu_admin_action(path, user_id)
-        else:
-            print('ERROR [Core]: Menu not supported:', str(path))
-
-    def menu_admin_action(self, path, user_id):
-        user = self.get_user(user_id)
-
-        if path[1] == "skip_song":
-            track, next_track = self.play_next_track()
-            return self.get_menu_main(user, track, next_track)
-
-        elif path[1] == "delete":
-            pos = self.scheduler.remove_from_queue(int(path[2]))
-            songs_list, page, is_last_page = self.scheduler.get_queue_page(pos // 10)
-            return {
-                "user_id": user.id,
-                "page": page,
-                "songs_list": songs_list,
-                "is_last_page": is_last_page
-            }
-
-        elif path[1] == 'stop_playing':
-            self.backend.input_queue.put({"action": "stop_playing"})
-            return self.get_menu_main(user)
-
-        elif path[1] == "list_users":
-            return self.get_menu_users_list(user, int(path[2]))
-
-        elif path[1] == "user_info":
-            try:
-                handled_user = User.get(id=int(path[2]))
-                return self.get_menu_user_info(user, handled_user)
-            except KeyError:
-                print("ERROR [Core]: User does not exists: can't obtain user info")
-
-        elif path[1] == "ban_user" or path[1] == "unban_user":
-            try:
-                handled_user = User.get(id=int(path[2]))
-
-                if path[1] == "ban_user":
-                    handled_user.banned = True
-                    print("DEBUG [Core]: User banned")
-                if path[1] == "unban_user":
-                    handled_user.banned = False
-                    print("DEBUG [Core]: User unbanned")
-                handled_user.save()
-
-                return self.get_menu_user_info(user, handled_user)
-            except KeyError:
-                print("ERROR [Core]: User does not exists: can't ban/unban user")
-
     # DOWNLOADER QUEUE
     @make_endless_unfailable
     def downloader_listener(self):
@@ -397,64 +289,136 @@ class DjBrain:
 
         return track, next_track
 
-    def get_menu_main(self, user, current_track=None, next_track=None):
-        if current_track is not None:
-            #  cruthcy conversions! YAAAY
-            current_track = {
-                "title": current_track.title,
-                "duration": current_track.duration,
-                "start_time": time.time(),
-                "user_id": current_track.user,
+    def switch_track(self, user_id):
+        user = self.get_user(user_id)
 
-            }
+        if not user.superuser:
+            raise PermissionDenied()
+
+        self.play_next_track()
+
+    def delete_track(self, user_id, song_id):
+        user = self.get_user(user_id)
+
+        if not user.superuser:
+            raise PermissionDenied()
+
+        position = self.scheduler.remove_from_queue(song_id)
+
+        return position
+
+    def stop_playback(self, user_id):
+        user = self.get_user(user_id)
+
+        if not user.superuser:
+            raise PermissionDenied()
+
+        self.backend.input_queue.put({"action": "stop_playing"})
+
+    def ban_user(self, user_id, handled_user_id):
+        user = self.get_user(user_id)
+
+        if not user.superuser:
+            raise PermissionDenied()
+
+        try:
+            handled_user = User.get(id=handled_user_id)
+            handled_user.banned = True
+            handled_user.save()
+            print("DEBUG [Core]: User banned")
+        except KeyError:
+            print("ERROR [Core]: User does not exists: can't ban user")
+            raise KeyError("User does not exists: can't ban user")
+
+    def unban_user(self, user_id, handled_user_id):
+        user = self.get_user(user_id)
+
+        if not user.superuser:
+            raise PermissionDenied()
+
+        try:
+            handled_user = User.get(id=handled_user_id)
+            handled_user.banned = False
+            handled_user.save()
+            print("DEBUG [Core]: User unbanned")
+        except KeyError:
+            print("ERROR [Core]: User does not exists: can't unban user")
+            raise KeyError("User does not exists: can't unban user")
+
+    def get_state(self, user_id):
+        user = self.get_user(user_id)
         return {
-            "action": "menu",
-            "user_id": user.id,
-            "entry": "main",
             "queue_len": self.scheduler.queue_length(),
-            "now_playing": current_track or self.backend.now_playing,
-            "next_in_queue": next_track or self.scheduler.get_next_song(),
+            "now_playing": self.backend.now_playing,
+            "next_in_queue": self.scheduler.get_next_song(),
             "superuser": user.superuser,
         }
 
-    def get_menu_users_list(self, user, page):
+    def get_queue(self, _user_id, offset=0, limit=0):
+        return {
+            "list": self.scheduler.get_queue(offset, limit),
+            "cnt": self.scheduler.get_queue_length(),
+        }
+
+    def get_song_info(self, user_id, song_id):
+        user = self.get_user(user_id)
+
+        (song, position) = self.scheduler.get_song(song_id)
+        if song is None:
+            return None
+
+        rating = sum([song.votes[k] for k in song.votes])
+
+        # TODO: Return superuser extra info
+
+        return {
+            "title": song.title,
+            "duration": song.duration,
+            "rating": rating,
+            "position": position,
+            "superuser": user.superuser
+        }
+
+    def vote_song(self, user_id, sign, song_id):
+        if sign == "up":
+            self.scheduler.vote_up(user_id, song_id)
+        elif sign == "down":
+            self.scheduler.vote_down(user_id, song_id)
+        else:
+            raise ValueError("Sign value should be either 'up' or 'down'")
+
+    def get_users(self, user_id, offset=0, limit=0):
+        user = self.get_user(user_id)
+
+        if not user.superuser:
+            raise PermissionDenied()
 
         users_cnt = User.select().count()
         if users_cnt == 0:
-            return [], 0, True
+            return {"list": [], "cnt": 0}
 
-        start = page * PAGE_SIZE
-        if start >= users_cnt:
-            div, mod = divmod(users_cnt, PAGE_SIZE)
-            start = div * PAGE_SIZE
-            page = div
-        elif start < 0:
-            start = 0
-            page = 0
-        end = start + PAGE_SIZE
-
-        users = User.select().offset(start).limit(PAGE_SIZE)
+        if limit == 0:
+            users = User.select().offset(offset)
+        else:
+            users = User.select().offset(offset).limit(limit)
 
         return {
-            "action": "menu",
-            "entry": "admin_list_users",
-            "user_id": user.id,
-            "page": page,
-            "users_list": users,
-            "users_cnt": users_cnt,
-            "is_last_page": end >= users_cnt
+            "list": users,
+            "cnt": users_cnt,
         }
 
-    def get_menu_user_info(self, user, handled_user):
+    def get_user_info(self, user_id, handled_user_id):
+        user = self.get_user(user_id)
 
+        if not user.superuser:
+            raise PermissionDenied()
+
+        handled_user = self.get_user(handled_user_id)
         requests = Request.select().filter(Request.user == handled_user).order_by(-Request.time).limit(10)
-        req_cnt = Request.select().count()
+        counter = Request.select().filter(Request.user == handled_user).count()
 
         return {
-            "action": "menu",
-            "entry": "admin_user",
-            "user_id": user.id,
-            "about_user": handled_user,
-            "requests": [r for r in requests],
-            "req_cnt": req_cnt,
+            "info": handled_user,
+            "last_requests": [r for r in requests],
+            "total_requests": counter,
         }
