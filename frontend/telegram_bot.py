@@ -238,7 +238,7 @@ class TgFrontend:
         print("DEBUG [Bot]: Awaiting core: " + query)
         task = await self.core.search_action(user.id, query=query)
         results = task["results"]
-        print("DEBUG [Bot]: Response from core: " + str(results))
+        print("DEBUG [Bot]: Response from core: %d results" % len(results))
 
         results_articles = []
         for song in results:
@@ -405,7 +405,7 @@ class TgFrontend:
     def send_menu_main(self, user):
         menu_template = """
             {% if superuser %}
-                {% if now_playing is not none %}
+                {% if current_song is not none %}
                     ⏹ Остановить | callback_data=admin:stop_playing || ▶️ Переключить | callback_data=admin:skip_song
                 {% else %}
                     ▶️ Запустить | callback_data=admin:skip_song
@@ -422,46 +422,25 @@ class TgFrontend:
         """
 
         msg_template = """
-            {% if now_playing is not none %}
-                🔊 [{{ now_playing["played"] | format_duration }} / {{ now_playing["duration"] | format_duration }}]    👤 {{ now_playing["author_name"] }}
-                {{ now_playing["title"] }}\n
+            {% if current_song is not none %}
+                🔊 [{{ current_song_progress | format_duration }} / {{ current_song.duration | format_duration }}]    👤 {{ current_user.name if current_user else "Студсовет" }}
+                {{ current_song.full_title() }}\n
             {% endif %}
-            {% if superuser and next_in_queue is not none %}
+            {% if superuser and next_song is not none %}
                 Следующий трек:
-                ⏱ {{ next_in_queue.duration | format_duration }}    👤 {{ next_in_queue.author }}
-                {{ next_in_queue.title }}
+                ⏱ {{ next_song.duration | format_duration }}    👤 {{ next_user.name if next_user else "Студсовет" }}
+                {{ next_song.full_title() }}
             {% endif %}
         """
 
         state = self.core.get_state(user.core_id)
 
-        superuser = state["superuser"]
-        queue_len = state["queue_len"]
-
-        now_playing = state["now_playing"]
-        if now_playing is not None:
-            if now_playing["user_id"] is not None:
-                track_author = User.get(User.core_id == now_playing["user_id"])
-                now_playing["author_name"] = track_author.full_name()
-            else:
-                now_playing["author_name"] = "Студсовет"
-
-            now_playing["played"] = int(time.time() - now_playing["start_time"])
-
-        next_in_queue = state["next_in_queue"]
-        if superuser and next_in_queue is not None:
-            if next_in_queue.user is not None:
-                track_author = User.get(User.core_id == next_in_queue.user)
-                next_in_queue.author = track_author.full_name()
-            else:
-                next_in_queue.author = "Студсовет"
-
         template = env.from_string(menu_template)
-        rendered = template.render(now_playing=now_playing, superuser=superuser, queue_len=queue_len)
+        rendered = template.render(**state)
         kb = self.build_markup(rendered)
 
         template = env.from_string('\n'.join([l.strip() for l in msg_template.splitlines(False)]))
-        message_text = template.render(now_playing=now_playing, next_in_queue=next_in_queue, superuser=superuser)
+        message_text = template.render(**state)
 
         self.remove_old_menu(user)
         self.bot.send_message(user.tg_id, message_text, reply_markup=kb)
@@ -478,7 +457,7 @@ class TgFrontend:
 
         kb = telebot.types.InlineKeyboardMarkup(row_width=3)
         for song in songs:
-            kb.row(telebot.types.InlineKeyboardButton(text=song.title, callback_data="song:%d" % song.id))
+            kb.row(telebot.types.InlineKeyboardButton(text=song.full_title(), callback_data="song:%d" % song.id))
 
         page = math.ceil(offset / self.songs_per_page) + 1
         next_offset = offset + self.songs_per_page
@@ -509,29 +488,31 @@ class TgFrontend:
     def send_menu_song(self, user, song_id):
         data = self.core.get_song_info(user.core_id, song_id)
 
-        if data is None:
-            # TODO: Handle it!
-            pass
-
-        title = data["title"]
-        duration = "{:d}:{:02d}".format(*list(divmod(data["duration"], 60)))
-        rating = data["rating"]
-        position = data["position"]
         superuser = data['superuser']
-
-        list_offset = (position // self.songs_per_page) * self.songs_per_page
-
-        message_text = "🎵 %s\n\nДлительность: %s\nРейтинг: %d\nМесто в очереди: %d" % \
-                       (title, duration, rating, position)
-
         kb = telebot.types.InlineKeyboardMarkup(row_width=2)
-        kb.row(
-            telebot.types.InlineKeyboardButton(text="👍", callback_data="vote:up:%s" % song_id),
-            telebot.types.InlineKeyboardButton(text="👎", callback_data="vote:down:%s" % song_id),
-        )
 
-        if superuser:
-            kb.row(telebot.types.InlineKeyboardButton(text="🚫 Удалить 🚫", callback_data="admin:delete:%s" % song_id))
+        song = data["song"]
+        if song is None:
+            message_text = "🚫 Не удалось загрузить информацию о песне"
+            list_offset = 0
+        else:
+            duration = "{:d}:{:02d}".format(*list(divmod(song.duration, 60)))
+            position = data["position"]
+
+            list_offset = (position // self.songs_per_page) * self.songs_per_page
+
+            message_text = "🎵 %s\n\nДлительность: %s\nРейтинг: %d\nМесто в очереди: %d" % \
+                           (song.full_title(), duration, song.rating, position)
+
+            kb.row(
+                telebot.types.InlineKeyboardButton(text="👍", callback_data="vote:up:%s" % song_id),
+                telebot.types.InlineKeyboardButton(text="👎", callback_data="vote:down:%s" % song_id),
+            )
+
+            if superuser:
+                kb.row(
+                    telebot.types.InlineKeyboardButton(text="🚫 Удалить 🚫", callback_data="admin:delete:%s" % song_id)
+                )
 
         kb.row(
             telebot.types.InlineKeyboardButton(text=STR_BACK, callback_data="queue:%d" % list_offset),

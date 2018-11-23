@@ -8,7 +8,7 @@ from .AbstractDownloader import AbstractDownloader
 from .config import mediaDir, _DEBUG_, MAXIMUM_DURATION, MAXIMUM_FILE_SIZE
 from .exceptions import *
 from .storage_checker import filter_storage
-from utils import get_mp3_title_and_duration, sanitize_file_name
+from utils import get_mp3_info, sanitize_file_name
 
 
 class LinkDownloader(AbstractDownloader):
@@ -52,9 +52,9 @@ class LinkDownloader(AbstractDownloader):
         file_path = os.path.join(file_dir, file_name)
 
         if os.path.exists(file_path) and os.path.getsize(file_path) > 0:
-            title, duration = get_mp3_title_and_duration(file_path)
+            title, artist, duration = get_mp3_info(file_path)
             user_message("Песня добавлена в очередь\n%s" % title)
-            return file_path, title, duration
+            return file_path, title, artist, duration
 
         user_message("Скачиваем...")
         if _DEBUG_:
@@ -79,10 +79,10 @@ class LinkDownloader(AbstractDownloader):
             url=url,
             file_path=file_path,
             file_size=file_size,
-            percent_callback=lambda p: user_message("Скачиваем [%d%%]...\n%s" % (int(p), title)),
+            percent_callback=lambda p: user_message("Скачиваем [%d%%]...\n" % int(p)),
         )
 
-        title, duration = get_mp3_title_and_duration(file_path)
+        title, artist, duration = get_mp3_info(file_path)
         if duration > MAXIMUM_DURATION:
             os.unlink(file_path)
             raise MediaIsTooLong()
@@ -91,4 +91,4 @@ class LinkDownloader(AbstractDownloader):
         filter_storage()
 
         user_message("Песня добавлена в очередь\n%s" % title)
-        return file_path, title, duration
+        return file_path, title, artist, duration

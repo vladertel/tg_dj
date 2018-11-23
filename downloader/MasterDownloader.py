@@ -43,7 +43,7 @@ class MasterDownloader:
 
             accepted = True
             try:
-                file_path, title, seconds = downloader.download(
+                file_path, title, artist, seconds = downloader.download(
                     task,
                     user_message=user_message,
                 )
@@ -71,6 +71,7 @@ class MasterDownloader:
                     "state": "success",
                     "path": file_path,
                     "title": title,
+                    "artist": artist,
                     "request_id": task["request_id"],
                     "duration": seconds,
                 })

@@ -14,6 +14,7 @@ class VLCStreamer():
     def __init__(self):
         self.is_playing = False
         self.now_playing = None
+        self.song_start_time = 0
         self.ordered_by = None
         self.input_queue = Queue()
         self.output_queue = Queue()
@@ -34,23 +35,26 @@ class VLCStreamer():
             "action": "song_finished",
         })
 
+    def get_current_song(self):
+        return self.now_playing
+
+    def get_song_progress(self):
+        return int(time.time() - self.song_start_time)
+
     @make_endless_unfailable
     def queue_listener(self):
         task = self.input_queue.get()
         action = task['action']
         if action == 'play_song':
-            uri = task['uri']
+            song = task["song"]
+            uri = song.media
             media = self.vlc_instance.media_new(uri, vlc_options, "sout-keep")
             # media = self.vlc_instance.media_new(uri)
             self.player.set_media(media)
             self.player.play()
             self.is_playing = True
-            self.now_playing = {
-                "title": task["title"],
-                "duration": task["duration"],
-                "start_time": time.time(),
-                "user_id": task["user_id"],
-            }
+            self.now_playing = song
+            self.song_start_time = time.time()
         elif action == 'stop_playing':
             self.player.stop()
             self.is_playing = False

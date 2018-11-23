@@ -29,10 +29,6 @@ class FileDownloader(AbstractDownloader):
 
         artist = task["artist"].strip()
         title = task["title"].strip()
-        if len(title) == 0:
-            title = "Unknown"
-        if len(artist) > 0:
-            title = artist + " — " + title
 
         if _DEBUG_:
             print("DEBUG [FileDownloader]: Title for song #" + str(file_id) + ": " + title)
@@ -49,7 +45,7 @@ class FileDownloader(AbstractDownloader):
 
         if self.is_in_cache(file_path):
             user_message("Песня добавлена в очередь\n%s" % title)
-            return file_path, title, duration
+            return file_path, title, artist, duration
 
         user_message("Скачиваем...\n%s" % title)
         if _DEBUG_:
@@ -72,4 +68,4 @@ class FileDownloader(AbstractDownloader):
             print("DEBUG [FileDownloader]: File stored in path: " + file_path)
 
         user_message("Песня добавлена в очередь\n%s" % title)
-        return file_path, title, duration
+        return file_path, title, artist, duration

@@ -13,7 +13,7 @@ def make_endless_unfailable(func):
     return wrapper
 
 
-def get_mp3_title_and_duration(path):
+def get_mp3_info(path):
     audio = MP3(path)
 
     if audio.tags is None:
@@ -23,21 +23,13 @@ def get_mp3_title_and_duration(path):
         artist = str(audio.tags.getall("TPE1")[0][0])
     except IndexError:
         artist = None
+
     try:
         title = str(audio.tags.getall("TIT2")[0][0])
     except IndexError:
         title = None
 
-    if artist is not None and title is not None:
-        ret = artist + " — " + title
-    elif artist is not None:
-        ret = artist
-    elif title is not None:
-        ret = title
-    else:
-        ret = os.path.splitext(os.path.basename(path))[0]
-
-    return ret, int(audio.info.length)
+    return title, artist, int(audio.info.length)
 
 
 def make_caption(number, word_forms):

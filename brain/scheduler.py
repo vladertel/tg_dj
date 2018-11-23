@@ -1,10 +1,9 @@
 import threading
 import json
-from os.path import join
 import os
 import random
 
-from utils import get_mp3_title_and_duration
+from utils import get_mp3_info
 
 from .config import queueDir
 
@@ -15,47 +14,71 @@ def get_files_in_dir(directory):
 
 
 class Song:
-    ids = 1
+    counter = 0
 
-    title = ""
-    id = None
+    def __init__(self, media_path, title, artist, duration, user_id, forced_id=None):
+        if forced_id is None:
+            self.__class__.counter += 1
+            self.id = self.__class__.counter
+        else:
+            self.id = forced_id
 
-    @classmethod
-    def new(cls, path_to_media, title, duration, user):
-        obj = cls()
-        obj.title = title
-        obj.duration = duration
-        obj.media = path_to_media
-        obj.user = user
-        obj.votes = {}  # e.g. user: value
-        obj.rating = 0
-        obj.id = Song.ids
-        Song.ids += 1
-        return obj
+        self.title = title
+        self.artist = artist
+        self.duration = duration
+        self.user_id = user_id
+        self.media = media_path
+
+        self.votes = {}
+        self.rating = 0
 
     def __repr__(self):
-        return "Song(Title: {}, id: {:d})".format(self.title, self.id)
+        return "Song(title: %s, artist: %s, id: %d)".format(self.title, self.artist, self.id)
 
     def __str__(self):
-        return "Song(Title: {}, id: {:d})".format(self.title, self.id)
+        return "Song(title: %s, artist: %s, id: %d)".format(self.title, self.artist, self.id)
+
+    def __dict__(self):
+        return {
+            "id": self.id,
+            "title": self.title,
+            "artist": self.artist,
+            "duration": self.duration,
+            "user_id": self.user_id,
+            "media": self.media,
+            "votes": self.votes,
+        }
+
+    def full_title(self):
+        if self.artist is not None and self.title is not None:
+            return self.artist + " — " + self.title
+        elif self.artist is not None:
+            return self.artist
+        elif self.title is not None:
+            return self.title
+        else:
+            return os.path.splitext(os.path.basename(self.media))[0]
+
+    def vote(self, user_id, value):
+        self.votes[user_id] = value
+        self.recalculate_rating()
+
+    def recalculate_rating(self):
+        self.rating = sum(self.votes[uid] for uid in self.votes)
 
     @classmethod
-    def deserialize(cls, objecta):
-        obj = cls()
-        obj.title = objecta["title"]
-        obj.duration = objecta["duration"]
-        obj.media = objecta["media"]
-        obj.user = objecta["user"]
-        obj.votes = objecta["votes"]
-        obj.rating = objecta["rating"]
-        obj.id = objecta["id"]
+    def from_dict(cls, song_dict):
+        obj = cls(song_dict["media"], song_dict["title"], song_dict["artist"],
+                  song_dict["duration"], song_dict["user_id"], forced_id=song_dict["id"])
+        obj.votes = song_dict["votes"]
+        obj.recalculate_rating()
         return obj
 
 
 class Scheduler:
     def __init__(self):
         self.is_media_playing = False
-        self.playing_queue = []
+        self.playlist = []
         self.backlog = []
         self.backlog_played = []
         self.backlog_played_media = []
@@ -67,14 +90,14 @@ class Scheduler:
 
     def load_init(self):
         try:
-            with open(join(queueDir, "queue")) as f:
+            with open(os.path.join(queueDir, "queue")) as f:
                 dicts = json.loads(f.read())
-                Song.ids = dicts["last_id"]
+                Song.counter = dicts["last_id"]
                 queue = []
                 if len(dicts) > 0:
-                    for obj in dicts["songs"]:
-                        queue.append(Song.deserialize(obj))
-                    self.playing_queue = queue
+                    for d in dicts["songs"]:
+                        queue.append(Song.from_dict(d))
+                    self.playlist = queue
                     self.sort_queue()
                 try:
                     self.backlog_played_media = dicts["backlog_played_media"]
@@ -84,63 +107,62 @@ class Scheduler:
             pass
 
     def populate_backlog(self):
-        files = get_files_in_dir(os.path.join("brain", "backlog"))
+        files = get_files_in_dir(os.path.join(os.getcwd(), "brain", "backlog"))
         add_to_end = []
         for file in files:
             path = os.path.join(os.getcwd(), "brain", "backlog", file)
-            title, duration = get_mp3_title_and_duration(path)
+            title, artist, duration = get_mp3_info(path)
             if path in self.backlog_played_media:
-                add_to_end.append(Song.new(path, title, duration, None))
+                add_to_end.append(Song(path, title, artist, duration, None))
             else:
-                self.backlog.append(Song.new(path, title, duration, None))
+                self.backlog.append(Song(path, title, artist, duration, None))
 
         random.shuffle(self.backlog)
         random.shuffle(add_to_end)
         self.backlog += add_to_end
 
-        print("INFO [Scheduler]: backlog capacity: " + str(len(self.backlog)))
+        print("INFO [Scheduler - populate_backlog]: Fallback playlist length: %d " % len(self.backlog))
 
     def cleanup(self):
         out_dict = {
-            "last_id": Song.ids,
-            "songs": [a.__dict__ for a in self.playing_queue],
+            "last_id": Song.counter,
+            "songs": [a.__dict__ for a in self.playlist],
             "backlog_played_media": [a.media for a in self.backlog_played]
         }
-        with open(join(queueDir, "queue"), "w") as f:
+        file_name = os.path.join(queueDir, "queue")
+        with open(file_name, "w") as f:
             f.write(json.dumps(out_dict, ensure_ascii=False))
-        print("Scheduler - saved queue")
+            print("INFO [Scheduler - cleanup]: Queue has been saved to file \"%s\"" % file_name)
 
-    def add_track_to_end_of_queue(self, path, title, duration, user):
+    def push_track(self, path, title, artist, duration, user_id):
         self.lock.acquire()
-        self.playing_queue.append(Song.new(path, title, duration, user))
+        self.playlist.append(Song(path, title, artist, duration, user_id))
         self.lock.release()
-        return len(self.playing_queue)
+        return len(self.playlist)
 
     def pop_first_track(self):
         self.lock.acquire()
-        try:
-            song = self.playing_queue.pop(0)
-            print("INFO [Scheduler]: Playing main queue: %s" % song.title)
-        except IndexError:
+        if len(self.playlist) > 0:
+            song = self.playlist.pop(0)
+            print("INFO [Scheduler - pop]: Playing song from main playlist: %s" % song.title)
+        else:
             try:
                 song = self.backlog.pop(0)
-                print("INFO [Scheduler]: Playing backlog queue: %s" % song.title)
+                print("INFO [Scheduler - pop]: Playing song from fallback playlist: %s" % song.title)
                 self.backlog_played.append(song)
 
                 if len(self.backlog) <= self.backlog_initial_size // 2:
                     i = random.randrange(len(self.backlog_played))
                     self.backlog.append(self.backlog_played.pop(i))
-
             except IndexError:
-                print("INFO [Scheduler]: Nothing to play")
                 song = None
         self.lock.release()
         return song
 
     def get_next_song(self):
-        try:
-            return self.playing_queue[0]
-        except IndexError:
+        if len(self.playlist) > 0:
+            return self.playlist[0]
+        else:
             try:
                 return self.backlog[0]
             except IndexError:
@@ -148,7 +170,7 @@ class Scheduler:
 
     def get_song(self, sid):
         k = 0
-        for song in self.playing_queue:
+        for song in self.playlist:
             k += 1
             if sid == song.id:
                 return song, k
@@ -156,69 +178,47 @@ class Scheduler:
 
     def get_queue(self, offset=0, limit=0):
         if limit == 0:
-            return list(self.playing_queue)[offset:]
+            return list(self.playlist)[offset:]
         else:
-            return list(self.playing_queue)[offset:offset+limit]
+            return list(self.playlist)[offset:offset + limit]
 
     def get_queue_length(self):
-        return len(self.playing_queue)
+        return len(self.playlist)
 
     def remove_from_queue(self, sid):
         self.lock.acquire()
-        k = 0
-        for song in self.playing_queue:
-            k += 1
-            if sid == song.id:
-                try:
-                    self.playing_queue.remove(song)
-                    break
-                except ValueError:
-                    print("ERROR [Scheduler]: Have tried to remove unremovable")
+        try:
+            song = next(s for s in self.playlist if s.id == sid)
+            position = self.playlist.index(song)
+        except (ValueError, StopIteration):
+            position = None
+            print("WARNING [Scheduler - remove]: Unable to remove song #%d from the playlist")
         self.lock.release()
-        return k
+        return position
 
     def queue_length(self):
-        return len(self.playing_queue)
+        return len(self.playlist)
 
-    def sort_queue(self):
+    def sort_queue(self, lock=True):
+        if lock:
+            self.lock.acquire()
+        self.playlist = sorted(self.playlist, key=lambda x: x.id - sum([x.votes[k] for k in x.votes]))
+        if lock:
+            self.lock.release()
+
+    def _vote(self, user_id, song_id, value):
         self.lock.acquire()
-        self.playing_queue = sorted(self.playing_queue, key=lambda x: x.id - sum([x.votes[k] for k in x.votes]))
+        try:
+            song = next(s for s in self.playlist if s.id == song_id)
+            song.votes[user_id] = value
+            song.recalculate_rating()
+            self.sort_queue(lock=False)
+        except (ValueError, StopIteration):
+            print("WARNING [Scheduler - vote]: Unable to find song #%d in the playlist")
         self.lock.release()
 
-    def vote_up(self, user, sid):
-        found = False
-        self.lock.acquire()
-        k = 0
-        song = None
-        for song in self.playing_queue:
-            k += 1
-            if sid == song.id:
-                song.votes[user] = 1
-                found = True
-                break
-        self.lock.release()
-        if found:
-            self.sort_queue()
-            return song, k
-        else:
-            print("ERROR [Scheduler]: vote_up: song not found for sid: " + str(sid))
-            return None, None
+    def vote_up(self, user_id, sid):
+        self._vote(user_id, sid, +1)
 
-    def vote_down(self, user, sid):
-        found = False
-        self.lock.acquire()
-        k = 0
-        song = None
-        for song in self.playing_queue:
-            k += 1
-            if sid == song.id:
-                song.votes[user] = -1
-                found = True
-                break
-        self.lock.release()
-        if found:
-            self.sort_queue()
-            return song, k
-        else:
-            print("ERROR [Scheduler]: vote_down: song not found for sid: " + str(sid))
-            return None, None
+    def vote_down(self, user_id, sid):
+        self._vote(user_id, sid, -1)

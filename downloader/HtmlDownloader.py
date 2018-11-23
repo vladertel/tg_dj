@@ -104,13 +104,12 @@ class HtmlDownloader(AbstractDownloader):
         tree = lxml.html.fromstring(search_request.text)
         download_uri = base_uri + tree.xpath(download_xpath)[0]
 
-        title = song["artist"] + " — " + song["title"]
         file_name = sanitize_file_name("html-" + str(result_id) + '.mp3')
         file_path = os.path.join(os.getcwd(), mediaDir, file_name)
 
         if self.is_in_cache(file_path):
             print("INFO [HtmlDownloader]: File %s already in cache" % result_id)
-            return file_path, title, song["duration"]
+            return file_path, song["title"], song["artist"], song["duration"]
 
         if not os.path.exists(os.path.join(os.getcwd(), mediaDir)):
             os.makedirs(os.path.join(os.getcwd(), mediaDir))
@@ -118,7 +117,7 @@ class HtmlDownloader(AbstractDownloader):
                 print("DEBUG [HtmlDownloader]: Media dir have been created: %s" % os.path.join(os.getcwd(), mediaDir))
 
         print("INFO [HtmlDownloader]: Downloading song #" + result_id)
-        user_message("Скачиваем...\n%s" % title)
+        user_message("Скачиваем...\n%s — %s" % (song["artist"], song["title"]))
 
         response_head = requests.head(
             download_uri, headers=self.get_headers(),
@@ -141,7 +140,8 @@ class HtmlDownloader(AbstractDownloader):
             url=download_uri,
             file_path=file_path,
             file_size=file_size,
-            percent_callback=lambda p: user_message("Скачиваем [%d%%]...\n%s" % (int(p), title)),
+            percent_callback=lambda p: user_message("Скачиваем [%d%%]...\n%s — %s"
+                                                    % (int(p), song["artist"], song["title"])),
         )
 
         if _DEBUG_:
@@ -153,4 +153,4 @@ class HtmlDownloader(AbstractDownloader):
         if _DEBUG_:
             print("DEBUG [HtmlDownloader]: File stored in path: " + file_path)
 
-        return file_path, title, song["duration"]
+        return file_path, song["title"], song["artist"], song["duration"]

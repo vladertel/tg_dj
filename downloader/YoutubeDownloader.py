@@ -105,7 +105,7 @@ class YoutubeDownloader(AbstractDownloader):
             if _DEBUG_:
                 print("DEBUG [YoutubeDownloader]: Loading from cache: " + file_path)
             user_message("Песня добавлена в очередь\n%s" % video_title)
-            return file_path, video_title, seconds
+            return file_path, video_title, "", seconds
 
         if not os.path.exists(file_dir):
             os.makedirs(file_dir)
@@ -123,4 +123,4 @@ class YoutubeDownloader(AbstractDownloader):
             print("DEBUG [YoutubeDownloader]: File stored in path: " + file_path)
 
         user_message("Песня добавлена в очередь\n%s" % video_title)
-        return file_path, video_title, seconds
+        return file_path, video_title, "", seconds

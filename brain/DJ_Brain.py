@@ -128,7 +128,10 @@ class DjBrain:
 
     @staticmethod
     def get_user(uid):
-        u = User.get(id=uid)
+        try:
+            u = User.get(id=uid)
+        except peewee.DoesNotExist:
+            return None
         if u.banned:
             raise UserBanned
         return u
@@ -179,10 +182,10 @@ class DjBrain:
             path = path[2:]
 
         author = User.get(id=int(user_id))
-        Request.create(user=author, text=response['title'])
+        Request.create(user=author, text=response['artist'] + " - " + response['title'])
         if author.check_requests_quota() or author.superuser:
-            response["position"] = self.scheduler.add_track_to_end_of_queue(
-                path, response['title'], response['duration'], user_id
+            response["position"] = self.scheduler.push_track(
+                path, response['title'], response['artist'], response['duration'], user_id
             )
         if not self.backend.is_playing:
             self.play_next_track()
@@ -221,7 +224,6 @@ class DjBrain:
             if rid not in self.request_futures:
                 print('ERROR [Core]: Response to unknown request#%d: %s' % (task["request_id"], str(task)))
                 return
-            print('ERROR [Core]: Response to request#%d: %s' % (task["request_id"], str(task)))
             if task["state"] == "error":
                 self.request_futures[rid]["loop"].call_soon_threadsafe(
                     self.send_exception_to_future, task, DownloadFailed(task["message"])
@@ -258,34 +260,29 @@ class DjBrain:
 
         next_track_task = {
             "action": "play_song",
-            "uri": track.media,
-            "title": track.title,
-            "duration": track.duration,
-            "user_id": track.user,
+            "song": track,
         }
 
         self.backend.input_queue.put(next_track_task)
 
         json_file_path = os.path.join(os.getcwd(), "web", "dynamic", "current_song_info.json")
         with open(json_file_path, 'w') as json_file:
-            data_to_save = json.dumps(next_track_task)
+            data_to_save = json.dumps(track.__dict__())
             json_file.write(data_to_save)
 
-        user_curr = track.user
-        user_next = None if next_track is None else next_track.user
+        user_curr_id = track.user_id
+        user_next_id = None if next_track is None else next_track.user_id
 
-        print('DEBUG [Core]: Users: %s, %s' % (str(user_curr), str(user_next)))
-
-        if user_curr is not None and user_next is not None and user_curr == user_next:
+        if user_curr_id is not None and user_next_id is not None and user_curr_id == user_next_id:
             self.frontend.notify_user(
-                "Играет %s\n\nСледующий трек тоже ваш!\nБудет играть %s" % (track.title, next_track.title),
-                user_curr
+                "Играет %s\n\nСледующий трек тоже ваш!\nБудет играть %s" % (track.full_title(), next_track.full_title()),
+                user_curr_id
             )
         else:
-            if user_next is not None:
-                self.frontend.notify_user("Следующий трек ваш!\nБудет играть %s" % next_track.title, user_next)
-            if user_curr is not None:
-                self.frontend.notify_user("Играет %s" % track.title, user_curr,)
+            if user_next_id is not None:
+                self.frontend.notify_user("Следующий трек ваш!\nБудет играть %s" % next_track.full_title(), user_next_id)
+            if user_curr_id is not None:
+                self.frontend.notify_user("Играет %s" % track.full_title(), user_curr_id)
 
         return track, next_track
 
@@ -347,10 +344,15 @@ class DjBrain:
 
     def get_state(self, user_id):
         user = self.get_user(user_id)
+        current_song = self.backend.get_current_song()
+        next_song = self.scheduler.get_next_song()
         return {
             "queue_len": self.scheduler.queue_length(),
-            "now_playing": self.backend.now_playing,
-            "next_in_queue": self.scheduler.get_next_song(),
+            "current_song": current_song,
+            "current_user": self.get_user(current_song.user_id) if current_song else None,
+            "current_song_progress": self.backend.get_song_progress(),
+            "next_song": next_song,
+            "next_user": self.get_user(next_song.user_id) if next_song else None,
             "superuser": user.superuser,
         }
 
@@ -364,17 +366,11 @@ class DjBrain:
         user = self.get_user(user_id)
 
         (song, position) = self.scheduler.get_song(song_id)
-        if song is None:
-            return None
-
-        rating = sum([song.votes[k] for k in song.votes])
 
         # TODO: Return superuser extra info
 
         return {
-            "title": song.title,
-            "duration": song.duration,
-            "rating": rating,
+            "song": song,
             "position": position,
             "superuser": user.superuser
         }
