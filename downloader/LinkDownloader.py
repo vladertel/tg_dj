@@ -8,7 +8,7 @@ from .AbstractDownloader import AbstractDownloader
 from .config import mediaDir, _DEBUG_, MAXIMUM_DURATION, MAXIMUM_FILE_SIZE
 from .exceptions import *
 from .storage_checker import filter_storage
-from utils import get_mp3_title_and_duration, sanitize_file_name
+from utils import get_mp3_info, sanitize_file_name
 
 
 class LinkDownloader(AbstractDownloader):
@@ -23,22 +23,22 @@ class LinkDownloader(AbstractDownloader):
             flags=re.IGNORECASE)
         self.name = "links downloader"
 
-    def is_acceptable(self, task):
-        if "text" in task:
-            match = self.mp3_dns_regex.search(task["text"])
+    def is_acceptable(self, kind, query):
+        if kind == "text":
+            match = self.mp3_dns_regex.search(query)
             if match:
                 return match.group(0)
-            match = self.mp3_ip4_regex.search(task["text"])
+            match = self.mp3_ip4_regex.search(query)
             if match:
                 return match.group(0)
         return False
 
-    def download(self, task, user_message=lambda text: True):
+    def download(self, query, user_message=lambda text: True):
         url = None
-        match = self.mp3_dns_regex.search(task["text"])
+        match = self.mp3_dns_regex.search(query)
         if match:
             url = match.group(0)
-        match = self.mp3_ip4_regex.search(task["text"])
+        match = self.mp3_ip4_regex.search(query)
         if match:
             url = match.group(0)
         if url is None:
@@ -52,9 +52,8 @@ class LinkDownloader(AbstractDownloader):
         file_path = os.path.join(file_dir, file_name)
 
         if os.path.exists(file_path) and os.path.getsize(file_path) > 0:
-            title, duration = get_mp3_title_and_duration(file_path)
-            user_message("Песня добавлена в очередь\n%s" % title)
-            return file_path, title, duration
+            title, artist, duration = get_mp3_info(file_path)
+            return file_path, title, artist, duration
 
         user_message("Скачиваем...")
         if _DEBUG_:
@@ -79,10 +78,10 @@ class LinkDownloader(AbstractDownloader):
             url=url,
             file_path=file_path,
             file_size=file_size,
-            percent_callback=lambda p: user_message("Скачиваем [%d%%]...\n%s" % (int(p), title)),
+            percent_callback=lambda p: user_message("Скачиваем [%d%%]...\n" % int(p)),
         )
 
-        title, duration = get_mp3_title_and_duration(file_path)
+        title, artist, duration = get_mp3_info(file_path)
         if duration > MAXIMUM_DURATION:
             os.unlink(file_path)
             raise MediaIsTooLong()
@@ -90,5 +89,4 @@ class LinkDownloader(AbstractDownloader):
         self.touch_without_creation(file_path)
         filter_storage()
 
-        user_message("Песня добавлена в очередь\n%s" % title)
-        return file_path, title, duration
+        return file_path, title, artist, duration

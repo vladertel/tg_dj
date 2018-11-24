@@ -23,8 +23,8 @@ class HtmlDownloader(AbstractDownloader):
 
         self.songs_cache = {}
 
-    def is_acceptable(self, task):
-        return "query" in task or "result_id" in task
+    def is_acceptable(self, kind, query):
+        return kind == "search" or kind == "search_result"
 
     @staticmethod
     def get_headers():
@@ -33,18 +33,17 @@ class HtmlDownloader(AbstractDownloader):
             "Pragma": "no-cache",
         }
 
-    def search(self, task, user_message=lambda text: True):
-        search_query = task["query"]
+    def search(self, query, user_message=lambda text: True):
         if _DEBUG_:
-            print("DEBUG [HtmlDownloader]: Search query: " + search_query)
+            print("DEBUG [HtmlDownloader]: Search query: " + query)
 
-        if len(search_query.strip()) == 0:
+        if len(query.strip()) == 0:
             return []
 
         if _DEBUG_:
-            print("DEBUG [HtmlDownloader]: Getting data from " + base_uri + " with query " + search_query)
+            print("DEBUG [HtmlDownloader]: Getting data from " + base_uri + " with query " + query)
         headers = self.get_headers()
-        search_request = requests.get((base_uri + html_search_uri).format(search_query), headers=headers)
+        search_request = requests.get((base_uri + html_search_uri).format(query), headers=headers)
         if search_request.status_code != 200:
             raise BadReturnStatus(search_request.status_code)
 
@@ -86,8 +85,8 @@ class HtmlDownloader(AbstractDownloader):
             })
         return ret
 
-    def download(self, task, user_message=lambda text: True):
-        result_id = task["result_id"]
+    def download(self, query, user_message=lambda text: True):
+        result_id = query["id"]
         if _DEBUG_:
             print("DEBUG [HtmlDownloader]: Downloading result #" + str(result_id))
 
@@ -104,14 +103,12 @@ class HtmlDownloader(AbstractDownloader):
         tree = lxml.html.fromstring(search_request.text)
         download_uri = base_uri + tree.xpath(download_xpath)[0]
 
-        title = song["artist"] + " — " + song["title"]
         file_name = sanitize_file_name("html-" + str(result_id) + '.mp3')
         file_path = os.path.join(os.getcwd(), mediaDir, file_name)
 
         if self.is_in_cache(file_path):
             print("INFO [HtmlDownloader]: File %s already in cache" % result_id)
-            user_message("Песня добавлена в очередь\n%s" % title)
-            return file_path, title, song["duration"]
+            return file_path, song["title"], song["artist"], song["duration"]
 
         if not os.path.exists(os.path.join(os.getcwd(), mediaDir)):
             os.makedirs(os.path.join(os.getcwd(), mediaDir))
@@ -119,7 +116,7 @@ class HtmlDownloader(AbstractDownloader):
                 print("DEBUG [HtmlDownloader]: Media dir have been created: %s" % os.path.join(os.getcwd(), mediaDir))
 
         print("INFO [HtmlDownloader]: Downloading song #" + result_id)
-        user_message("Скачиваем...\n%s" % title)
+        user_message("Скачиваем...\n%s — %s" % (song["artist"], song["title"]))
 
         response_head = requests.head(
             download_uri, headers=self.get_headers(),
@@ -142,7 +139,8 @@ class HtmlDownloader(AbstractDownloader):
             url=download_uri,
             file_path=file_path,
             file_size=file_size,
-            percent_callback=lambda p: user_message("Скачиваем [%d%%]...\n%s" % (int(p), title)),
+            percent_callback=lambda p: user_message("Скачиваем [%d%%]...\n%s — %s"
+                                                    % (int(p), song["artist"], song["title"])),
         )
 
         if _DEBUG_:
@@ -154,5 +152,4 @@ class HtmlDownloader(AbstractDownloader):
         if _DEBUG_:
             print("DEBUG [HtmlDownloader]: File stored in path: " + file_path)
 
-        user_message("Песня добавлена в очередь\n%s" % title)
-        return file_path, title, song["duration"]
+        return file_path, song["title"], song["artist"], song["duration"]

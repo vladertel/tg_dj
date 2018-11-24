@@ -1,14 +1,18 @@
 import telebot
 import threading
-from queue import Queue
 import re
 import peewee
-from time import sleep
 import time
+import math
+import traceback
+
 from .jinja_env import env
+import asyncio
 
 from .private_config import token
-from utils import make_endless_unfailable
+
+from brain.DJ_Brain import UserBanned, UserRequestQuotaReached, DownloadFailed, PermissionDenied
+from downloader.exceptions import NotAccepted
 
 
 compiled_regex = re.compile(r"^\d+")
@@ -62,61 +66,102 @@ db.connect()
 class TgFrontend:
 
     def __init__(self):
-        self.bot = telebot.TeleBot(token)
-        self.botThread = threading.Thread(daemon=True, target=self.bot_init)
-        self.botThread.start()
-        self.input_queue = Queue()
-        self.output_queue = Queue()
-        self.brainThread = threading.Thread(daemon=True, target=self.brain_listener)
-        self.brainThread.start()
-        self.init_handlers()
-        self.init_callbacks()
+        self.last_update_id = 0
+        self.error_interval = .25
+        self.interval = 0
+        self.timeout = 20
 
-        self.generators = {}
-        self.gen_cnt = 0
+        self.core = None
+        self.bot = None
 
         self.bamboozled_users = []
 
+        self.songs_per_page = 10
+        self.users_per_page = 10
+
+    def bind_core(self, core):
+        self.core = core
+
+        self.bot = telebot.TeleBot(token)
+        self.bot_init()
+
 # INIT #####
     def bot_init(self):
-        while True:
-            try:
-                print("INFO [Bot]: Loading bot")
-                self.bot.polling(none_stop=True)
-            except Exception as e:
-                print("ERROR [Bot]: CONNECTION PROBLEM")
-                print(e)
-                sleep(15)
+        print("INFO [Bot %s]: Starting polling..." % threading.get_ident())
+        self.core.loop.create_task(self.bot_polling())
 
-    def init_handlers(self):
-        self.bot.message_handler(commands=['start'])(self.start_handler)
-        self.bot.message_handler(commands=['broadcast'])(self.broadcast_to_all_users)
-        self.bot.message_handler(commands=['get_info'])(self.get_user_info)
-        self.bot.message_handler(commands=['stop_playing', 'stop'])(self.stop_playing)
-        self.bot.message_handler(commands=['skip_song', 'skip'])(self.skip_song)
-        self.bot.message_handler(commands=['/'])(lambda x: True)
+    async def bot_polling(self):
+        await asyncio.sleep(self.interval)
+        threading.Thread(daemon=True, target=self.get_updates).start()
 
-        self.bot.message_handler(content_types=['text'])(lambda data: self.tg_handler(data, self.download))
-        self.bot.message_handler(content_types=['audio'])(lambda data: self.tg_handler(data, self.add_audio_file))
-        self.bot.message_handler(content_types=['file', 'photo', 'document'])(self.file_handler)
-        self.bot.message_handler(content_types=['sticker'])(self.sticker_handler)
+    def get_updates(self):
+        try:
+            updates = self.bot.get_updates(self.last_update_id + 1, None, self.timeout, )
+            self.error_interval = .25
+            if len(updates):
+                print("DEBUG [Bot]: Updates received: %s" % str(updates))
+            self.updates_handler(updates)
+        except telebot.apihelper.ApiException as e:
+            print("ERROR [Bot]: API Exception")
+            print(e)
+            print("DEBUG [Bot]: Waiting for %d seconds until retry" % self.error_interval)
+            time.sleep(self.error_interval)
+            self.error_interval *= 2
 
-    def init_callbacks(self):
-        self.bot.callback_query_handler(func=lambda x: x.data[0:2] == "//")(lambda x: True)
-        self.bot.callback_query_handler(func=lambda x: True)(self.callback_query_handler)
+    def updates_handler(self, updates):
+        for update in updates:
+            if update.update_id > self.last_update_id:
+                self.last_update_id = update.update_id
 
-        self.bot.inline_handler(func=lambda x: True)(lambda data: self.tg_handler(data, self.search))
-        self.bot.chosen_inline_handler(func=lambda x: True)(lambda data: self.tg_handler(data, self.search_select))
+            if update.message:
+                asyncio.run_coroutine_threadsafe(self.message_handler(update.message), self.core.loop)
+            elif update.inline_query:
+                asyncio.run_coroutine_threadsafe(self.inline_query_handler(update.inline_query), self.core.loop)
+            elif update.chosen_inline_result:
+                asyncio.run_coroutine_threadsafe(self.chosen_inline_result_handler(update.chosen_inline_result), self.core.loop)
+            elif update.callback_query:
+                asyncio.run_coroutine_threadsafe(self.callback_query_handler(update.callback_query), self.core.loop)
+
+        asyncio.run_coroutine_threadsafe(self.bot_polling(), self.core.loop)
 
     def cleanup(self):
         pass
 
+    async def message_handler(self, message):
+        try:
+            if message.entities and any(e.type == "bot_command" for e in message.entities):
+                await self.tg_handler(message, self.command)
+            elif message.text:
+                await self.tg_handler(message, self.download)
+            elif message.audio:
+                await self.tg_handler(message, self.add_audio_file)
+            elif message.sticker:
+                self.sticker_handler(message)
+            else:
+                self.file_handler(message)
+        except Exception as e:
+            traceback.print_exc()
 
-#######################
-# TG CALLBACK HANDLERS
-    def callback_query_handler(self, data):
-        user = self.init_user(data.from_user)
-        if user is None:
+    async def inline_query_handler(self, inline_query):
+        try:
+            await self.tg_handler(inline_query, self.search)
+        except Exception as e:
+            traceback.print_exc()
+
+    async def chosen_inline_result_handler(self, chosen_inline_result):
+        try:
+            await self.tg_handler(chosen_inline_result, self.search_select)
+        except Exception as e:
+            traceback.print_exc()
+
+    async def callback_query_handler(self, callback_query):
+        try:
+            await self.tg_handler(callback_query, self.menu_handler)
+        except Exception as e:
+            traceback.print_exc()
+
+    async def menu_handler(self, data, user):
+        if data.data[0:2] == "//":
             return
 
         user.menu_message_id = data.message.message_id
@@ -128,38 +173,79 @@ class TgFrontend:
             print("ERROR [Bot]: Bad menu path: " + str(path))
             return
 
-        self.output_queue.put({
-            "action": "menu_event",
-            "path": path,
-            "user_id": user.core_id,
-        })
+        if path[0] == "main":
+            self.send_menu_main(user)
 
-    def tg_handler(self, data, method):
+        elif path[0] == "queue":
+            offset = int(path[1]) if len(path) >= 2 else 0
+            self.send_menu_queue(user, offset)
+
+        elif path[0] == "song":
+            song_id = int(path[1])
+            self.send_menu_song(user, song_id)
+
+        elif path[0] == "vote":
+            sign = path[1]
+            song_id = int(path[2])
+            self.core.vote_song(user.core_id, sign, song_id)
+            self.send_menu_song(user, song_id)
+
+        elif path[0] == "admin" and path[1] == "skip_song":
+            self.core.switch_track(user.core_id)
+            # TODO: await track switch
+            self.send_menu_main(user)
+
+        elif path[0] == "admin" and path[1] == "stop_playing":
+            self.core.stop_playback(user.core_id)
+            self.send_menu_main(user)
+
+        elif path[0] == "admin" and path[1] == "delete":
+            song_id = int(path[2])
+            position = self.core.delete_track(user.core_id, song_id)
+            offset = ((position - 1) // self.songs_per_page) * self.songs_per_page
+            self.send_menu_queue(user, offset)
+
+        elif path[0] == "admin" and path[1] == "list_users":
+            offset = int(path[2]) if len(path) >= 2 else 0
+            self.send_menu_admin_list_users(user, offset)
+
+        elif path[0] == "admin" and path[1] == "user_info":
+            handled_user_id = int(path[2])
+            self.send_menu_admin_user(user, handled_user_id)
+
+        elif path[0] == "admin" and path[1] == "ban_user":
+            handled_user_id = int(path[2])
+            self.core.ban_user(user.core_id, handled_user_id)
+            self.send_menu_admin_user(user, handled_user_id)
+
+        elif path[0] == "admin" and path[1] == "unban_user":
+            handled_user_id = int(path[2])
+            self.core.unban_user(user.core_id, handled_user_id)
+            self.send_menu_admin_user(user, handled_user_id)
+
+        else:
+            print("ERROR [Bot]: Unknown menu: " + str(path))
+
+    async def tg_handler(self, data, method):
         user = self.init_user(data.from_user)
-        if user is None:
-            return
-
-        gen = method(data, user)
-        request_id = self.gen_cnt
-        self.gen_cnt += 1
-        self.generators[request_id] = gen
         try:
-            action = next(gen)
-            action["request_id"] = request_id
-            action["user_id"] = user.core_id
-            self.output_queue.put(action)
-        except StopIteration:
-            pass
+            await method(data, user)
+        except UserBanned:
+            self._show_blocked_msg(user)
+        except PermissionDenied:
+            self._show_access_denied(user)
 
-    def search(self, data, _user):
+    async def search(self, data, user):
         query = data.query.lstrip()
 
-        response = yield {
-            "action": "search",
-            "query": query,
-        }
+        def message_callback(test):
+            try:
+                self.bot.send_message(user.tg_id, test)
+            except telebot.apihelper.ApiException:
+                pass
 
-        results = response["results"]
+        results = await self.core.search_action(user.id, query=query, message_callback=message_callback)
+        print("DEBUG [Bot - search]: Response from core: %d results" % len(results))
 
         results_articles = []
         for song in results:
@@ -171,105 +257,126 @@ class TgFrontend:
                     "// " + song['artist'] + " - " + song['title']
                 ),
             ))
-
         self.bot.answer_inline_query(data.id, results_articles)
 
-    def search_select(self, data, user):
+    async def search_select(self, data, user):
         downloader, result_id = data.result_id.split(" ")
         reply = self.bot.send_message(user.tg_id, "Запрос обрабатывается...")
 
-        response = yield {
-            "action": "download",
-            "downloader": downloader,
-            "result_id": result_id,
+        def progress_callback(progress_msg):
+            try:
+                self.bot.edit_message_text(progress_msg, reply.chat.id, reply.message_id)
+            except telebot.apihelper.ApiException:
+                pass
+
+        try:
+            song, position = await self.core.download_action(
+                user.id,
+                result={"downloader": downloader, "id": result_id},
+                progress_callback=progress_callback
+            )
+            self.bot.edit_message_text(
+                "Песня в очереди. Позиция: %d\n%s" % (position, song.full_title()),
+                reply.chat.id, reply.message_id
+            )
+        except NotAccepted:
+            self.bot.send_message(user.tg_id, "🚫 Внутренняя ошибка: ни один загрузчик не принял запрос")
+        except DownloadFailed:
+            self.bot.send_message(user.tg_id, "🚫 Не удалось загрузить песню")
+        except UserRequestQuotaReached:
+            self._show_quota_reached_msg(user)
+
+    async def command(self, message, user):
+
+        handlers = {
+           'start': self.start_handler,
+           'broadcast': self.broadcast_to_all_users,
+           'get_info': self.get_user_info,
+           'stop_playing': self.stop_playing,
+           'stop': self.stop_playing,
+           'skip_song': self.skip_song,
+           'skip': self.skip_song,
         }
 
-        while True:
-            action = response["action"]
-            if action == "user_message" or action == "user_error":
-                print("DEBUG [Bot]: EDIT MESSAGE: " + str(response["message"]))
-                self.bot.edit_message_text(response["message"], reply.chat.id, reply.message_id)
-            elif action == "no_dl_handler":
-                self.bot.edit_message_text("Ошибка: обработчик не найден", reply.chat.id, reply.message_id)
-            elif action == "download_done":
-                break
-            response = yield
+        for e in message.entities:
+            if e.type != "bot_command":
+                continue
 
-    def download(self, message, user):
+            command = message.text[e.offset + 1:e.offset + e.length]
+
+            if command not in handlers:
+                print("WARNING [Bot]: Unknown command: %s" % command)
+                return
+
+            handlers[command](message)
+
+    async def download(self, message, user):
+        print("DEBUG [Bot]: Download: " + str(message.text))
         text = message.text
+
+        if text[0:2] == "//":
+            return
 
         if re.search(r'^@\w+ ', text) is not None:
             self.bot.send_message(user.tg_id, "Выберите из интерактивного меню, пожалуйста. "
                                               "Интерактивное меню появляется во время ввода сообщения")
-        else:
-            reply = self.bot.send_message(user.tg_id, "Запрос обрабатывается...")
+            return
 
-            response = yield {
-                "action": "download",
-                "text": text,
-            }
+        reply = self.bot.send_message(user.tg_id, "Запрос обрабатывается...")
 
-            while True:
-                action = response["action"]
-                if action == "user_message" or action == "user_error":
-                    self.bot.edit_message_text(response["message"], reply.chat.id, reply.message_id)
-                elif action == "no_dl_handler":
+        def progress_callback(progress_msg):
+            try:
+                self.bot.edit_message_text(progress_msg, reply.chat.id, reply.message_id)
+            except telebot.apihelper.ApiException:
+                pass
 
-                    kb = telebot.types.InlineKeyboardMarkup(row_width=2)
-                    kb.row(telebot.types.InlineKeyboardButton(
-                        text="🔍 " + text,
-                        switch_inline_query_current_chat=text,
-                    ))
+        try:
+            song, position = await self.core.download_action(user.id, text=text, progress_callback=progress_callback)
+            self.bot.edit_message_text(
+                "Песня в очереди. Позиция: %d\n%s" % (position, song.full_title()),
+                reply.chat.id, reply.message_id
+            )
+        except NotAccepted:
+            self._suggest_search(text, reply.chat.id, reply.message_id)
+        except DownloadFailed:
+            self.bot.send_message(user.tg_id, "🚫 Не удалось загрузить песню")
+        except UserRequestQuotaReached:
+            self._show_quota_reached_msg(user)
 
-                    self.bot.edit_message_text("Запрос не распознан. Нажмите на кнопку ниже, чтобы включить поиск",
-                                               reply.chat.id, reply.message_id)
-                    self.bot.edit_message_reply_markup(reply.chat.id, reply.message_id, reply_markup=kb)
-                elif action == "download_done":
-                    break
-                response = yield
-
-    def add_audio_file(self, message, user):
+    async def add_audio_file(self, message, user):
         file_info = self.bot.get_file(message.audio.file_id)
 
         reply = self.bot.send_message(user.tg_id, "Запрос обрабатывается...")
 
-        response = yield {
-            "action": "download",
-            "file": message.audio.file_id,
+        def progress_callback(progress_msg):
+            try:
+                self.bot.edit_message_text(progress_msg, reply.chat.id, reply.message_id)
+            except telebot.apihelper.ApiException:
+                pass
+
+        file = {
+            "id": message.audio.file_id,
             "duration": message.audio.duration,
-            "file_size": message.audio.file_size,
-            "file_info": file_info,
+            "size": message.audio.file_size,
+            "info": file_info,
             "artist": message.audio.performer or "",
             "title": message.audio.title or "",
         }
 
-        while True:
-            action = response["action"]
-            if action == "user_message" or action == "user_error":
-                self.bot.edit_message_text(response["message"], reply.chat.id, reply.message_id)
-            elif action == "no_dl_handler":
-                self.bot.edit_message_text("Ошибка: обработчик не найден", reply.chat.id, reply.message_id)
-            elif action == "download_done":
-                break
-            response = yield
-
+        try:
+            song, position = await self.core.download_action(user.id, file=file, progress_callback=progress_callback)
+            self.bot.edit_message_text(
+                "Песня в очереди. Позиция: %d\n%s" % (position, song.full_title()),
+                reply.chat.id, reply.message_id
+            )
+        except NotAccepted:
+            self.bot.send_message(user.tg_id, "🚫 Внутренняя ошибка: ни один загрузчик не принял запрос")
+        except DownloadFailed:
+            self.bot.send_message(user.tg_id, "🚫 Не удалось загрузить песню")
+        except UserRequestQuotaReached:
+            self._show_quota_reached_msg(user)
 
 # MENU RELATED #####
-    def listened_menu(self, task, user):
-        menu = task["entry"]
-
-        handlers = {
-            "main": self.send_menu_main,
-            "queue": self.send_menu_queue,
-            "song_details": self.send_menu_song,
-            "admin_list_users": self.send_menu_admin_list_users,
-            "admin_user": self.send_menu_admin_user,
-        }
-
-        if menu in handlers:
-            handlers[menu](task, user)
-        else:
-            print("ERROR [Bot]: Unknown menu: " + str(menu))
 
     def remove_old_menu(self, user):
 
@@ -325,10 +432,10 @@ class TgFrontend:
             markup.row(*m_row)
         return markup
 
-    def send_menu_main(self, task, user):
+    def send_menu_main(self, user):
         menu_template = """
             {% if superuser %}
-                {% if now_playing is not none %}
+                {% if current_song is not none %}
                     ⏹ Остановить | callback_data=admin:stop_playing || ▶️ Переключить | callback_data=admin:skip_song
                 {% else %}
                     ▶️ Запустить | callback_data=admin:skip_song
@@ -345,271 +452,235 @@ class TgFrontend:
         """
 
         msg_template = """
-            {% if now_playing is not none %}
-                🔊 [{{ now_playing["played"] | format_duration }} / {{ now_playing["duration"] | format_duration }}]    👤 {{ now_playing["author_name"] }}
-                {{ now_playing["title"] }}\n
+            {% if current_song is not none %}
+                🔊 [{{ current_song_progress | format_duration }} / {{ current_song.duration | format_duration }}]    👤 {{ current_user.name if current_user else "Студсовет" }}
+                {{ current_song.full_title() }}\n
             {% endif %}
-            {% if superuser and next_in_queue is not none %}
+            {% if superuser and next_song is not none %}
                 Следующий трек:
-                ⏱ {{ next_in_queue.duration | format_duration }}    👤 {{ next_in_queue.author }}
-                {{ next_in_queue.title }}
+                ⏱ {{ next_song.duration | format_duration }}    👤 {{ next_user.name if next_user else "Студсовет" }}
+                {{ next_song.full_title() }}
             {% endif %}
         """
 
-        superuser = task["superuser"]
-        queue_len = task["queue_len"]
-
-        now_playing = task["now_playing"]
-        if now_playing is not None:
-            if now_playing["user_id"] is not None:
-                track_author = User.get(User.core_id == now_playing["user_id"])
-                now_playing["author_name"] = track_author.full_name()
-            else:
-                now_playing["author_name"] = "Студсовет"
-
-            now_playing["played"] = int(time.time() - now_playing["start_time"])
-
-        next_in_queue = task["next_in_queue"]
-        if superuser and next_in_queue is not None:
-            if next_in_queue.user is not None:
-                track_author = User.get(User.core_id == next_in_queue.user)
-                next_in_queue.author = track_author.full_name()
-            else:
-                next_in_queue.author = "Студсовет"
+        state = self.core.get_state(user.core_id)
 
         template = env.from_string(menu_template)
-        rendered = template.render(now_playing=now_playing, superuser=superuser, queue_len=queue_len)
+        rendered = template.render(**state)
         kb = self.build_markup(rendered)
 
         template = env.from_string('\n'.join([l.strip() for l in msg_template.splitlines(False)]))
-        message_text = template.render(now_playing=now_playing, next_in_queue=next_in_queue, superuser=superuser)
+        message_text = template.render(**state)
 
         self.remove_old_menu(user)
         self.bot.send_message(user.tg_id, message_text, reply_markup=kb)
 
-    def send_menu_queue(self, task, user):
-        page = task["page"]
-        songs_list = task["songs_list"]
-        is_last_page = task["is_last_page"]
+    def send_menu_queue(self, user, offset):
+        data = self.core.get_queue(user.core_id, offset, self.songs_per_page)
+        songs = data["list"]
+        songs_cnt = data["cnt"]
 
-        if not songs_list:
-            message_text = "В очереди воспроизведения ничего нет"
+        if songs_cnt == 0:
+            message_text = "Очередь воспроизведения пуста"
         else:
-            message_text = "Очередь воспроизведения\n" \
-                           "Выбери песню, чтобы посмотреть подробную информацию или проголосовать"
+            message_text = "Очередь воспроизведения\nПесен в очереди: %d" % songs_cnt
 
         kb = telebot.types.InlineKeyboardMarkup(row_width=3)
-        for song in songs_list:
-            kb.row(telebot.types.InlineKeyboardButton(text=song.title, callback_data="song:%d" % song.id))
+        for song in songs:
+            kb.row(telebot.types.InlineKeyboardButton(text=song.full_title(), callback_data="song:%d" % song.id))
+
+        page = math.ceil(offset / self.songs_per_page) + 1
+        next_offset = offset + self.songs_per_page
+        prev_offset = max(offset - self.songs_per_page, 0)
 
         nav = []
-        if page > 0 or not is_last_page:
+        if prev_offset >= 0 or next_offset < songs_cnt:
             nav.append(telebot.types.InlineKeyboardButton(
-                text="." if page <= 0 else "⬅️",
-                callback_data="//" if page <= 0 else "queue:%d" % (page - 1),
+                text="." if offset == 0 else "⬅️",
+                callback_data="//" if offset == 0 else "queue:%d" % prev_offset,
             ))
             nav.append(telebot.types.InlineKeyboardButton(
-                text="Стр. %d" % (page + 1),
+                text="Стр. %d" % page,
                 callback_data="//"
             ))
             nav.append(telebot.types.InlineKeyboardButton(
-                text="." if is_last_page else "➡️",
-                callback_data="//" if is_last_page else "queue:%d" % (page + 1),
+                text="." if next_offset >= songs_cnt else "➡️",
+                callback_data="//" if next_offset >= songs_cnt else "queue:%d" % next_offset
             ))
             kb.row(*nav)
 
         kb.row(telebot.types.InlineKeyboardButton(text=STR_BACK, callback_data="main"),
-               telebot.types.InlineKeyboardButton(text=STR_REFRESH, callback_data="queue:%d" % page))
+               telebot.types.InlineKeyboardButton(text=STR_REFRESH, callback_data="queue:%d" % offset))
 
         self.remove_old_menu(user)
         self.bot.send_message(user.tg_id, message_text, reply_markup=kb)
 
-    def send_menu_song(self, task, user):
-        superuser = task['superuser']
-        sid = task["number"]
-        duration = task["duration"]
-        rating = task["rating"]
-        position = task["position"]
-        page = task["page"]
-        title = task["title"]
+    def send_menu_song(self, user, song_id):
+        data = self.core.get_song_info(user.core_id, song_id)
 
-        str_duration = "{:d}:{:02d}".format(*list(divmod(duration, 60)))
-        base_str = "Песня: {}\nПродолжительность: {}\nРейтинг: {:d}\nМесто в очереди: {:d}"
-        message_text = base_str.format(title, str_duration, rating, position)
-        kb = telebot.types.InlineKeyboardMarkup(row_width=2)
-        kb.row(telebot.types.InlineKeyboardButton(text="👍", callback_data="vote:up:%s" % sid),
-               telebot.types.InlineKeyboardButton(text="👎", callback_data="vote:down:%s" % sid))
+        superuser = data['superuser']
+        kb = telebot.types.InlineKeyboardMarkup(row_width=3)
 
-        if superuser:
-            kb.row(telebot.types.InlineKeyboardButton(text="Удалить", callback_data="admin:delete:%s" % sid))
+        song = data["song"]
+        if song is None:
+            message_text = "🚫 Не удалось загрузить информацию о песне"
+            list_offset = 0
+        else:
+            duration = "{:d}:{:02d}".format(*list(divmod(song.duration, 60)))
+            position = data["position"]
 
-        kb.row(telebot.types.InlineKeyboardButton(text=STR_BACK, callback_data="queue:%d" % page),
-               telebot.types.InlineKeyboardButton(text=STR_REFRESH, callback_data="song:%s" % sid))
+            list_offset = ((position - 1) // self.songs_per_page) * self.songs_per_page
+
+            message_text = "🎵 %s\n\nДлительность: %s\nМесто в очереди: %d" % \
+                           (song.full_title(), duration, position)
+
+            kb.row(
+                telebot.types.InlineKeyboardButton(text="👍", callback_data="vote:up:%s" % song_id),
+                telebot.types.InlineKeyboardButton(text="%+d" % song.rating, callback_data="//"),
+                telebot.types.InlineKeyboardButton(text="👎", callback_data="vote:down:%s" % song_id),
+            )
+
+            if superuser:
+                kb.row(
+                    telebot.types.InlineKeyboardButton(text="🚫 Удалить 🚫", callback_data="admin:delete:%s" % song_id)
+                )
+
+        kb.row(
+            telebot.types.InlineKeyboardButton(text=STR_BACK, callback_data="queue:%d" % list_offset),
+            telebot.types.InlineKeyboardButton(text=STR_REFRESH, callback_data="song:%s" % song_id),
+        )
 
         self.remove_old_menu(user)
         self.bot.send_message(user.tg_id, message_text, reply_markup=kb)
 
-    def send_menu_admin_list_users(self, task, user):
-        page = task["page"]
-        users_list = task["users_list"]
-        users_cnt = task["users_cnt"]
-        is_last_page = task["is_last_page"]
+    def send_menu_admin_list_users(self, user, offset):
+        data = self.core.get_users(user.core_id, offset, self.users_per_page)
+        users = data["list"]
+        users_cnt = data["cnt"]
 
         if users_cnt == 0:
             message_text = "Нет ни одного пользователя"
         else:
             message_text = "Количество пользователей: %d" % users_cnt
 
-        users_ids = [u.id for u in users_list]
-        users = User.select().filter(User.core_id.in_(users_ids))
-
         kb = telebot.types.InlineKeyboardMarkup(row_width=2)
         for u in users:
-            button_text = str(u.tg_id)
-            if u.login is not None:
-                button_text += " (@%s)" % u.login
-            kb.row(telebot.types.InlineKeyboardButton(text=button_text, callback_data="admin:user_info:%d" % u.core_id))
+            button_text = "#" + str(u.id) + (" - %s" % u.name if u.name else "")
+            kb.row(telebot.types.InlineKeyboardButton(text=button_text, callback_data="admin:user_info:%d" % u.id))
+
+        page = math.ceil(offset / self.users_per_page) + 1
+        next_offset = offset + self.users_per_page
+        prev_offset = max(offset - self.users_per_page, 0)
 
         nav = []
-        if page > 0 or not is_last_page:
+        if prev_offset >= 0 or next_offset < users_cnt:
             nav.append(telebot.types.InlineKeyboardButton(
-                text="." if page <= 0 else "⬅️",
-                callback_data="//" if page <= 0 else "admin:list_users:%d" % (page - 1),
+                text="." if offset == 0 else "⬅️",
+                callback_data="//" if offset == 0 else "admin:list_users:%d" % prev_offset,
             ))
             nav.append(telebot.types.InlineKeyboardButton(
-                text="Стр. %d" % (page + 1),
+                text="Стр. %d" % page,
                 callback_data="//"
             ))
             nav.append(telebot.types.InlineKeyboardButton(
-                text="." if is_last_page else "➡️",
-                callback_data="//" if is_last_page else "admin:list_users:%d" % (page + 1),
+                text="." if next_offset >= users_cnt else "➡️",
+                callback_data="//" if next_offset >= users_cnt else "admin:list_users:%d" % next_offset,
             ))
             kb.row(*nav)
 
         kb.row(telebot.types.InlineKeyboardButton(text=STR_BACK, callback_data="main"),
-               telebot.types.InlineKeyboardButton(text=STR_REFRESH, callback_data="admin:list_users:%d" % page))
+               telebot.types.InlineKeyboardButton(text=STR_REFRESH, callback_data="admin:list_users:%d" % offset))
 
         self.remove_old_menu(user)
         self.bot.send_message(user.tg_id, message_text, reply_markup=kb)
 
-    def send_menu_admin_user(self, task, user):
-        about_user_core = task["about_user"]
-        try:
-            about_user = User.get(User.core_id == about_user_core.id)
-        except KeyError:
-            print("ERROR [Bot]: No user with id = %d" % about_user_core.id)
-            return
+    def send_menu_admin_user(self, user, handled_user_id):
+        data = self.core.get_user_info(user.core_id, handled_user_id)
 
-        if about_user.login is None:
-            login = self.bot.get_chat(about_user).login
-            if login is not None:
-                about_user.login = login
+        handled_user = data["info"]
 
         kb = telebot.types.InlineKeyboardMarkup(row_width=2)
-        if about_user_core.banned:
-            kb.row(telebot.types.InlineKeyboardButton(text="Разбанить",
-                                                      callback_data="admin:unban_user:%d" % about_user.core_id))
-        else:
-            kb.row(telebot.types.InlineKeyboardButton(text="Забанить нафиг",
-                                                      callback_data="admin:ban_user:%d" % about_user.core_id))
-        kb.row(telebot.types.InlineKeyboardButton(text=STR_BACK,
-                                                  callback_data="admin:list_users:0"),
-               telebot.types.InlineKeyboardButton(text=STR_REFRESH,
-                                                  callback_data="admin:user_info:%d" % about_user.core_id))
+        kb.row(
+            telebot.types.InlineKeyboardButton(
+                text="Разбанить" if handled_user.banned else "Забанить нафиг",
+                callback_data=("admin:unban_user:%d" if handled_user.banned else "admin:ban_user:%d") % handled_user_id,
+            )
+        )
+        kb.row(
+            telebot.types.InlineKeyboardButton(
+                text=STR_BACK,
+                callback_data="admin:list_users:0"
+            ),
+            telebot.types.InlineKeyboardButton(
+                text=STR_REFRESH,
+                callback_data="admin:user_info:%d" % handled_user_id
+            )
+        )
 
-        message_text = "Информация о пользователе\n" \
-                       "%d" % about_user.tg_id
-        if about_user.login is not None:
-            message_text += " (@%s)\n" % about_user.login
+        message_text = "👤 %s\n\n" % handled_user.name
+
+        try:
+            about_user_tg = User.get(User.core_id == handled_user.id)
+            message_text += "Telegram ID: %d\n" % about_user_tg.tg_id
+
+            if about_user_tg.login is None:
+                login = self.bot.get_chat(about_user_tg.tg_id).login
+                about_user_tg.login = login
+
+            if about_user_tg.login is not None:
+                message_text += "Login: @%s\n" % about_user_tg.login
+
+            message_text += "\n"
+        except KeyError:
+            pass
+
+        message_text += "Всего запросов: %d\n" % data['total_requests']
+        if len(data['last_requests']) > 0:
+            message_text += "Последние запросы:\n"
+            for r in data['last_requests']:
+                message_text += "- " + r.text + "\n"
         message_text += "\n"
-        if task['req_cnt'] > 0:
-            message_text = "\nПоследние запросы:\n"
-            for r in task['requests']:
-                message_text += r.text + "\n"
 
         self.remove_old_menu(user)
         self.bot.send_message(user.tg_id, message_text, reply_markup=kb)
 
-# BRAIN LISTENER #####
-    @make_endless_unfailable
-    def brain_listener(self):
-        task = self.input_queue.get(block=True)
-        if task["user_id"] == "System":
-            print("INFO [Bot]: Skipping task: %s" % str(task))
-            self.input_queue.task_done()
-            return
-
+    def notify_user(self, message, uid):
+        print("DEBUG [Bot]: Trying to notify user#%d" % uid)
         try:
-            user = User.get(User.core_id == task["user_id"])
+            user = User.get(User.core_id == uid)
         except peewee.DoesNotExist:
-            user = None
-
-        if user is None and task["action"] != "user_init_done":
-            print("ERROR [Bot]: Task for unknown user: %d" % task["user_id"])
-            self.input_queue.task_done()
+            print("WARNING [Bot]: Trying to notify unexistent user#%d" % uid)
             return
+        self._show_status(message, user)
 
-        if task["action"] == "user_init_done":
-            print("INFO [Bot]: User init done: %s" % str(task))
-            self.listened_user_init_done(task)
-            self.input_queue.task_done()
-            return
+    def _show_status(self, message, user):
+        self.bot.send_message(user.tg_id, message)
 
-        print("DEBUG [Bot]: Task from core: %s" % str(task))
+    def _show_error(self, message, user):
+        self.bot.send_message(user.tg_id, message)
 
-        if "request_id" in task:
-            try:
-                self.generators[task["request_id"]].send(task)
-            except StopIteration:
-                pass
-
-        elif "action" in task:
-            action = task["action"]
-            handlers = {
-                "user_message": self.listened_user_message,
-                "access_denied": self.listened_access_denied,
-                "error": self.listened_user_message,
-                "menu": self.listened_menu,
-            }
-
-            if action in handlers:
-                handlers[action](task, user)
-            else:
-                print("ERROR [Bot]: Unknown action: " + str(task["action"]))
-
-        else:
-            print("ERROR [Bot]: Bad task from core: " + str(task))
-
-        print("DEBUG [Bot]: Task done: %s" % str(task))
-        self.input_queue.task_done()
-
-    def listened_user_init_done(self, task):
-        user_info = task["frontend_user"]
-        user_id = task["user_id"]
-        user = User.create(
-            tg_id=user_info.id,
-            core_id=user_id,
-            login=user_info.username,
-            first_name=user_info.first_name,
-            last_name=user_info.last_name,
-        )
-
-        self.bot.send_message(user.tg_id, help_message, disable_web_page_preview=True)
-        self.output_queue.put({
-            "action": "menu_event",
-            "path": ["main"],
-            "user_id": user.core_id,
-        })
-
-    def listened_user_message(self, task, user):
-        self.bot.send_message(user.tg_id, task["message"])
-
-    def listened_access_denied(self, _, user):
+    def _show_blocked_msg(self, user):
         self.bot.send_message(user.tg_id, "К вашему сожалению, вы были заблокированы :/")
 
         if user.tg_id not in self.bamboozled_users:
             self.bamboozled_users.append(user.tg_id)
             self.bot.send_sticker(user.tg_id, data="CAADAgADiwgAArcKFwABQMmDfPtchVkC")
+
+    def _show_quota_reached_msg(self, user):
+        self.bot.send_message(user.tg_id, "🛑 Превышена квота на количество запросов. Попробуйте позже.")
+
+    def _show_access_denied(self, user):
+        self.bot.send_message(user.tg_id, "❌ Доступ запрещён")
+
+    def _suggest_search(self, text, chat_id, message_id):
+        kb = telebot.types.InlineKeyboardMarkup(row_width=2)
+        kb.row(telebot.types.InlineKeyboardButton(
+            text="🔍 " + text,
+            switch_inline_query_current_chat=text,
+        ))
+        self.bot.edit_message_text("Запрос не распознан. Нажмите на кнопку ниже, чтобы включить поиск",
+                                   chat_id, message_id)
+        self.bot.edit_message_reply_markup(chat_id, message_id, reply_markup=kb)
 
 
 # UTILITY FUNCTIONS #####
@@ -644,22 +715,14 @@ class TgFrontend:
         if user is None:
             return
 
-        self.output_queue.put({
-            "action": "menu_event",
-            "path": "admin:stop_playing",
-            "user_id": user.core_id,
-        })
+        self.core.menu_action(["admin", "stop_playing"], user.core_id)
 
     def skip_song(self, message):
         user = self.init_user(message.from_user)
         if user is None:
             return
 
-        self.output_queue.put({
-            "action": "menu_event",
-            "path": "admin:skip_song",
-            "user_id": user.core_id,
-        })
+        self.core.menu_action(["admin", "skip_song"], user.core_id)
 
     def start_handler(self, message):
         user = self.init_user(message.from_user)
@@ -667,22 +730,30 @@ class TgFrontend:
             return
 
         self.bot.send_message(user.tg_id, help_message, disable_web_page_preview=True)
-        self.output_queue.put({
-            "action": "menu_event",
-            "path": ["main"],
-            "user_id": user.core_id,
-        })
+        self.send_menu_main(user)
 
-    def init_user(self, from_user):
+    def init_user(self, user_info):
         try:
-            user = User.get(User.tg_id == from_user.id)
+            user = User.get(User.tg_id == user_info.id)
+            if user.first_name != user_info.first_name or user.last_name != user_info.last_name:
+                user.first_name = user_info.first_name
+                user.last_name = user_info.last_name
+                user.save()
+                self.core.set_user_name(user.core_id, user.full_name())
+                print("DEBUG [Bot]: User name updated: " + user.full_name())
             return user
         except peewee.DoesNotExist:
-            self.output_queue.put({
-                "action": "init_user",
-                "frontend_user": from_user,
-            })
-            return None
+            core_id = self.core.user_init_action()
+            user = User.create(
+                tg_id=user_info.id,
+                core_id=core_id,
+                login=user_info.username,
+                first_name=user_info.first_name,
+                last_name=user_info.last_name,
+            )
+            self.core.set_user_name(core_id, user.full_name())
+            self.bot.send_message(user.tg_id, help_message, disable_web_page_preview=True)
+            return user
 
 # USER MESSAGES HANDLERS #####
 

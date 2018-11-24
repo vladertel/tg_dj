@@ -2,9 +2,9 @@
 # -*- coding: UTF-8 -*-
 
 import peewee
-import time
 import json
 import os
+import asyncio
 
 import datetime
 from threading import Thread
@@ -24,6 +24,18 @@ class UserRequestQuotaReached(UserQuotaReached):
     pass
 
 
+class UserBanned(Exception):
+    pass
+
+
+class PermissionDenied(Exception):
+    pass
+
+
+class DownloadFailed(Exception):
+    pass
+
+
 db = peewee.SqliteDatabase("db/dj_brain.db")
 
 
@@ -34,6 +46,7 @@ class BaseModel(peewee.Model):
 
 class User(BaseModel):
     id = peewee.PrimaryKeyField()
+    name = peewee.TextField(null=True)
     banned = peewee.BooleanField(default=False)
     superuser = peewee.BooleanField(default=False)
 
@@ -70,7 +83,7 @@ def users_from_json(self, objecta):
         )
 
 
-class DJ_Brain:
+class DjBrain:
 
     def __init__(self, frontend, downloader, backend):
         self.isWindows = False
@@ -81,201 +94,93 @@ class DJ_Brain:
         self.backend = backend
 
         self.scheduler = Scheduler()
-        self.load()
 
-        self.frontend_thread = Thread(daemon=True, target=self.frontend_listener)
-        self.downloader_thread = Thread(daemon=True, target=self.downloader_listener)
-        self.backend_thread = Thread(daemon=True, target=self.backend_listener)
+        self.loop = asyncio.get_event_loop()
 
-        self.frontend_thread.start()
-        self.downloader_thread.start()
-        self.backend_thread.start()
+        self.frontend.bind_core(self)
+        self.downloader.bind_core(self)
+
+        Thread(daemon=True, target=self.backend_listener).start()
 
         self.play_next_track()
 
+        self.request_futures = {}
+        self.request_counter = 0
+
     def cleanup(self):
+        print("DEBUG [Bot]: Cleaning up...")
+        self.scheduler.play_next(self.backend.get_current_song())
         self.scheduler.cleanup()
-        # out_users = {}
-        # for user in self.users:
-        #     out_users[user] = self.users[user].toJSON()
-        # with open(os.path.join(saveDir, "users_save"), 'w') as f:
-        #     f.write(json.dumps(out_users, ensure_ascii=False))
-        print("INFO [Core]: Brain - state saved")
 
-    def load(self):
+    @staticmethod
+    def user_init_action():
+        u = User.create()
+        print('INFO [Core]: New user#%d with name %s' % (u.id, u.name))
+        return u.id
+
+    @staticmethod
+    def set_user_name(uid, name):
+        u = User.get(id=uid)
+        u.name = name
+        u.save()
+
+    @staticmethod
+    def get_user(uid):
         try:
-            pass
-            # with open(os.path.join(saveDir, "users_save")) as f:
-            #     users = json.loads(f.read())
-            # for user in users:
-            #     self.add_user(user)
-            #     self.users[user].fromJSON(users[user])
-        except FileNotFoundError:
-            print("WARNING [Core]: save not found for brain")
+            u = User.get(id=uid)
+        except peewee.DoesNotExist:
+            return None
+        if u.banned:
+            raise UserBanned
+        return u
 
-    # FRONTEND QUEUE
-    @make_endless_unfailable
-    def frontend_listener(self):
-        task = self.frontend.output_queue.get()
+    async def download_action(self, user_id, text=None, result=None, file=None, progress_callback=None):
+        user = self.get_user(user_id)
+        progress_callback = progress_callback or (lambda _state: None)
 
-        if "user_id" not in task and task['action'] != "init_user":
-            print('ERROR [Core]: Message from frontend with no user id:', str(task))
-            return
+        if not user.check_requests_quota() and not user.superuser:
+            print("DEBUG [Core]: Request quota reached by user#%d (%s)" % (user.id, user.name))
+            raise UserRequestQuotaReached
 
-        if task['action'] == "init_user":
-            u = User.create()
-            self.frontend.input_queue.put({
-                "action": "user_init_done",
-                "user_id": u.id,
-                "frontend_user": task["frontend_user"],
-            })
-            print('INFO [Core]: User(id=%d) init done' % u.id)
-            return
-
-        user = User.get(id=task["user_id"])
-        if user.banned:
-            self.frontend.input_queue.put({
-                "action": "access_denied",
-                "user_id": user.id,
-            })
-            return
-
-        print("DEBUG [Core]: Task from frontend: %s" % str(task))
-
-        action = task['action']
-        if action == 'download':
-            self.download_action(task)
-        elif action == "search":
-            print("DEBUG [Core]: pushed search task to downloader: " + str(task))
-            self.downloader.input_queue.put(task)
-        elif action == "menu_event":
-            self.menu_action(task)
+        if text:
+            print("DEBUG [Core]: New download (%s) from user#%d (%s)" % (text, user.id, user.name))
+            response = await self.downloader.download("text", text, progress_callback)
+        elif result:
+            print("DEBUG [Core]: New download (%s) from user#%d (%s)" % (str(result), user.id, user.name))
+            response = await self.downloader.download("search_result", result, progress_callback)
+        elif file:
+            print("DEBUG [Core]: New file #%s from user#%d (%s)" % (file["id"], user.id, user.name))
+            response = await self.downloader.download("file", file, progress_callback)
         else:
-            print('ERROR [Core]: Message not supported:', str(task))
-        self.frontend.output_queue.task_done()
+            print("ERROR [Core]: No data for downloader (%s)" % (str(locals())))
+            raise ValueError("No data for downloader")
 
-    def download_action(self, task):
-        user_id = task["user_id"]
-        user, _ = User.get_or_create(id=user_id)
+        print("DEBUG [Core]: Response from downloader: (%s)" % str(response))
+        if response is None:
+            raise DownloadFailed()
+        file_path, title, artist, duration = response
 
-        if user.check_requests_quota() or user.superuser:
-            print("DEBUG [Core]: pushed task to downloader: " + str(task))
-            self.downloader.input_queue.put(task)
-        else:
-            self.frontend.input_queue.put({
-                'action': 'user_message',
-                "user_id": user_id,
-                'message': 'Превышен лимит запросов, попробуйте позже'
-            })
+        if self.isWindows:
+            file_path = file_path[2:]
 
-    def menu_action(self, task):
-        user_id = task["user_id"]
-        user, _ = User.get_or_create(id=user_id)
-        path = task["path"]
-        print("DEBUG [Core]: menu action %s from user %s" % (path, user_id))
+        author = User.get(id=int(user_id))
+        Request.create(user=author, text=(artist or "") + " - " + (title or ""))
+        if not author.superuser and not author.check_requests_quota():
+            raise UserRequestQuotaReached
 
-        if path[0] == "main":
-            self.send_menu_main(user)
-        elif path[0] == "queue":
-            cur_page = int(path[1])
-            songs_list, _, is_last_page = self.scheduler.get_queue_page(cur_page)
-            self.send_menu_songs_queue(user, cur_page, songs_list, is_last_page)
+        song, position = self.scheduler.push_track(file_path, title, artist, duration, user_id)
 
-        elif path[0] == "song":
-            sel_song = int(path[1])
-            (song, position) = self.scheduler.get_song(sel_song)
-            if song is not None:
-                self.send_menu_song_info(user, path[1], song, position, position // PAGE_SIZE)
-            else:
-                cur_page = 0
-                songs_list, _, is_last_page = self.scheduler.get_queue_page(cur_page)
-                self.send_menu_songs_queue(user, cur_page, songs_list, is_last_page)
+        if not self.backend.is_playing:
+            self.play_next_track()
 
-        elif path[0] == "vote":
-            sign = path[1]
-            sid = int(path[2])
-            print("DEBUG [Core]: User %d votes %s for song %d" % (user_id, sign, sid))
-            if sign == "up":
-                song, position = self.scheduler.vote_up(user_id, sid)
-            else:
-                song, position = self.scheduler.vote_down(user_id, sid)
-            self.send_menu_song_info(user, path[2], song, position, position // PAGE_SIZE)
+        return song, position
 
-        elif path[0] == "admin" and user.superuser:
-            path.pop(0)
-            self.menu_admin_action(task)
-        else:
-            print('ERROR [Core]: Menu not supported:', str(path))
+    async def search_action(self, user_id, query, message_callback=None):
+        user = self.get_user(user_id)
+        message_callback = message_callback or (lambda _state: None)
 
-    def menu_admin_action(self, task):
-        user_id = task["user_id"]
-        user, _ = User.get_or_create(id=user_id)
-        path = task["path"]
-
-        if path[0] == "skip_song":
-            track, next_track = self.play_next_track()
-            self.send_menu_main(user, track, next_track)
-
-        elif path[0] == "delete":
-            pos = self.scheduler.remove_from_queue(int(path[1]))
-            songs_list, page, is_last_page = self.scheduler.get_queue_page(pos // 10)
-            self.send_menu_songs_queue(user, page, songs_list, is_last_page)
-
-        elif path[0] == 'stop_playing':
-            self.backend.input_queue.put({"action": "stop_playing"})
-            self.send_menu_main(user)
-
-        elif path[0] == "list_users":
-            self.send_menu_users_list(user, int(path[1]))
-
-        elif path[0] == "user_info":
-            try:
-                handled_user = User.get(id=int(path[1]))
-                self.send_menu_user_info(user, handled_user)
-            except KeyError:
-                print("ERROR [Core]: User does not exists: can't obtain user info")
-
-        elif path[0] == "ban_user" or path[0] == "unban_user":
-            try:
-                handled_user = User.get(id=int(path[1]))
-
-                if path[0] == "ban_user":
-                    handled_user.banned = True
-                    print("DEBUG [Core]: User banned")
-                if path[0] == "unban_user":
-                    handled_user.banned = False
-                    print("DEBUG [Core]: User unbanned")
-                handled_user.save()
-
-                self.send_menu_user_info(user, handled_user)
-            except KeyError:
-                print("ERROR [Core]: User does not exists: can't ban/unban user")
-
-    # DOWNLOADER QUEUE
-    @make_endless_unfailable
-    def downloader_listener(self):
-        task = self.downloader.output_queue.get()
-        action = task['action']
-        if action == 'download_done':
-            path = task['path']
-            if self.isWindows:
-                path = path[2:]
-
-            author = User.get(id=int(task["user_id"]))
-            Request.create(user=author, text=task['title'])
-            if author.check_requests_quota() or author.superuser:
-                self.scheduler.add_track_to_end_of_queue(path, task['title'], task['duration'], task["user_id"])
-                if not self.backend.is_playing:
-                    self.play_next_track()
-
-            self.frontend.input_queue.put(task)
-
-        elif action in ['user_message', 'user_error', 'no_dl_handler', 'search_results']:
-            print("DEBUG [Core]: pushed task to frontend: " + str(task))
-            self.frontend.input_queue.put(task)
-        else:
-            print('ERROR [Core]: Message not supported: ', str(task))
-        self.downloader.output_queue.task_done()
+        print("DEBUG [Core]: New search query \"%s\" from user#%d (%s)" % (query, user.id, user.name))
+        return await self.downloader.search(query, message_callback)
 
     @make_endless_unfailable
     def backend_listener(self):
@@ -295,125 +200,162 @@ class DJ_Brain:
 
         next_track_task = {
             "action": "play_song",
-            "uri": track.media,
-            "title": track.title,
-            "duration": track.duration,
-            "user_id": track.user,
+            "song": track,
         }
 
         self.backend.input_queue.put(next_track_task)
 
         json_file_path = os.path.join(os.getcwd(), "web", "dynamic", "current_song_info.json")
         with open(json_file_path, 'w') as json_file:
-            data_to_save = json.dumps(next_track_task)
+            data_to_save = json.dumps(track.to_dict())
             json_file.write(data_to_save)
 
-        user_curr = track.user
-        user_next = None if next_track is None else next_track.user
+        user_curr_id = track.user_id
+        user_next_id = None if next_track is None else next_track.user_id
 
-        if user_curr is not None and user_next is not None and user_curr == user_next:
-            self.frontend.input_queue.put({
-                "action": "user_message",
-                "message": "Играет " + track.title + "\n\nСледующий трек тоже ваш!\nБудет играть " + next_track.title,
-                "user_id": next_track.user
-            })
+        if user_curr_id is not None and user_next_id is not None and user_curr_id == user_next_id:
+            self.frontend.notify_user(
+                "🎶 Запускаю ваш трек:\n%s\n\n🕓 Следующий тоже ваш:\n%s" % (track.full_title(), next_track.full_title()),
+                user_curr_id
+            )
         else:
-            if user_next is not None:
-                self.frontend.input_queue.put({
-                    "action": "user_message",
-                    "message": "Следующий трек ваш!\nБудет играть " + next_track.title,
-                    "user_id": next_track.user
-                })
-            if user_curr is not None:
-                self.frontend.input_queue.put({
-                    "action": "user_message",
-                    "message": "Играет " + track.title,
-                    "user_id": track.user
-                })
+            if user_next_id is not None:
+                self.frontend.notify_user("🕓 Следующий трек ваш:\n%s" % next_track.full_title(), user_next_id)
+            if user_curr_id is not None:
+                self.frontend.notify_user("🎶 Запускаю ваш трек:\n%s" % track.full_title(), user_curr_id)
+
         return track, next_track
 
-    def send_menu_main(self, user, current_track=None, next_track=None):
-        if current_track is not None:
-            #  cruthcy conversions! YAAAY
-            current_track = {
-                "title": current_track.title,
-                "duration": current_track.duration,
-                "start_time": time.time(),
-                "user_id": current_track.user,
+    def switch_track(self, user_id):
+        user = self.get_user(user_id)
 
-            }
-        self.frontend.input_queue.put({
-            "action": "menu",
-            "user_id": user.id,
-            "entry": "main",
+        if not user.superuser:
+            raise PermissionDenied()
+
+        self.play_next_track()
+
+    def delete_track(self, user_id, song_id):
+        user = self.get_user(user_id)
+
+        if not user.superuser:
+            raise PermissionDenied()
+
+        position = self.scheduler.remove_from_queue(song_id)
+
+        return position
+
+    def stop_playback(self, user_id):
+        user = self.get_user(user_id)
+
+        if not user.superuser:
+            raise PermissionDenied()
+
+        self.scheduler.play_next(self.backend.get_current_song())
+        self.backend.stop()
+
+    def ban_user(self, user_id, handled_user_id):
+        user = self.get_user(user_id)
+
+        if not user.superuser:
+            raise PermissionDenied()
+
+        try:
+            handled_user = User.get(id=handled_user_id)
+            handled_user.banned = True
+            handled_user.save()
+            print("DEBUG [Core]: User banned")
+        except KeyError:
+            print("ERROR [Core]: User does not exists: can't ban user")
+            raise KeyError("User does not exists: can't ban user")
+
+    def unban_user(self, user_id, handled_user_id):
+        user = self.get_user(user_id)
+
+        if not user.superuser:
+            raise PermissionDenied()
+
+        try:
+            handled_user = User.get(id=handled_user_id)
+            handled_user.banned = False
+            handled_user.save()
+            print("DEBUG [Core]: User unbanned")
+        except KeyError:
+            print("ERROR [Core]: User does not exists: can't unban user")
+            raise KeyError("User does not exists: can't unban user")
+
+    def get_state(self, user_id):
+        user = self.get_user(user_id)
+        current_song = self.backend.get_current_song()
+        next_song = self.scheduler.get_next_song()
+        return {
             "queue_len": self.scheduler.queue_length(),
-            "now_playing": current_track or self.backend.now_playing,
-            "next_in_queue": next_track or self.scheduler.get_next_song(),
+            "current_song": current_song,
+            "current_user": self.get_user(current_song.user_id) if current_song else None,
+            "current_song_progress": self.backend.get_song_progress(),
+            "next_song": next_song,
+            "next_user": self.get_user(next_song.user_id) if next_song else None,
             "superuser": user.superuser,
-        })
+        }
 
-    def send_menu_songs_queue(self, user, number, songs_list, is_last_page):
-        self.frontend.input_queue.put({
-            "action": "menu",
-            "entry": "queue",
-            "user_id": user.id,
-            "page": number,
-            "songs_list": songs_list,
-            "is_last_page": is_last_page
-        })
+    def get_queue(self, _user_id, offset=0, limit=0):
+        return {
+            "list": self.scheduler.get_queue(offset, limit),
+            "cnt": self.scheduler.get_queue_length(),
+        }
 
-    def send_menu_song_info(self, user, number, song, position, page):
-        self.frontend.input_queue.put({
-            "action": "menu",
-            "entry": "song_details",
-            "user_id": user.id,
-            "number": number,
-            "duration": song.duration,
-            "rating": sum([song.votes[k] for k in song.votes]),
+    def get_song_info(self, user_id, song_id):
+        user = self.get_user(user_id)
+
+        (song, position) = self.scheduler.get_song(song_id)
+
+        # TODO: Return superuser extra info
+
+        return {
+            "song": song,
             "position": position,
-            "page": page,
-            "title": song.title,
             "superuser": user.superuser
-        })
+        }
 
-    def send_menu_users_list(self, user, page):
+    def vote_song(self, user_id, sign, song_id):
+        if sign == "up":
+            self.scheduler.vote_up(user_id, song_id)
+        elif sign == "down":
+            self.scheduler.vote_down(user_id, song_id)
+        else:
+            raise ValueError("Sign value should be either 'up' or 'down'")
+
+    def get_users(self, user_id, offset=0, limit=0):
+        user = self.get_user(user_id)
+
+        if not user.superuser:
+            raise PermissionDenied()
 
         users_cnt = User.select().count()
         if users_cnt == 0:
-            return [], 0, True
+            return {"list": [], "cnt": 0}
 
-        start = page * PAGE_SIZE
-        if start >= users_cnt:
-            div, mod = divmod(users_cnt, PAGE_SIZE)
-            start = div * PAGE_SIZE
-            page = div
-        elif start < 0:
-            start = 0
-            page = 0
-        end = start + PAGE_SIZE
+        if limit == 0:
+            users = User.select().offset(offset)
+        else:
+            users = User.select().offset(offset).limit(limit)
 
-        users = User.select().offset(start).limit(PAGE_SIZE)
+        return {
+            "list": users,
+            "cnt": users_cnt,
+        }
 
-        self.frontend.input_queue.put({
-            "action": "menu",
-            "entry": "admin_list_users",
-            "user_id": user.id,
-            "page": page,
-            "users_list": users,
-            "users_cnt": users_cnt,
-            "is_last_page": end >= users_cnt
-        })
+    def get_user_info(self, user_id, handled_user_id):
+        user = self.get_user(user_id)
 
-    def send_menu_user_info(self, user, handled_user):
+        if not user.superuser:
+            raise PermissionDenied()
 
+        handled_user = self.get_user(handled_user_id)
         requests = Request.select().filter(Request.user == handled_user).order_by(-Request.time).limit(10)
-        req_cnt = Request.select().count()
+        counter = Request.select().filter(Request.user == handled_user).count()
 
-        self.frontend.input_queue.put({
-            "action": "menu",
-            "entry": "admin_user",
-            "user_id": user.id,
-            "about_user": handled_user,
-            "requests": [r for r in requests],
-            "req_cnt": req_cnt,
-        })
+        return {
+            "info": handled_user,
+            "last_requests": [r for r in requests],
+            "total_requests": counter,
+        }
