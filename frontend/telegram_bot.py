@@ -11,7 +11,7 @@ import asyncio
 
 from .private_config import token
 
-from brain.DJ_Brain import UserBanned, UserRequestQuotaReached, DownloadFailed
+from brain.DJ_Brain import UserBanned, UserRequestQuotaReached, DownloadFailed, PermissionDenied
 from downloader.exceptions import NotAccepted
 
 
@@ -231,7 +231,9 @@ class TgFrontend:
         try:
             await method(data, user)
         except UserBanned:
-            self._show_access_denied_msg(user)
+            self._show_blocked_msg(user)
+        except PermissionDenied:
+            self._show_access_denied(user)
 
     async def search(self, data, user):
         query = data.query.lstrip()
@@ -656,7 +658,7 @@ class TgFrontend:
     def _show_error(self, message, user):
         self.bot.send_message(user.tg_id, message)
 
-    def _show_access_denied_msg(self, user):
+    def _show_blocked_msg(self, user):
         self.bot.send_message(user.tg_id, "К вашему сожалению, вы были заблокированы :/")
 
         if user.tg_id not in self.bamboozled_users:
@@ -665,6 +667,9 @@ class TgFrontend:
 
     def _show_quota_reached_msg(self, user):
         self.bot.send_message(user.tg_id, "🛑 Превышена квота на количество запросов. Попробуйте позже.")
+
+    def _show_access_denied(self, user):
+        self.bot.send_message(user.tg_id, "❌ Доступ запрещён")
 
     def _suggest_search(self, text, chat_id, message_id):
         kb = telebot.types.InlineKeyboardMarkup(row_width=2)
