@@ -278,11 +278,11 @@ class TgFrontend:
                 reply.chat.id, reply.message_id
             )
         except NotAccepted:
-            self.bot.send_message(user.tg_id, "Внутренняя ошибка: ни один загрузчик не принял запрос")
+            self.bot.send_message(user.tg_id, "🚫 Внутренняя ошибка: ни один загрузчик не принял запрос")
         except DownloadFailed:
-            self.bot.send_message(user.tg_id, "Не удалось загрузить песню")
+            self.bot.send_message(user.tg_id, "🚫 Не удалось загрузить песню")
         except UserRequestQuotaReached:
-            self.bot.send_message(user.tg_id, "Превышена квота на количество запросов. Попробуйте позже.")
+            self._show_quota_reached_msg(user)
 
     async def command(self, message, user):
 
@@ -337,9 +337,9 @@ class TgFrontend:
         except NotAccepted:
             self._suggest_search(text, reply.chat.id, reply.message_id)
         except DownloadFailed:
-            self.bot.send_message(user.tg_id, "Не удалось загрузить песню")
+            self.bot.send_message(user.tg_id, "🚫 Не удалось загрузить песню")
         except UserRequestQuotaReached:
-            self.bot.send_message(user.tg_id, "Превышена квота на количество запросов. Попробуйте позже.")
+            self._show_quota_reached_msg(user)
 
     async def add_audio_file(self, message, user):
         file_info = self.bot.get_file(message.audio.file_id)
@@ -368,11 +368,11 @@ class TgFrontend:
                 reply.chat.id, reply.message_id
             )
         except NotAccepted:
-            self._suggest_search(text, reply.chat.id, reply.message_id)
+            self.bot.send_message(user.tg_id, "🚫 Внутренняя ошибка: ни один загрузчик не принял запрос")
         except DownloadFailed:
-            self.bot.send_message(user.tg_id, "Не удалось загрузить песню")
+            self.bot.send_message(user.tg_id, "🚫 Не удалось загрузить песню")
         except UserRequestQuotaReached:
-            self.bot.send_message(user.tg_id, "Превышена квота на количество запросов. Попробуйте позже.")
+            self._show_quota_reached_msg(user)
 
 # MENU RELATED #####
 
@@ -664,7 +664,7 @@ class TgFrontend:
             self.bot.send_sticker(user.tg_id, data="CAADAgADiwgAArcKFwABQMmDfPtchVkC")
 
     def _show_quota_reached_msg(self, user):
-        self.bot.send_message(user.tg_id, "Превышен лимит запросов, попробуйте позже")
+        self.bot.send_message(user.tg_id, "🛑 Превышена квота на количество запросов. Попробуйте позже.")
 
     def _suggest_search(self, text, chat_id, message_id):
         kb = telebot.types.InlineKeyboardMarkup(row_width=2)

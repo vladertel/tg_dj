@@ -214,14 +214,14 @@ class DjBrain:
 
         if user_curr_id is not None and user_next_id is not None and user_curr_id == user_next_id:
             self.frontend.notify_user(
-                "Играет %s\n\nСледующий трек тоже ваш!\nБудет играть %s" % (track.full_title(), next_track.full_title()),
+                "🎶 Запускаю ваш трек:\n%s\n\n🕓 Следующий тоже ваш:\n%s" % (track.full_title(), next_track.full_title()),
                 user_curr_id
             )
         else:
             if user_next_id is not None:
-                self.frontend.notify_user("Следующий трек ваш!\nБудет играть %s" % next_track.full_title(), user_next_id)
+                self.frontend.notify_user("🕓 Следующий трек ваш:\n%s" % next_track.full_title(), user_next_id)
             if user_curr_id is not None:
-                self.frontend.notify_user("Играет %s" % track.full_title(), user_curr_id)
+                self.frontend.notify_user("🎶 Запускаю ваш трек:\n%s" % track.full_title(), user_curr_id)
 
         return track, next_track
 
