@@ -44,6 +44,11 @@ class VLCStreamer():
     def get_song_progress(self):
         return int(time.time() - self.song_start_time)
 
+    def stop(self):
+        self.player.stop()
+        self.is_playing = False
+        self.now_playing = None
+
     @make_endless_unfailable
     def queue_listener(self):
         task = self.input_queue.get()
@@ -58,10 +63,6 @@ class VLCStreamer():
             self.is_playing = True
             self.now_playing = song
             self.song_start_time = time.time()
-        elif action == 'stop_playing':
-            self.player.stop()
-            self.is_playing = False
-            self.now_playing = None
         else:
             print('ERROR [VLC]: Message not supported:', task)
         self.input_queue.task_done()

@@ -250,7 +250,8 @@ class DjBrain:
         if not user.superuser:
             raise PermissionDenied()
 
-        self.backend.input_queue.put({"action": "stop_playing"})
+        self.scheduler.play_next(self.backend.get_current_song())
+        self.backend.stop()
 
     def ban_user(self, user_id, handled_user_id):
         user = self.get_user(user_id)
