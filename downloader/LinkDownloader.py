@@ -23,22 +23,22 @@ class LinkDownloader(AbstractDownloader):
             flags=re.IGNORECASE)
         self.name = "links downloader"
 
-    def is_acceptable(self, task):
-        if "text" in task:
-            match = self.mp3_dns_regex.search(task["text"])
+    def is_acceptable(self, kind, query):
+        if kind == "text":
+            match = self.mp3_dns_regex.search(query)
             if match:
                 return match.group(0)
-            match = self.mp3_ip4_regex.search(task["text"])
+            match = self.mp3_ip4_regex.search(query)
             if match:
                 return match.group(0)
         return False
 
-    def download(self, task, user_message=lambda text: True):
+    def download(self, query, user_message=lambda text: True):
         url = None
-        match = self.mp3_dns_regex.search(task["text"])
+        match = self.mp3_dns_regex.search(query)
         if match:
             url = match.group(0)
-        match = self.mp3_ip4_regex.search(task["text"])
+        match = self.mp3_ip4_regex.search(query)
         if match:
             url = match.group(0)
         if url is None:
@@ -53,7 +53,6 @@ class LinkDownloader(AbstractDownloader):
 
         if os.path.exists(file_path) and os.path.getsize(file_path) > 0:
             title, artist, duration = get_mp3_info(file_path)
-            user_message("Песня добавлена в очередь\n%s" % title)
             return file_path, title, artist, duration
 
         user_message("Скачиваем...")
@@ -90,5 +89,4 @@ class LinkDownloader(AbstractDownloader):
         self.touch_without_creation(file_path)
         filter_storage()
 
-        user_message("Песня добавлена в очередь\n%s" % title)
         return file_path, title, artist, duration

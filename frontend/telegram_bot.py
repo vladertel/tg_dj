@@ -12,6 +12,7 @@ import asyncio
 from .private_config import token
 
 from brain.DJ_Brain import UserBanned, UserRequestQuotaReached, DownloadFailed
+from downloader.exceptions import NotAccepted
 
 
 compiled_regex = re.compile(r"^\d+")
@@ -235,10 +236,14 @@ class TgFrontend:
     async def search(self, data, user):
         query = data.query.lstrip()
 
-        print("DEBUG [Bot]: Awaiting core: " + query)
-        task = await self.core.search_action(user.id, query=query)
-        results = task["results"]
-        print("DEBUG [Bot]: Response from core: %d results" % len(results))
+        def message_callback(test):
+            try:
+                self.bot.send_message(user.tg_id, test)
+            except telebot.apihelper.ApiException:
+                pass
+
+        results = await self.core.search_action(user.id, query=query, message_callback=message_callback)
+        print("DEBUG [Bot - search]: Response from core: %d results" % len(results))
 
         results_articles = []
         for song in results:
@@ -262,16 +267,22 @@ class TgFrontend:
             except telebot.apihelper.ApiException:
                 pass
 
-        response = await self.core.download_action(
-            user.id,
-            result={"downloader": downloader, "id": result_id},
-            progress_callback=progress_callback
-        )
-
-        self.bot.edit_message_text(
-            "Песня в очереди. Позиция: %d\n%s" % (response['position'], response['title']),
-            reply.chat.id, reply.message_id
-        )
+        try:
+            song, position = await self.core.download_action(
+                user.id,
+                result={"downloader": downloader, "id": result_id},
+                progress_callback=progress_callback
+            )
+            self.bot.edit_message_text(
+                "Песня в очереди. Позиция: %d\n%s" % (position, song.full_title()),
+                reply.chat.id, reply.message_id
+            )
+        except NotAccepted:
+            self.bot.send_message(user.tg_id, "Внутренняя ошибка: ни один загрузчик не принял запрос")
+        except DownloadFailed:
+            self.bot.send_message(user.tg_id, "Не удалось загрузить песню")
+        except UserRequestQuotaReached:
+            self.bot.send_message(user.tg_id, "Превышена квота на количество запросов. Попробуйте позже.")
 
     async def command(self, message, user):
 
@@ -318,10 +329,17 @@ class TgFrontend:
                 pass
 
         try:
-            await self.core.download_action(user.id, text=text, progress_callback=progress_callback)
-            self.bot.edit_message_text("Песня добавлена в очередь", reply.chat.id, reply.message_id)
-        except DownloadFailed:
+            song, position = await self.core.download_action(user.id, text=text, progress_callback=progress_callback)
+            self.bot.edit_message_text(
+                "Песня в очереди. Позиция: %d\n%s" % (position, song.full_title()),
+                reply.chat.id, reply.message_id
+            )
+        except NotAccepted:
             self._suggest_search(text, reply.chat.id, reply.message_id)
+        except DownloadFailed:
+            self.bot.send_message(user.tg_id, "Не удалось загрузить песню")
+        except UserRequestQuotaReached:
+            self.bot.send_message(user.tg_id, "Превышена квота на количество запросов. Попробуйте позже.")
 
     async def add_audio_file(self, message, user):
         file_info = self.bot.get_file(message.audio.file_id)
@@ -343,8 +361,18 @@ class TgFrontend:
             "title": message.audio.title or "",
         }
 
-        await self.core.download_action(user.id, file=file, progress_callback=progress_callback)
-        self.bot.edit_message_text("Песня добавлена в очередь", reply.chat.id, reply.message_id)
+        try:
+            song, position = await self.core.download_action(user.id, file=file, progress_callback=progress_callback)
+            self.bot.edit_message_text(
+                "Песня в очереди. Позиция: %d\n%s" % (position, song.full_title()),
+                reply.chat.id, reply.message_id
+            )
+        except NotAccepted:
+            self._suggest_search(text, reply.chat.id, reply.message_id)
+        except DownloadFailed:
+            self.bot.send_message(user.tg_id, "Не удалось загрузить песню")
+        except UserRequestQuotaReached:
+            self.bot.send_message(user.tg_id, "Превышена квота на количество запросов. Попробуйте позже.")
 
 # MENU RELATED #####
 

@@ -15,20 +15,20 @@ from .storage_checker import filter_storage
 class FileDownloader(AbstractDownloader):
     name = "file downloader"
 
-    def is_acceptable(self, task):
-        return "file" in task
+    def is_acceptable(self, kind, query):
+        return kind == "file"
 
-    def download(self, task, user_message=lambda text: True):
-        file_id = task["file"]
-        duration = task["duration"]
-        file_size = task["file_size"]
-        file_info = task["file_info"]
+    def download(self, query, user_message=lambda text: True):
+        file_id = query["id"]
+        duration = query["duration"]
+        file_size = query["size"]
+        file_info = query["info"]
 
         if _DEBUG_:
             print("DEBUG [FileDownloader]: Downloading song #" + str(file_id))
 
-        artist = task["artist"].strip()
-        title = task["title"].strip()
+        artist = query["artist"].strip()
+        title = query["title"].strip()
 
         if _DEBUG_:
             print("DEBUG [FileDownloader]: Title for song #" + str(file_id) + ": " + title)
@@ -44,7 +44,6 @@ class FileDownloader(AbstractDownloader):
         file_path = os.path.join(file_dir, file_name)
 
         if self.is_in_cache(file_path):
-            user_message("Песня добавлена в очередь\n%s" % title)
             return file_path, title, artist, duration
 
         user_message("Скачиваем...\n%s" % title)
@@ -67,5 +66,4 @@ class FileDownloader(AbstractDownloader):
         if _DEBUG_:
             print("DEBUG [FileDownloader]: File stored in path: " + file_path)
 
-        user_message("Песня добавлена в очередь\n%s" % title)
         return file_path, title, artist, duration

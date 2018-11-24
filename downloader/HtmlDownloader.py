@@ -23,8 +23,8 @@ class HtmlDownloader(AbstractDownloader):
 
         self.songs_cache = {}
 
-    def is_acceptable(self, task):
-        return "query" in task or "result_id" in task
+    def is_acceptable(self, kind, query):
+        return kind == "search" or kind == "search_result"
 
     @staticmethod
     def get_headers():
@@ -33,18 +33,17 @@ class HtmlDownloader(AbstractDownloader):
             "Pragma": "no-cache",
         }
 
-    def search(self, task, user_message=lambda text: True):
-        search_query = task["query"]
+    def search(self, query, user_message=lambda text: True):
         if _DEBUG_:
-            print("DEBUG [HtmlDownloader]: Search query: " + search_query)
+            print("DEBUG [HtmlDownloader]: Search query: " + query)
 
-        if len(search_query.strip()) == 0:
+        if len(query.strip()) == 0:
             return []
 
         if _DEBUG_:
-            print("DEBUG [HtmlDownloader]: Getting data from " + base_uri + " with query " + search_query)
+            print("DEBUG [HtmlDownloader]: Getting data from " + base_uri + " with query " + query)
         headers = self.get_headers()
-        search_request = requests.get((base_uri + html_search_uri).format(search_query), headers=headers)
+        search_request = requests.get((base_uri + html_search_uri).format(query), headers=headers)
         if search_request.status_code != 200:
             raise BadReturnStatus(search_request.status_code)
 
@@ -86,8 +85,8 @@ class HtmlDownloader(AbstractDownloader):
             })
         return ret
 
-    def download(self, task, user_message=lambda text: True):
-        result_id = task["result_id"]
+    def download(self, query, user_message=lambda text: True):
+        result_id = query["id"]
         if _DEBUG_:
             print("DEBUG [HtmlDownloader]: Downloading result #" + str(result_id))
 

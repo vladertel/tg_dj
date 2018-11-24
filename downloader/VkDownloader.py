@@ -24,8 +24,8 @@ class VkDownloader(AbstractDownloader):
 
         self.songs_cache = {}
 
-    def is_acceptable(self, task):
-        return "query" in task or "result_id" in task
+    def is_acceptable(self, kind, query):
+        return kind == "search" or kind == "search_result"
 
     @staticmethod
     def get_headers():
@@ -45,18 +45,17 @@ class VkDownloader(AbstractDownloader):
             "page": 0
         }
 
-    def search(self, task, user_message=lambda text: True):
-        search_query = task["query"]
+    def search(self, query, user_message=lambda text: True):
         if _DEBUG_:
-            print("DEBUG [VkDownloader]: Search query: " + search_query)
+            print("DEBUG [VkDownloader]: Search query: " + query)
 
-        if len(search_query.strip()) == 0:
+        if len(query.strip()) == 0:
             return []
 
         if _DEBUG_:
-            print("DEBUG [VkDownloader]: Getting data from " + DATMUSIC_API_ENDPOINT + " with query " + search_query)
+            print("DEBUG [VkDownloader]: Getting data from " + DATMUSIC_API_ENDPOINT + " with query " + query)
         headers = self.get_headers()
-        songs = requests.get(DATMUSIC_API_ENDPOINT, params=self.get_payload(search_query), headers=headers)
+        songs = requests.get(DATMUSIC_API_ENDPOINT, params=self.get_payload(query), headers=headers)
         if songs.status_code != 200:
             raise BadReturnStatus(songs.status_code)
 
@@ -104,14 +103,14 @@ class VkDownloader(AbstractDownloader):
             print("ERROR [VkDownloader]: No search cache entry for id " + result_id)
             raise Exception("Внутренняя ошибка (запрошенная песня отсутствует в кэше поиска)")
 
-        title = song["artist"] + " — " + song["title"]
+        title = song["title"]
+        artist = song["artist"]
         file_name = sanitize_file_name("vk-" + str(result_id) + '.mp3')
         file_path = os.path.join(os.getcwd(), mediaDir, file_name)
 
         if self.is_in_cache(file_path):
             print("INFO [VkDownloader]: File %s already in cache" % result_id)
-            user_message("Песня добавлена в очередь\n%s" % title)
-            return file_path, title, song["duration"]
+            return file_path, title, artist, song["duration"]
 
         if not os.path.exists(os.path.join(os.getcwd(), mediaDir)):
             os.makedirs(os.path.join(os.getcwd(), mediaDir))
@@ -154,5 +153,4 @@ class VkDownloader(AbstractDownloader):
         if _DEBUG_:
             print("DEBUG [VkDownloader]: File stored in path: " + file_path)
 
-        user_message("Песня добавлена в очередь\n%s" % title)
-        return file_path, title, song["duration"]
+        return file_path, title, artist, song["duration"]

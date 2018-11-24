@@ -50,11 +50,11 @@ class Song:
         }
 
     def full_title(self):
-        if self.artist is not None and self.title is not None:
+        if self.artist is not None and len(self.artist) > 0 and self.title is not None and len(self.title) > 0:
             return self.artist + " — " + self.title
-        elif self.artist is not None:
+        elif self.artist is not None and len(self.artist) > 0:
             return self.artist
-        elif self.title is not None:
+        elif self.title is not None and len(self.title) > 0:
             return self.title
         else:
             return os.path.splitext(os.path.basename(self.media))[0]
@@ -136,9 +136,10 @@ class Scheduler:
 
     def push_track(self, path, title, artist, duration, user_id):
         self.lock.acquire()
-        self.playlist.append(Song(path, title, artist, duration, user_id))
+        song = Song(path, title, artist, duration, user_id)
+        self.playlist.append(song)
         self.lock.release()
-        return len(self.playlist)
+        return song, len(self.playlist)
 
     def pop_first_track(self):
         self.lock.acquire()

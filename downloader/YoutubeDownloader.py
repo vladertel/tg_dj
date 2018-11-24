@@ -3,6 +3,7 @@ import json
 import re
 import os
 import time
+import traceback
 
 from pytube import YouTube
 
@@ -23,9 +24,9 @@ class YoutubeDownloader(AbstractDownloader):
 
         self.download_status = {}
 
-    def is_acceptable(self, task):
-        if "text" in task:
-            match = self.yt_regex.search(task["text"])
+    def is_acceptable(self, kind, query):
+        if kind == "text":
+            match = self.yt_regex.search(query)
             if match:
                 return match.group(0)
         return False
@@ -45,8 +46,8 @@ class YoutubeDownloader(AbstractDownloader):
             percent = 100 * (file_size - remaining) / file_size
             stat["user_message"]("Скачиваем [%d%%]...\n%s" % (percent, stat["title"]))
 
-    def download(self, task, user_message=lambda text: True):
-        match = self.yt_regex.search(task["text"])
+    def download(self, query, user_message=lambda text: True):
+        match = self.yt_regex.search(query)
         if match:
             url = match.group(0)
         else:
@@ -60,6 +61,7 @@ class YoutubeDownloader(AbstractDownloader):
             video = YouTube(url, on_progress_callback=self.video_download_progress)
             stream = video.streams.filter(only_audio=True).first()
         except Exception:
+            traceback.print_exc()
             raise ApiError()
         video_id = video.video_id
         video_title = video.title
@@ -104,7 +106,6 @@ class YoutubeDownloader(AbstractDownloader):
         if self.is_in_cache(file_path):
             if _DEBUG_:
                 print("DEBUG [YoutubeDownloader]: Loading from cache: " + file_path)
-            user_message("Песня добавлена в очередь\n%s" % video_title)
             return file_path, video_title, "", seconds
 
         if not os.path.exists(file_dir):
@@ -122,5 +123,4 @@ class YoutubeDownloader(AbstractDownloader):
         if _DEBUG_:
             print("DEBUG [YoutubeDownloader]: File stored in path: " + file_path)
 
-        user_message("Песня добавлена в очередь\n%s" % video_title)
         return file_path, video_title, "", seconds

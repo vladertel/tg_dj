@@ -98,12 +98,9 @@ class DjBrain:
         self.loop = asyncio.get_event_loop()
 
         self.frontend.bind_core(self)
+        self.downloader.bind_core(self)
 
-        self.downloader_thread = Thread(daemon=True, target=self.downloader_listener)
-        self.backend_thread = Thread(daemon=True, target=self.backend_listener)
-
-        self.downloader_thread.start()
-        self.backend_thread.start()
+        Thread(daemon=True, target=self.backend_listener).start()
 
         self.play_next_track()
 
@@ -138,6 +135,7 @@ class DjBrain:
 
     async def download_action(self, user_id, text=None, result=None, file=None, progress_callback=None):
         user = self.get_user(user_id)
+        progress_callback = progress_callback or (lambda _state: None)
 
         if not user.check_requests_quota() and not user.superuser:
             print("DEBUG [Core]: Request quota reached by user#%d (%s)" % (user.id, user.name))
@@ -145,102 +143,43 @@ class DjBrain:
 
         if text:
             print("DEBUG [Core]: New download (%s) from user#%d (%s)" % (text, user.id, user.name))
-            response = await self.call_downloader({
-                "action": "download",
-                "text": text,
-                "progress_callback": progress_callback or (lambda _state: None)
-            })
+            response = await self.downloader.download("text", text, progress_callback)
         elif result:
-            print("DEBUG [Core]: New download %s#%s from user#%d (%s)" % (result["downloader"], result["id"],
-                                                                          user.id, user.name))
-            response = await self.call_downloader({
-                "action": "download",
-                "downloader": result["downloader"],
-                "result_id": result["id"],
-                "progress_callback": progress_callback or (lambda _state: None)
-            })
+            print("DEBUG [Core]: New download (%s) from user#%d (%s)" % (str(result), user.id, user.name))
+            response = await self.downloader.download("search_result", result, progress_callback)
         elif file:
             print("DEBUG [Core]: New file #%s from user#%d (%s)" % (file["id"], user.id, user.name))
-            response = await self.call_downloader({
-                "action": "download",
-                "file": file["id"],
-                "duration": file["duration"],
-                "file_size": file["size"],
-                "file_info": file["info"],
-                "artist": file["artist"],
-                "title": file["title"],
-                "progress_callback": progress_callback or (lambda _state: None)
-            })
+            response = await self.downloader.download("file", file, progress_callback)
         else:
             print("ERROR [Core]: No data for downloader (%s)" % (str(locals())))
             raise ValueError("No data for downloader")
 
         print("DEBUG [Core]: Response from downloader: (%s)" % str(response))
+        if response is None:
+            raise DownloadFailed()
+        file_path, title, artist, duration = response
 
-        path = response['path']
         if self.isWindows:
-            path = path[2:]
+            file_path = file_path[2:]
 
         author = User.get(id=int(user_id))
-        Request.create(user=author, text=response['artist'] + " - " + response['title'])
-        if author.check_requests_quota() or author.superuser:
-            response["position"] = self.scheduler.push_track(
-                path, response['title'], response['artist'], response['duration'], user_id
-            )
+        Request.create(user=author, text=(artist or "") + " - " + (title or ""))
+        if not author.superuser and not author.check_requests_quota():
+            raise UserRequestQuotaReached
+
+        song, position = self.scheduler.push_track(file_path, title, artist, duration, user_id)
+
         if not self.backend.is_playing:
             self.play_next_track()
 
-        return response
+        return song, position
 
-    async def search_action(self, user_id, query):
+    async def search_action(self, user_id, query, message_callback=None):
         user = self.get_user(user_id)
+        message_callback = message_callback or (lambda _state: None)
+
         print("DEBUG [Core]: New search query \"%s\" from user#%d (%s)" % (query, user.id, user.name))
-        return await self.call_downloader({
-            "action": "search",
-            "query": query,
-        })
-
-    def call_downloader(self, request):
-        self.request_counter += 1
-        request_id = self.request_counter
-        request["request_id"] = request_id
-        self.downloader.input_queue.put(request)
-
-        loop = asyncio.get_event_loop()
-        f = asyncio.Future(loop=loop)
-        self.request_futures[request_id] = {
-            "future": f,
-            "loop": loop,
-        }
-        return f
-
-    # DOWNLOADER QUEUE
-    @make_endless_unfailable
-    def downloader_listener(self):
-        task = self.downloader.output_queue.get()
-
-        if "request_id" in task:
-            rid = task["request_id"]
-            if rid not in self.request_futures:
-                print('ERROR [Core]: Response to unknown request#%d: %s' % (task["request_id"], str(task)))
-                return
-            if task["state"] == "error":
-                self.request_futures[rid]["loop"].call_soon_threadsafe(
-                    self.send_exception_to_future, task, DownloadFailed(task["message"])
-                )
-            else:
-                self.request_futures[rid]["loop"].call_soon_threadsafe(
-                    self.send_result_to_future, task
-                )
-
-    def send_result_to_future(self, task):
-        self.request_futures[task["request_id"]]["future"].set_result(task)
-        del self.request_futures[task["request_id"]]
-
-    def send_exception_to_future(self, task, exception):
-        print('ERROR [Core]: Exception in future#%d: %s' % (task["request_id"], str(exception)))
-        self.request_futures[task["request_id"]]["future"].set_exception(exception)
-        del self.request_futures[task["request_id"]]
+        return await self.downloader.search(query, message_callback)
 
     @make_endless_unfailable
     def backend_listener(self):

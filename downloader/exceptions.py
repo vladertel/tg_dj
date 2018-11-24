@@ -37,3 +37,7 @@ class MultipleChoice(Exception):
 
 class ApiError(Exception):
     pass
+
+
+class NotAccepted(Exception):
+    pass
