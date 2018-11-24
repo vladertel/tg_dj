@@ -28,6 +28,9 @@ class VLCStreamer():
         events = self.player.event_manager()
         events.event_attach(vlc.EventType.MediaPlayerEndReached, self.vlc_song_finished)
 
+    def cleanup(self):
+        self.player.stop()
+
     def vlc_song_finished(self, event):
         self.is_playing = False
         self.now_playing = None

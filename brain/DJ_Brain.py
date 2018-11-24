@@ -107,9 +107,10 @@ class DjBrain:
         self.request_futures = {}
         self.request_counter = 0
 
-        self.loop.run_forever()
-        print("FATAL [Bot]: Polling loop ended")
-        self.loop.close()
+    def cleanup(self):
+        print("DEBUG [Bot]: Cleaning up...")
+        self.scheduler.play_next(self.backend.get_current_song())
+        self.scheduler.cleanup()
 
     @staticmethod
     def user_init_action():
@@ -206,7 +207,7 @@ class DjBrain:
 
         json_file_path = os.path.join(os.getcwd(), "web", "dynamic", "current_song_info.json")
         with open(json_file_path, 'w') as json_file:
-            data_to_save = json.dumps(track.__dict__())
+            data_to_save = json.dumps(track.to_dict())
             json_file.write(data_to_save)
 
         user_curr_id = track.user_id

@@ -31,6 +31,10 @@ class MasterDownloader:
     def bind_core(self, core):
         self.core = core
 
+    def cleanup(self):
+        pass
+        # TODO: Delete incomplete downloads
+
     def thread_download(self, kind, query, callback):
 
         if kind == "search_result":

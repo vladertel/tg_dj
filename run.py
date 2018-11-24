@@ -1,6 +1,6 @@
 import sys
-import atexit
-import time
+import asyncio
+import traceback
 
 from brain.DJ_Brain import DjBrain
 from streamer.VLCStreamer import VLCStreamer
@@ -11,19 +11,24 @@ sys.stdout = open(sys.stdout.fileno(), mode='w', encoding='utf8', buffering=1)
 sys.stderr = sys.stdout
 
 args = [TgFrontend(), MasterDownloader(), VLCStreamer()]
-
-for arg in args:
-    try:
-        atexit.register(arg.cleanup)
-    except AttributeError:
-        pass
-
 brain = DjBrain(*args)
 
-print("Running infinite loop in main thread...")
+loop = asyncio.get_event_loop()
 try:
-    while True:
-        time.sleep(60)
-except KeyboardInterrupt:
-    print("Caught SIGTERM. Exiting...")
-    exit(0)
+    loop.run_forever()
+except (KeyboardInterrupt, SystemExit):
+    pass
+print("FATAL: Main event loop has ended")
+print("DEBUG: Cleaning...")
+for arg in args:
+    try:
+        arg.cleanup()
+    except AttributeError:
+        traceback.print_exc()
+try:
+    brain.cleanup()
+except AttributeError:
+    traceback.print_exc()
+
+loop.close()
+print("DEBUG: Exit")

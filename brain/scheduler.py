@@ -38,7 +38,7 @@ class Song:
     def __str__(self):
         return "Song(title: %s, artist: %s, id: %d)".format(self.title, self.artist, self.id)
 
-    def __dict__(self):
+    def to_dict(self):
         return {
             "id": self.id,
             "title": self.title,
@@ -126,7 +126,7 @@ class Scheduler:
     def cleanup(self):
         out_dict = {
             "last_id": Song.counter,
-            "songs": [a.__dict__ for a in self.playlist],
+            "songs": [a.to_dict() for a in self.playlist],
             "backlog_played_media": [a.media for a in self.backlog_played]
         }
         file_name = os.path.join(queueDir, "queue")
@@ -138,6 +138,12 @@ class Scheduler:
         self.lock.acquire()
         song = Song(path, title, artist, duration, user_id)
         self.playlist.append(song)
+        self.lock.release()
+        return song, len(self.playlist)
+
+    def play_next(self, song):
+        self.lock.acquire()
+        self.playlist.insert(0, song)
         self.lock.release()
         return song, len(self.playlist)
 
