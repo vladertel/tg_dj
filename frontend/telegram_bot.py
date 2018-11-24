@@ -519,7 +519,7 @@ class TgFrontend:
         data = self.core.get_song_info(user.core_id, song_id)
 
         superuser = data['superuser']
-        kb = telebot.types.InlineKeyboardMarkup(row_width=2)
+        kb = telebot.types.InlineKeyboardMarkup(row_width=3)
 
         song = data["song"]
         if song is None:
@@ -531,11 +531,12 @@ class TgFrontend:
 
             list_offset = ((position - 1) // self.songs_per_page) * self.songs_per_page
 
-            message_text = "🎵 %s\n\nДлительность: %s\nРейтинг: %d\nМесто в очереди: %d" % \
-                           (song.full_title(), duration, song.rating, position)
+            message_text = "🎵 %s\n\nДлительность: %s\nМесто в очереди: %d" % \
+                           (song.full_title(), duration, position)
 
             kb.row(
                 telebot.types.InlineKeyboardButton(text="👍", callback_data="vote:up:%s" % song_id),
+                telebot.types.InlineKeyboardButton(text="%+d" % song.rating, callback_data="//"),
                 telebot.types.InlineKeyboardButton(text="👎", callback_data="vote:down:%s" % song_id),
             )
 
