@@ -191,6 +191,7 @@ class Scheduler:
         try:
             song = next(s for s in self.playlist if s.id == sid)
             position = self.playlist.index(song)
+            self.playlist.remove(song)
         except (ValueError, StopIteration):
             position = None
             print("WARNING [Scheduler - remove]: Unable to remove song #%d from the playlist")
