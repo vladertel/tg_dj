@@ -202,7 +202,7 @@ class TgFrontend:
         elif path[0] == "admin" and path[1] == "delete":
             song_id = int(path[2])
             position = self.core.delete_track(user.core_id, song_id)
-            offset = (position // self.songs_per_page) * self.songs_per_page
+            offset = ((position - 1) // self.songs_per_page) * self.songs_per_page
             self.send_menu_queue(user, offset)
 
         elif path[0] == "admin" and path[1] == "list_users":
@@ -494,10 +494,10 @@ class TgFrontend:
         prev_offset = max(offset - self.songs_per_page, 0)
 
         nav = []
-        if prev_offset > 0 or next_offset < songs_cnt:
+        if prev_offset >= 0 or next_offset < songs_cnt:
             nav.append(telebot.types.InlineKeyboardButton(
-                text="." if prev_offset <= 0 else "⬅️",
-                callback_data="//" if prev_offset <= 0 else "queue:%d" % (page - 1),
+                text="." if offset == 0 else "⬅️",
+                callback_data="//" if offset == 0 else "queue:%d" % prev_offset,
             ))
             nav.append(telebot.types.InlineKeyboardButton(
                 text="Стр. %d" % page,
@@ -505,7 +505,7 @@ class TgFrontend:
             ))
             nav.append(telebot.types.InlineKeyboardButton(
                 text="." if next_offset >= songs_cnt else "➡️",
-                callback_data="//" if next_offset >= songs_cnt else "queue:%d" % (page + 1),
+                callback_data="//" if next_offset >= songs_cnt else "queue:%d" % next_offset
             ))
             kb.row(*nav)
 
@@ -529,7 +529,7 @@ class TgFrontend:
             duration = "{:d}:{:02d}".format(*list(divmod(song.duration, 60)))
             position = data["position"]
 
-            list_offset = (position // self.songs_per_page) * self.songs_per_page
+            list_offset = ((position - 1) // self.songs_per_page) * self.songs_per_page
 
             message_text = "🎵 %s\n\nДлительность: %s\nРейтинг: %d\nМесто в очереди: %d" % \
                            (song.full_title(), duration, song.rating, position)
@@ -572,10 +572,10 @@ class TgFrontend:
         prev_offset = max(offset - self.users_per_page, 0)
 
         nav = []
-        if prev_offset > 0 or next_offset < users_cnt:
+        if prev_offset >= 0 or next_offset < users_cnt:
             nav.append(telebot.types.InlineKeyboardButton(
-                text="." if prev_offset <= 0 else "⬅️",
-                callback_data="//" if prev_offset <= 0 else "admin:list_users:%d" % (page - 1),
+                text="." if offset == 0 else "⬅️",
+                callback_data="//" if offset == 0 else "admin:list_users:%d" % prev_offset,
             ))
             nav.append(telebot.types.InlineKeyboardButton(
                 text="Стр. %d" % page,
@@ -583,7 +583,7 @@ class TgFrontend:
             ))
             nav.append(telebot.types.InlineKeyboardButton(
                 text="." if next_offset >= users_cnt else "➡️",
-                callback_data="//" if next_offset >= users_cnt else "admin:list_users:%d" % (page + 1),
+                callback_data="//" if next_offset >= users_cnt else "admin:list_users:%d" % next_offset,
             ))
             kb.row(*nav)
 
