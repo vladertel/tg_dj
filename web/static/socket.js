@@ -5,7 +5,7 @@
     let last_keep_alive = Date.now();
 
     function on_update(data) {
-        document.getElementById("title").innerText = data.title;
+        document.getElementById("title").innerText = data.title + " - " + data.artist;
         document.getElementById("duration").innerText = data.duration;
     }
 
