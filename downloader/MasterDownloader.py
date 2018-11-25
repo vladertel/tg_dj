@@ -1,6 +1,7 @@
 import concurrent.futures
 from collections import OrderedDict
 import os
+from prometheus_client import Gauge, Histogram
 
 
 from .YoutubeDownloader import YoutubeDownloader
@@ -9,6 +10,12 @@ from .FileDownloader import FileDownloader
 from .LinkDownloader import LinkDownloader
 from .exceptions import *
 from .config import MAXIMUM_FILE_SIZE, SEARCH_RESULTS_LIMIT, mediaDir
+
+
+mon_downloads_in_progress = Gauge('dj_downloads_in_progress', 'Downloads in progress')
+mon_searches_in_progress = Gauge('dj_searches_in_progress', 'Searches in progress')
+mon_download_time = Histogram('dj_download_time', 'Time spent in downloading')
+mon_search_time = Histogram('dj_search_time', 'Time spent in search')
 
 
 class MasterDownloader:
@@ -35,6 +42,8 @@ class MasterDownloader:
         pass
         # TODO: Delete incomplete downloads
 
+    @mon_download_time.time()
+    @mon_downloads_in_progress.track_inprogress()
     def thread_download(self, kind, query, callback):
 
         if kind == "search_result":
@@ -74,6 +83,8 @@ class MasterDownloader:
         if not accepted:
             raise NotAccepted()
 
+    @mon_search_time.time()
+    @mon_searches_in_progress.track_inprogress()
     def thread_search(self, query, callback):
         for dwnld_name in self.handlers:
             downloader = self.handlers[dwnld_name]

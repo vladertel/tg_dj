@@ -1,6 +1,7 @@
 import sys
 import asyncio
 import traceback
+import prometheus_client
 
 from brain.DJ_Brain import DjBrain
 from streamer.VLCStreamer import VLCStreamer
@@ -12,6 +13,8 @@ sys.stderr = sys.stdout
 
 args = [TgFrontend(), MasterDownloader(), VLCStreamer()]
 brain = DjBrain(*args)
+
+prometheus_client.start_http_server(8910)
 
 loop = asyncio.get_event_loop()
 try:

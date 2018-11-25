@@ -2,6 +2,7 @@ import threading
 import json
 import os
 import random
+from prometheus_client import Gauge
 
 from utils import get_mp3_info
 
@@ -83,6 +84,11 @@ class Scheduler:
         self.backlog_played = []
         self.backlog_played_media = []
         self.backlog_initial_size = 0
+
+        self.mon_playlist_len = Gauge('dj_playlist_length', 'Playlist length')
+        self.mon_playlist_len.set_function(lambda: len(self.playlist))
+        self.mon_backlog_len = Gauge('dj_backlog_length', 'Backlog length')
+        self.mon_backlog_len.set_function(lambda: len(self.backlog))
 
         self.lock = threading.Lock()
         self.load_init()

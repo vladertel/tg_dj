@@ -2,6 +2,7 @@ from queue import Queue
 from threading import Thread
 import time
 import vlc
+from prometheus_client import Gauge
 
 from .private_config import vlc_options
 from utils import make_endless_unfailable
@@ -15,7 +16,10 @@ class VLCStreamer():
         self.is_playing = False
         self.now_playing = None
         self.song_start_time = 0
-        self.ordered_by = None
+
+        self.mon_is_playing = Gauge('dj_is_playing', 'Is something paying now')
+        self.mon_is_playing.set_function(lambda: 1 if self.is_playing else 0)
+
         self.input_queue = Queue()
         self.output_queue = Queue()
         self.queue_thread = Thread(daemon=True, target=self.queue_listener)
