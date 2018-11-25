@@ -31,7 +31,7 @@ class VLCStreamer():
     def cleanup(self):
         self.player.stop()
 
-    def vlc_song_finished(self, event):
+    def vlc_song_finished(self, _event):
         self.is_playing = False
         self.now_playing = None
         self.output_queue.put({

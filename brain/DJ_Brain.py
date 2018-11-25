@@ -104,9 +104,6 @@ class DjBrain:
 
         self.play_next_track()
 
-        self.request_futures = {}
-        self.request_counter = 0
-
     def cleanup(self):
         print("DEBUG [Bot]: Cleaning up...")
         self.scheduler.play_next(self.backend.get_current_song())
