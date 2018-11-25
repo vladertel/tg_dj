@@ -543,10 +543,11 @@ class TgFrontend:
                 telebot.types.InlineKeyboardButton(text="👎", callback_data="vote:down:%s" % song_id),
             )
 
-            if superuser:
+            if superuser or user.id == song.user_id:
                 kb.row(
                     telebot.types.InlineKeyboardButton(text="🚫 Удалить 🚫", callback_data="admin:delete:%s" % song_id)
                 )
+            if superuser:
                 author = self.core.get_user_info(user, song.user_id)["info"]
                 kb.row(
                     telebot.types.InlineKeyboardButton(text="👤 %s" % author.name, callback_data="admin:user_info:%s" % author.id)

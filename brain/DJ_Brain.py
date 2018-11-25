@@ -238,7 +238,9 @@ class DjBrain:
         user = self.get_user(user_id)
 
         if not user.superuser:
-            raise PermissionDenied()
+            song, _ = self.scheduler.get_song(song_id)
+            if user.id != song.user_id:
+                raise PermissionDenied()
 
         position = self.scheduler.remove_from_queue(song_id)
 
