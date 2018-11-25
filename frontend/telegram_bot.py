@@ -544,6 +544,10 @@ class TgFrontend:
                 kb.row(
                     telebot.types.InlineKeyboardButton(text="🚫 Удалить 🚫", callback_data="admin:delete:%s" % song_id)
                 )
+                author = self.core.get_user_info(user, song.user_id)["info"]
+                kb.row(
+                    telebot.types.InlineKeyboardButton(text="👤 %s" % author.name, callback_data="admin:user_info:%s" % author.id)
+                )
 
         kb.row(
             telebot.types.InlineKeyboardButton(text=STR_BACK, callback_data="queue:%d" % list_offset),
