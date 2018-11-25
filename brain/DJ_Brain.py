@@ -294,8 +294,10 @@ class DjBrain:
             "current_song_progress": self.backend.get_song_progress(),
             "next_song": next_song,
             "next_user": self.get_user(next_song.user_id) if next_song else None,
+            "my_songs": {p: s for p, s in enumerate(self.scheduler.get_queue()) if s.user_id == user_id},
             "superuser": user.superuser,
         }
+    # TODO: Limit my_songs length?
 
     def get_queue(self, _user_id, offset=0, limit=0):
         return {

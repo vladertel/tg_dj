@@ -444,6 +444,9 @@ class TgFrontend:
             {% if queue_len %}
                 📂 Очередь: {{ queue_len | make_caption(['трек', '', 'а', 'а', 'а', 'ов']) }} | callback_data=queue:0
             {% endif %}
+            {% for pos in my_songs %}
+                #{{ pos + 1 }}: {{ my_songs[pos].full_title() }} | callback_data=song:{{ my_songs[pos].id }}
+            {% endfor %}
             {% if superuser %}
                 👥 Пользователи | callback_data=admin:list_users:0
             {% endif %}
