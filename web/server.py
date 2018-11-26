@@ -7,12 +7,8 @@ import asyncio
 from .config import stream_url
 
 
-# noinspection PyAbstractClass
+# noinspection PyAbstractClass,PyAttributeOutsideInit
 class WebSocketHandler(tornado.websocket.WebSocketHandler):
-
-    def __init__(self, application, request, **kwargs):
-        self.server = None
-        super().__init__(application, request, **kwargs)
 
     def initialize(self, **kwargs):
         self.server = kwargs.get("server")
@@ -40,27 +36,20 @@ class WebSocketHandler(tornado.websocket.WebSocketHandler):
         self.write_message(line)
 
 
-# noinspection PyAbstractClass
+# noinspection PyAbstractClass,PyAttributeOutsideInit
 class MainHandler(tornado.web.RequestHandler):
-
-    def __init__(self, application, request, **kwargs):
-        self.server = None
-        super().__init__(application, request, **kwargs)
 
     def initialize(self, **kwargs):
         self.server = kwargs.get("server")
 
     def get(self):
-        data = self.server.get_data()
+        data = self.server.get_current_song()
         self.render("index.html", song_info=data, stream_url=stream_url)
 
 
 class StatusWebServer:
 
-    def __init__(self, core, bind_address, bind_port):
-        self.core = core
-
-        self.core.add_state_update_callback(self.update_state)
+    def __init__(self, address, port):
 
         settings = {
             "static_path": os.path.join(os.path.dirname(__file__), "static"),
@@ -72,12 +61,17 @@ class StatusWebServer:
             (r'/ws', WebSocketHandler, dict(server=self)),
         ], **settings)
 
-        app.listen(bind_port, address=bind_address)
+        app.listen(port, address=address)
 
+        self.core = None
         self.ws_clients = []
         self.KEEP_ALIVE_INTERVAL = 60
 
-    def get_data(self):
+    def bind_core(self, core):
+        self.core = core
+        self.core.add_state_update_callback(self.update_state)
+
+    def get_current_song(self):
         return self.core.backend.get_current_song().to_dict()
 
     def update_state(self, track):

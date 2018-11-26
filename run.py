@@ -20,7 +20,8 @@ args = parser.parse_args()
 modules = [TgFrontend(), MasterDownloader(), VLCStreamer()]
 brain = DjBrain(*modules)
 
-web = StatusWebServer(brain, getattr(args, "stat_address"), getattr(args, "stat_port"))
+web = StatusWebServer(args.stat_address, args.stat_port)
+web.bind_core(brain)
 
 loop = asyncio.get_event_loop()
 try:
