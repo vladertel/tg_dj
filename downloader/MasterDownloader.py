@@ -1,6 +1,7 @@
 import concurrent.futures
 from collections import OrderedDict
 import os
+import time
 from prometheus_client import Gauge, Histogram
 
 
@@ -14,8 +15,8 @@ from .config import MAXIMUM_FILE_SIZE, SEARCH_RESULTS_LIMIT, mediaDir
 
 mon_downloads_in_progress = Gauge('dj_downloads_in_progress', 'Downloads in progress')
 mon_searches_in_progress = Gauge('dj_searches_in_progress', 'Searches in progress')
-mon_download_time = Histogram('dj_download_time', 'Time spent in downloading')
-mon_search_time = Histogram('dj_search_time', 'Time spent in search')
+mon_download_duration = Histogram('dj_download_duration', 'Time spent in downloading', ['handler'])
+mon_search_duration = Histogram('dj_search_duration', 'Time spent in search', ['handler'])
 
 
 class MasterDownloader:
@@ -42,7 +43,6 @@ class MasterDownloader:
         pass
         # TODO: Delete incomplete downloads
 
-    @mon_download_time.time()
     @mon_downloads_in_progress.track_inprogress()
     def thread_download(self, kind, query, callback):
 
@@ -60,7 +60,11 @@ class MasterDownloader:
 
             accepted = True
             try:
-                return downloader.download(query, user_message=callback)
+                start_time = time.time()
+                result = downloader.download(query, user_message=callback)
+                end_time = time.time()
+                mon_download_duration.labels(handler_name).observe(end_time - start_time)
+                return result
             except MediaIsTooLong as e:
                 callback("Трек слишком длинный (" + str(e.args[0]) + " секунд)")
             except MediaIsTooBig:
@@ -83,7 +87,6 @@ class MasterDownloader:
         if not accepted:
             raise NotAccepted()
 
-    @mon_search_time.time()
     @mon_searches_in_progress.track_inprogress()
     def thread_search(self, query, callback):
         for dwnld_name in self.handlers:
@@ -96,7 +99,10 @@ class MasterDownloader:
                     query,
                     user_message=callback,
                 )
+                start_time = time.time()
                 search_results = search_results[0:min(SEARCH_RESULTS_LIMIT, len(search_results))]
+                end_time = time.time()
+                mon_search_duration.labels(dwnld_name).observe(end_time - start_time)
 
                 for r in search_results:
                     r["downloader"] = dwnld_name
