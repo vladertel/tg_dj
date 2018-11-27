@@ -189,7 +189,7 @@ class DjBrain:
         task = self.backend.output_queue.get()
         action = task['action']
         if action == "song_finished":
-            self.play_next_track()
+            self.loop.call_soon(self.play_next_track)
         else:
             print('ERROR [Core]: Message not supported:', str(task))
         self.backend.output_queue.task_done()
