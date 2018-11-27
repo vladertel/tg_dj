@@ -1,17 +1,14 @@
-// Based on https://github.com/marcioshiz/aav-logo
-
-var myCanvas;
-var vol;
+var fft, amplitude, source;
 
 var dots = [];
 var numDots = 250;
+var rotation = 0;
 
-var t = 0;
-var time = 0;
-var getT = [];
-var getTime = [];
+var dot_x_min = 70;
+var dot_x_max = 400;
 
-var randNums = [];
+var line_offset = 120;
+var line_length = 255;
 
 function preload() {
     var audioCtx = getAudioContext();
@@ -21,167 +18,105 @@ function preload() {
 }
 
 function setup() {
-	myCanvas = createCanvas(windowWidth, windowHeight);
-	background(0);
-	frameRate(30);
-	smooth();
-	colorMode(HSB, 255, 255, 255, 255);
+    createCanvas(windowWidth, windowHeight);
+    background(0);
+    frameRate(30);
+    smooth();
+    colorMode(HSB, 255, 255, 255, 255);
 
+    dot_x_max = (windowWidth + windowHeight) * 0.2;
+    line_length = (windowWidth + windowHeight) * 0.12;
 
-	
-	analyzer = new p5.Amplitude();
-	analyzer.setInput(source);
-	fft = new p5.FFT();
-	fft.setInput(source);
+    amplitude = new p5.Amplitude();
+    amplitude.setInput(source);
+    fft = new p5.FFT();
+    fft.setInput(source);
 
-	// song.loop();
-
-
-
-
-	// add an object inside array	
-	for (var i = 0; i < numDots; i++) {
-		dots[i] = new Dot(180,0, 0.5+random(0.95,1), 0.5);
-		t += 0.01;
-		time += 0.001;
-		getT[i] = t;
-		getTime[i] = time;
-
-
-		// if (random(1) > 0.5) {
-		// 	randNums[i] = random(1,2);
-		// } else {
-		// 	randNums[i] = random(-2,-1);
-		// }
-	}
-
-
+    for (var i = 0; i < numDots; i++) {
+    	var x_start = random(dot_x_min,dot_x_max);
+    	var v_start = random(1.4, 1.5) * (random(-1,1) > 0 ? 1 : -1);
+        dots[i] = new Dot(x_start, v_start);
+    }
 }
 
-var varRot = 0;
 
 function draw() {
 
-	vol = analyzer.getLevel() * 10;
+    var volume = amplitude.getLevel();
+    var spectrum = fft.analyze(128);
 
-	// var numBands = numDots; //32768/2;
-	var spectrum = fft.analyze(256);
+    background(volume > 0.4 ? 30 : 0);
 
-	push();
-		translate(0,0);
-		noStroke(); fill(0);
-		rect(0,0,width,height);
-	pop();
+    push();
 
-	push();
+    translate(width/2, height/2);
+    rotate(rotation);
 
-		translate(width/2, height/2);
-		rotate(varRot);
+    strokeWeight(10);
+    volume > 0.4 ? stroke(127,125,161,170) : stroke(6,173,227,170);
 
-		strokeWeight(10);
-		stroke(6,173,227,170);
-		for (var i = 0; i< spectrum.length; i++){
-			var angle = map(i, 0, spectrum.length, 0, 92 * PI);
-			var h = spectrum[i] * 3;
-			line(120 * sin(angle), 120 * cos(angle) , (120 + h) * sin(angle), (120 + h) * cos(angle) )
-		}
+    var len = 128;
+    var dir_num = 160;
 
-		// rotate(noise(varRot/10,time/a));
-		//rotate(radians(a));
-		// rotate(noise(varRot,a/10));
-		for (var i = 0; i < dots.length; ++i) {
-			rotate(radians(360/numDots));
-		    push();
-		    for (var j = i; j < dots.length; j+= 10 )  {
-		      dots[i].intersect(dots[j]);
-		    }
-		    pop();
-			dots[i].display(); 	
-			dots[i].move(vol); //*randNums[i]
+    for (var i = 0; i < len; i++) {
+        var angle = map(i % dir_num, 0, dir_num, 0, 34 * PI);
+        var line_end = line_offset + spectrum[i] * line_length / 255;
+        line(
+        	line_offset * sin(angle),
+			line_offset * cos(angle),
+			line_end * sin(angle),
+			line_end * cos(angle)
+		);
+    }
 
+    for (var i = 0; i < dots.length; ++i) {
+        rotate(radians(360/numDots));
+        dots[i].draw(volume);
+        dots[i].move(volume);
+    }
+    rotation = rotation + volume/7;
 
-			
-		}
-		varRot = varRot + vol/100;
-		time = time + 0.0001;
-
-		//noLoop();
-	pop();
-
-	// console.log(varRot);
-  
+    pop();
 }
 
 
 
-function Dot(tempX, tempY, tempSpeed, tempSpeedY) {
-	this.x = tempX;
-	this.y = tempY;
-	this.speed = tempSpeed;
-	this.speedY = tempSpeedY;
+function Dot(x, speedX) {
+    this.x = x;
+    this.speedX = speedX;
 
-	this.alph = random(200,255);
-	//this.c = color(random(100,255),255,255, this.alph);
-	this.c = color(127,125,161, this.alph);
-	
-
-	this.eleSize = random(2,10);
+    this.color1 = color(127,125,161, random(200,255));
+    this.color2 = color(6,173,227, random(200,255));
+    this.size = random(1,7);
 }
 
-Dot.prototype.display = function() {
-	noStroke(); fill( this.c );//random(60,255)
+Dot.prototype.draw = function(volume) {
+	var size = this.size;
 
-	if (random(1) > 0.995) {
-		this.vol2 = vol * 3;
+    if (random(1) > 0.995) {
+        var multiplier = volume > 0.3 ? random(100,250) : 30;
+        size = volume * multiplier;
+    }
 
+    noStroke();
+    volume > 0.4 ? fill(this.color2) : fill(this.color1);
+    ellipse(this.x, 0, size, size);
+};
 
-		if (analyzer.getLevel() > 0.3) {
-			multiplier = random(2,8);
-			ellipse(this.x,this.y,this.vol2*multiplier, this.vol2*multiplier);
-		} else {
-			
-			ellipse(this.x,this.y,this.vol2, this.vol2);
-		}
+Dot.prototype.move = function(volume) {
+    this.x += this.speedX * volume * 10;
 
-	} else {
-		ellipse(this.x,this.y,this.eleSize-3,this.eleSize-3);
-	}
-}
-
-
-Dot.prototype.move = function(tempA) {
-	this.ranSize = tempA * 10;
-	constrain(this.ranSize, 0, 3);
-
-	this.x = this.x + this.speed * (tempA/1);
-
-
-	if ( this.y > 100 ) {
-		this.speedY = -this.speedY ;
-	} else if ( this.y < -100) {
-		this.speedY = -this.speedY;
-	}
-
-
-	if ( this.x > 400 ) {
-		this.speed = -this.speed ;
-	} else if ( this.x < 110 ) { //* tempA
-		this.speed = -this.speed;
-	}
-}
-
-Dot.prototype.intersect = function(other) {
-	var d  = dist(this.x, this.y, other.x, other.y);
-
-	if ( d < 8 ) {
-		stroke(this.c); noFill(); strokeWeight(.5);
-		line(other.x, other.x, this.x, this.x);
-	}
-
-}
+    if ( this.x > dot_x_max ) {
+        this.speedX = -Math.abs(this.speedX);
+    } else if ( this.x < dot_x_min ) {
+        this.speedX = Math.abs(this.speedX);
+    }
+};
 
 
 
 function windowResized() {
-	resizeCanvas(windowWidth, windowHeight);
+    resizeCanvas(windowWidth, windowHeight);
+    dot_x_max = (windowWidth + windowHeight) * 0.2;
+    line_length = (windowWidth + windowHeight) * 0.12;
 }
