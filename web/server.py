@@ -33,7 +33,12 @@ class WebSocketHandler(tornado.websocket.WebSocketHandler):
 
     def send(self, msg, data):
         line = json.dumps({msg: data})
-        self.write_message(line)
+        try:
+            self.write_message(line)
+        except tornado.websocket.WebSocketClosedError:
+            print(self.request.remote_ip, 'connection lost')
+            if self in self.server.ws_clients:
+                self.server.ws_clients.remove(self)
 
 
 # noinspection PyAbstractClass,PyAttributeOutsideInit
