@@ -1,4 +1,5 @@
 var fft, amplitude, source;
+var myMediaElement;
 
 var dots = [];
 var numDots = 250;
@@ -12,9 +13,12 @@ var line_length = 255;
 
 function preload() {
     var audioCtx = getAudioContext();
-    var myMediaElement = document.getElementById('stream');
+    myMediaElement = document.getElementById('stream');
     source = audioCtx.createMediaElementSource(myMediaElement);
     source.connect(p5.soundOut);
+    document.getElementById("logo").onclick = function(e){
+        myMediaElement.play();
+    };
 }
 
 function setup() {
