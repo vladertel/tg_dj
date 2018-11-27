@@ -8,31 +8,34 @@
     <link href="static/main.css" rel="stylesheet">
     <script type="text/javascript" src="static/wson.js"></script>
     <script type="text/javascript" src="static/socket.js"></script>
+
+    <script type="text/javascript" src="static/libraries/p5.js"></script>
+    <script type="text/javascript" src="static/libraries/p5.dom.js"></script>
+    <script type="text/javascript" src="static/libraries/p5.sound.js"></script>
+    <script type="text/javascript" src="static/aav.js"></script>
 </head>
 <body>
     <header>
         <h1>INBICST DJ</h1>
-        <img id="logo" src="static/logo_white.png">
     </header>
-    <section>
-        <div id="now-playing">
-            <div id="title">{{ song_info["title"] }} - {{ song_info["artist"] }}</div>
-            <div id="info">
-                <span id="duration">{{ song_info["duration"] }}</span>
-            </div>
-        </div>
-        <div id="playback">
-            <audio controls>
-                <source src="{{ stream_url }}">
-            </audio>
-        </div>
-        <div id="links">
-            <a href="https://t.me/inbicst_dj_bot" target="_blank">@inbicst_dj_bot</a>
+    <section id="now-playing">
+        <div id="title">{{ song_info["title"] }} - {{ song_info["artist"] }}</div>
+        <div id="info">
+            <span id="duration">{{ song_info["duration"] }}</span>
         </div>
     </section>
     <footer>
+        <div id="links">
+            <a href="https://t.me/inbicst_dj_bot" target="_blank">@inbicst_dj_bot</a>
+        </div>
         <p>ИНБИКСТ МФТИ</p>
         <p><a href="https://inbicst.ru/">https://inbicst.ru/</a></p>
     </footer>
+    <div id="playback">
+        <audio controls preload="none" id="stream">
+            <source src="{{ stream_url }}">
+        </audio>
+    </div>
+    <img id="logo" src="static/logo_white.png">
 </body>
 </html>
