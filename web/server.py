@@ -14,6 +14,7 @@ class WebSocketHandler(tornado.websocket.WebSocketHandler):
         self.server = kwargs.get("server")
         loop = asyncio.get_event_loop()
         loop.create_task(self.keep_alive())
+        self.active = True
 
     def check_origin(self, _origin):
         return True
@@ -24,10 +25,14 @@ class WebSocketHandler(tornado.websocket.WebSocketHandler):
 
     def on_close(self):
         print(self.request.remote_ip, 'closed')
-        self.server.ws_clients.remove(self)
+        self.active = False
+        try:
+            self.server.ws_clients.remove(self)
+        except ValueError:
+            pass
 
     async def keep_alive(self):
-        while True:
+        while self.active:
             await asyncio.sleep(self.server.KEEP_ALIVE_INTERVAL)
             self.send("keep_alive", {})
 
@@ -37,8 +42,7 @@ class WebSocketHandler(tornado.websocket.WebSocketHandler):
             self.write_message(line)
         except tornado.websocket.WebSocketClosedError:
             print(self.request.remote_ip, 'connection lost')
-            if self in self.server.ws_clients:
-                self.server.ws_clients.remove(self)
+            self.on_close()
 
 
 # noinspection PyAbstractClass,PyAttributeOutsideInit
