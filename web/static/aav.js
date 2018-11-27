@@ -17,7 +17,8 @@ function preload() {
     source = audioCtx.createMediaElementSource(myMediaElement);
     source.connect(p5.soundOut);
     document.getElementById("logo").onclick = function(e){
-        myMediaElement.play();
+        myMediaElement.muted = false;
+        myMediaElement.volume = 1;
     };
 }
 
