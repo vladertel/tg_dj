@@ -7,13 +7,11 @@ import os
 import asyncio
 
 import datetime
-from threading import Thread
 import platform
+import traceback
 
 from .config import *
 from .scheduler import Scheduler
-
-from utils import make_endless_unfailable
 
 
 class UserQuotaReached(Exception):
@@ -99,8 +97,7 @@ class DjBrain:
 
         self.frontend.bind_core(self)
         self.downloader.bind_core(self)
-
-        Thread(daemon=True, target=self.backend_listener).start()
+        self.backend.bind_core(self)
 
         self.play_next_track()
 
@@ -167,7 +164,7 @@ class DjBrain:
 
         song, position = self.scheduler.push_track(file_path, title, artist, duration, user_id)
 
-        if not self.backend.is_playing:
+        if self.backend.now_playing is None:
             self.play_next_track()
 
         return song, position
@@ -179,28 +176,13 @@ class DjBrain:
         print("DEBUG [Core]: New search query \"%s\" from user#%d (%s)" % (query, user.id, user.name))
         return await self.downloader.search(query, message_callback)
 
-    @make_endless_unfailable
-    def backend_listener(self):
-        task = self.backend.output_queue.get()
-        action = task['action']
-        if action == "song_finished":
-            self.play_next_track()
-        else:
-            print('ERROR [Core]: Message not supported:', str(task))
-        self.backend.output_queue.task_done()
-
     def play_next_track(self):
         track = self.scheduler.pop_first_track()
         next_track = self.scheduler.get_next_song()
         if track is None:
             return
 
-        next_track_task = {
-            "action": "play_song",
-            "song": track,
-        }
-
-        self.backend.input_queue.put(next_track_task)
+        self.backend.switch_track(track)
 
         json_file_path = os.path.join(os.getcwd(), "web", "dynamic", "current_song_info.json")
         with open(json_file_path, 'w') as json_file:
@@ -222,6 +204,12 @@ class DjBrain:
                 self.frontend.notify_user("🎶 Запускаю ваш трек:\n%s" % track.full_title(), user_curr_id)
 
         return track, next_track
+
+    def track_end_event(self):
+        try:
+            self.play_next_track()
+        except:
+            traceback.print_exc()
 
     def switch_track(self, user_id):
         user = self.get_user(user_id)
