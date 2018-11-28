@@ -6,13 +6,16 @@
     <title>INBICST DJ</title>
     <link href="https://fonts.googleapis.com/css?family=Raleway:200,400,700,900" rel="stylesheet">
     <link href="static/main.css" rel="stylesheet">
-    <script type="text/javascript" src="static/wson.js"></script>
-    <script type="text/javascript" src="static/socket.js"></script>
+    <script>
+        var ws_addr = '{{ ws_url }}';
+    </script>
+    <script src="static/wson.js"></script>
+    <script src="static/socket.js"></script>
 
-    <script type="text/javascript" src="static/libraries/p5.js"></script>
-    <script type="text/javascript" src="static/libraries/p5.dom.js"></script>
-    <script type="text/javascript" src="static/libraries/p5.sound.js"></script>
-    <script type="text/javascript" src="static/aav.js"></script>
+    <script src="static/libraries/p5.js"></script>
+    <script src="static/libraries/p5.dom.js"></script>
+    <script src="static/libraries/p5.sound.js"></script>
+    <script src="static/aav.js"></script>
 </head>
 <body>
     <header>

@@ -4,7 +4,7 @@ import tornado.ioloop
 import tornado.web
 import tornado.websocket
 import asyncio
-from .config import stream_url
+from .config import stream_url, ws_url
 
 
 # noinspection PyAbstractClass,PyAttributeOutsideInit
@@ -53,7 +53,7 @@ class MainHandler(tornado.web.RequestHandler):
 
     def get(self):
         data = self.server.get_current_song()
-        self.render("index.html", song_info=data, stream_url=stream_url)
+        self.render("index.html", song_info=data, stream_url=stream_url, ws_url=ws_url)
 
 
 class StatusWebServer:

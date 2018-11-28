@@ -1,7 +1,7 @@
 (function(){
     "use strict";
 
-    var wson = WSON("ws://212.86.109.84:8081/ws");
+    var wson = WSON(ws_addr);
     let last_keep_alive = Date.now();
 
     function on_update(data) {
