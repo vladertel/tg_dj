@@ -11,6 +11,8 @@ var dot_x_max = 400;
 var line_offset = 120;
 var line_length = 255;
 
+var global_volume = 0.05;
+
 function preload() {
     var audioCtx = getAudioContext();
     myMediaElement = document.getElementById('stream');
@@ -18,8 +20,12 @@ function preload() {
     source.connect(p5.soundOut);
     document.getElementById("logo").onclick = function(e){
         myMediaElement.muted = false;
-        myMediaElement.volume = 1;
+        myMediaElement.volume = global_volume;
     };
+}
+
+function set_volume(value) {
+    myMediaElement.volume = global_volume = value;
 }
 
 function setup() {
@@ -47,7 +53,7 @@ function setup() {
 
 function draw() {
 
-    var volume = amplitude.getLevel();
+    var volume = amplitude.getLevel() / global_volume;
     var spectrum = fft.analyze(128);
 
     background(volume > 0.4 ? 30 : 0);
