@@ -1,5 +1,5 @@
 import telebot
-import threading
+import concurrent.futures
 import re
 import peewee
 import time
@@ -79,6 +79,8 @@ class TgFrontend:
         self.songs_per_page = 10
         self.users_per_page = 10
 
+        self.thread_pool = concurrent.futures.ThreadPoolExecutor()
+
     def bind_core(self, core):
         self.core = core
 
@@ -87,12 +89,13 @@ class TgFrontend:
 
 # INIT #####
     def bot_init(self):
-        print("INFO [Bot %s]: Starting polling..." % threading.get_ident())
+        print("INFO [Bot]: Starting polling...")
         self.core.loop.create_task(self.bot_polling())
 
     async def bot_polling(self):
-        await asyncio.sleep(self.interval)
-        threading.Thread(daemon=True, target=self.get_updates).start()
+        while True:
+            await asyncio.sleep(self.interval)
+            await self.core.loop.run_in_executor(self.thread_pool, self.get_updates)
 
     def get_updates(self):
         try:
@@ -121,8 +124,6 @@ class TgFrontend:
                 asyncio.run_coroutine_threadsafe(self.chosen_inline_result_handler(update.chosen_inline_result), self.core.loop)
             elif update.callback_query:
                 asyncio.run_coroutine_threadsafe(self.callback_query_handler(update.callback_query), self.core.loop)
-
-        asyncio.run_coroutine_threadsafe(self.bot_polling(), self.core.loop)
 
     def cleanup(self):
         pass
