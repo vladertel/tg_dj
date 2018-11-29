@@ -52,8 +52,8 @@ class MainHandler(tornado.web.RequestHandler):
         self.server = kwargs.get("server")
 
     def get(self):
-        data = self.server.get_current_song()
-        self.render("index.html", song_info=data, stream_url=stream_url, ws_url=ws_url)
+        song, progress = self.server.get_current_state()
+        self.render("index.html", song_info=song, song_progress=progress, stream_url=stream_url, ws_url=ws_url)
 
 
 class StatusWebServer:
@@ -80,8 +80,10 @@ class StatusWebServer:
         self.core = core
         self.core.add_state_update_callback(self.update_state)
 
-    def get_current_song(self):
-        return self.core.backend.get_current_song().to_dict()
+    def get_current_state(self):
+        song = self.core.backend.get_current_song().to_dict()
+        progress = self.core.backend.get_song_progress()
+        return song, progress
 
     def update_state(self, track):
         self.broadcast_update(track.to_dict())
