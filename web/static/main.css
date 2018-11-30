@@ -50,12 +50,6 @@ h1{
     font-weight: 700;
 }
 
-#now-playing #info{
-    color: #9299a2;
-    font-size: 2em;
-    margin: 2em 0;
-}
-
 @media only screen and (max-width: 900px){
     #now-playing #title{
         font-size: 2em;

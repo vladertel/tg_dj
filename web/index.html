@@ -23,10 +23,6 @@
     </header>
     <section id="now-playing">
         <div id="title">{{ song_info["title"] }} - {{ song_info["artist"] }}</div>
-        <div id="info">
-            <span id="progress">{{ song_progress }}</span> /
-            <span id="duration">{{ song_info["duration"] }}</span>
-        </div>
     </section>
     <footer>
         <div id="links">
@@ -39,7 +35,11 @@
         <audio hidden muted autoplay id="stream">
             <source src="{{ stream_url }}">
         </audio>
+        <input type="hidden" id="song_offset" value="{{ song_progress }}">
+        <input type="hidden" id="song_start" value="0">
+        <input type="hidden" id="song_duration" value="{{ song_info['duration'] }}">
     </div>
     <img id="logo" src="static/logo_white.png">
+    <script>init();</script>
 </body>
 </html>
