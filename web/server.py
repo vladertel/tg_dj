@@ -3,99 +3,91 @@ import json
 import tornado.ioloop
 import tornado.web
 import tornado.websocket
-from tornado import gen
-from config import stream_url
-
-ws_clients = []
-info_file_path = ""
+import asyncio
+from .config import stream_url, ws_url
 
 
-def read_data(filename):
-    f = open(filename, 'r', encoding="utf8")
-    text = f.read()
-    f.close()
-    return json.loads(text)
+# noinspection PyAbstractClass,PyAttributeOutsideInit
+class WebSocketHandler(tornado.websocket.WebSocketHandler):
 
-
-def broadcast_update(filename):
-    data = read_data(filename)
-    for c in ws_clients:
-        c.send("update", data)
-
-
-@gen.coroutine
-def watch_file(filename):
-    last_change = os.path.getmtime(filename)
-    while True:
-        yield gen.sleep(1)
-        try:
-            m_time = os.path.getmtime(filename)
-        except FileNotFoundError:
-            print("FileNotFoundError")
-            continue
-        if m_time > last_change:
-            last_change = m_time
-            broadcast_update(filename)
-
-
-KEEP_ALIVE_INTERVAL = 60
-
-
-class WSH(tornado.websocket.WebSocketHandler):
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        tornado.ioloop.IOLoop.current().call_later(KEEP_ALIVE_INTERVAL, self.keep_alive)
+    def initialize(self, **kwargs):
+        self.server = kwargs.get("server")
+        loop = asyncio.get_event_loop()
+        loop.create_task(self.keep_alive())
+        self.active = True
 
     def check_origin(self, _origin):
         return True
 
     def open(self):
         print(self.request.remote_ip, 'connected')
-        ws_clients.append(self)
+        self.server.ws_clients.append(self)
 
     def on_close(self):
         print(self.request.remote_ip, 'closed')
-        ws_clients.remove(self)
+        self.active = False
+        try:
+            self.server.ws_clients.remove(self)
+        except ValueError:
+            pass
 
-    @gen.coroutine
-    def keep_alive(self):
-        while True:
+    async def keep_alive(self):
+        while self.active:
+            await asyncio.sleep(self.server.KEEP_ALIVE_INTERVAL)
             self.send("keep_alive", {})
-            yield gen.sleep(KEEP_ALIVE_INTERVAL)
 
     def send(self, msg, data):
         line = json.dumps({msg: data})
-        self.write_message(line)
+        try:
+            self.write_message(line)
+        except tornado.websocket.WebSocketClosedError:
+            print(self.request.remote_ip, 'connection lost')
+            self.on_close()
 
 
+# noinspection PyAbstractClass,PyAttributeOutsideInit
 class MainHandler(tornado.web.RequestHandler):
+
+    def initialize(self, **kwargs):
+        self.server = kwargs.get("server")
+
     def get(self):
-        data = read_data(info_file_path)
-        self.render("index.html", song_info=data, stream_url=stream_url)
+        song, progress = self.server.get_current_state()
+        self.render("index.html", song_info=song, song_progress=progress, stream_url=stream_url, ws_url=ws_url)
 
 
-if __name__ == "__main__":
-    import argparse
-    parser = argparse.ArgumentParser()
-    parser.add_argument("-p", "--port", type=int, default=8081)
-    parser.add_argument("-a", "--address", type=str, default='127.0.0.1')
-    parser.add_argument("file", type=str)
-    args = parser.parse_args()
+class StatusWebServer:
 
-    settings = {
-        "static_path": os.path.join(os.path.dirname(__file__), "static"),
-        "debug": True,
-    }
+    def __init__(self, address, port):
 
-    app = tornado.web.Application([
-        (r"/", MainHandler),
-        (r'/ws', WSH),
-    ], **settings)
+        settings = {
+            "static_path": os.path.join(os.path.dirname(__file__), "static"),
+            "debug": False,
+        }
 
-    app.listen(args.port, address=args.address)
+        app = tornado.web.Application([
+            (r"/", MainHandler, dict(server=self)),
+            (r'/ws', WebSocketHandler, dict(server=self)),
+        ], **settings)
 
-    info_file_path = os.path.realpath(args.file)
+        app.listen(port, address=address)
 
-    tornado.ioloop.IOLoop.instance().add_callback(watch_file, info_file_path)
-    tornado.ioloop.IOLoop.current().start()
+        self.core = None
+        self.ws_clients = []
+        self.KEEP_ALIVE_INTERVAL = 60
+
+    def bind_core(self, core):
+        self.core = core
+        self.core.add_state_update_callback(self.update_state)
+
+    def get_current_state(self):
+        song = self.core.backend.get_current_song().to_dict()
+        progress = self.core.backend.get_song_progress()
+        return song, progress
+
+    def update_state(self, track):
+        self.broadcast_update(track.to_dict())
+
+    def broadcast_update(self, data):
+        for c in self.ws_clients:
+            c.send("update", data)

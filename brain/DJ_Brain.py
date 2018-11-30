@@ -99,6 +99,8 @@ class DjBrain:
         self.downloader.bind_core(self)
         self.backend.bind_core(self)
 
+        self.state_update_callbacks = []
+
         self.play_next_track()
 
     def cleanup(self):
@@ -127,6 +129,9 @@ class DjBrain:
         if u.banned:
             raise UserBanned
         return u
+
+    def add_state_update_callback(self, fn):
+        self.state_update_callbacks.append(fn)
 
     async def download_action(self, user_id, text=None, result=None, file=None, progress_callback=None):
         user = self.get_user(user_id)
@@ -202,6 +207,9 @@ class DjBrain:
                 self.frontend.notify_user("🕓 Следующий трек ваш:\n%s" % next_track.full_title(), user_next_id)
             if user_curr_id is not None:
                 self.frontend.notify_user("🎶 Запускаю ваш трек:\n%s" % track.full_title(), user_curr_id)
+
+        for fn in self.state_update_callbacks:
+            fn(track)
 
         return track, next_track
 

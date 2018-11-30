@@ -1,17 +1,27 @@
 import sys
 import asyncio
 import traceback
+import argparse
 
 from brain.DJ_Brain import DjBrain
 from streamer.VLCStreamer import VLCStreamer
 from downloader.MasterDownloader import MasterDownloader
 from frontend.telegram_bot import TgFrontend
+from web.server import StatusWebServer
 
 sys.stdout = open(sys.stdout.fileno(), mode='w', encoding='utf8', buffering=1)
 sys.stderr = sys.stdout
 
-args = [TgFrontend(), MasterDownloader(), VLCStreamer()]
-brain = DjBrain(*args)
+parser = argparse.ArgumentParser()
+parser.add_argument("-p", "--stat-port", type=int, default=8911)
+parser.add_argument("-a", "--stat-address", type=str, default='127.0.0.1')
+args = parser.parse_args()
+
+modules = [TgFrontend(), MasterDownloader(), VLCStreamer()]
+brain = DjBrain(*modules)
+
+web = StatusWebServer(args.stat_address, args.stat_port)
+web.bind_core(brain)
 
 loop = asyncio.get_event_loop()
 try:
@@ -20,9 +30,9 @@ except (KeyboardInterrupt, SystemExit):
     pass
 print("FATAL: Main event loop has ended")
 print("DEBUG: Cleaning...")
-for arg in args:
+for module in modules:
     try:
-        arg.cleanup()
+        module.cleanup()
     except AttributeError:
         traceback.print_exc()
 try:

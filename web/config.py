@@ -1,1 +1,2 @@
-stream_url = 'http://212.86.109.84:1234/stream.m3u'
+stream_url = '/stream'
+ws_url = 'ws://10.8.0.1:8911/ws'
