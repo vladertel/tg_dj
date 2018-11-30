@@ -206,6 +206,11 @@ class TgFrontend:
             offset = ((position - 1) // self.songs_per_page) * self.songs_per_page
             self.send_menu_queue(user, offset)
 
+        elif path[0] == "admin" and path[1] == "raise":
+            song_id = int(path[2])
+            self.core.raise_track(user.core_id, song_id)
+            self.send_menu_main(user)
+
         elif path[0] == "admin" and path[1] == "list_users":
             offset = int(path[2]) if len(path) >= 2 else 0
             self.send_menu_admin_list_users(user, offset)
@@ -549,6 +554,9 @@ class TgFrontend:
                     telebot.types.InlineKeyboardButton(text="🚫 Удалить 🚫", callback_data="admin:delete:%s" % song_id)
                 )
             if superuser:
+                kb.row(
+                    telebot.types.InlineKeyboardButton(text="⬆️ Играть следующим ⬆️", callback_data="admin:raise:%s" % song_id)
+                )
                 author = self.core.get_user_info(user, song.user_id)["info"]
                 kb.row(
                     telebot.types.InlineKeyboardButton(text="👤 %s" % author.name, callback_data="admin:user_info:%s" % author.id)

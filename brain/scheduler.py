@@ -204,6 +204,16 @@ class Scheduler:
         self.lock.release()
         return position
 
+    def raise_track(self, sid):
+        self.lock.acquire()
+        try:
+            song = next(s for s in self.playlist if s.id == sid)
+            self.playlist.remove(song)
+            self.playlist.insert(0, song)
+        except (ValueError, StopIteration):
+            print("WARNING [Scheduler - remove]: Unable to raise song #%d")
+        self.lock.release()
+
     def queue_length(self):
         return len(self.playlist)
 

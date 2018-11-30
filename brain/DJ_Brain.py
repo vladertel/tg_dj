@@ -239,6 +239,16 @@ class DjBrain:
 
         return position
 
+    def raise_track(self, user_id, song_id):
+        user = self.get_user(user_id)
+
+        if not user.superuser:
+            song, _ = self.scheduler.get_song(song_id)
+            if user.id != song.user_id:
+                raise PermissionDenied()
+
+        self.scheduler.raise_track(song_id)
+
     def stop_playback(self, user_id):
         user = self.get_user(user_id)
 
