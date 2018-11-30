@@ -11,21 +11,23 @@ window.init = function(){
     song_start_el.value = new Date(Date.now() - parseInt(song_offset_el.value) * 1000).getTime();
 
     function on_update(data) {
-        if (data.artist.length > 0)
-            document.getElementById("title").innerText = data.artist + " - " + data.title;
-        else
-            document.getElementById("title").innerText = data.title;
+        setTimeout(function(){
+            if (data.artist.length > 0)
+                document.getElementById("title").innerText = data.artist + " - " + data.title;
+            else
+                document.getElementById("title").innerText = data.title;
 
-        song_duration_el.value = data.duration;
-        song_offset_el.value = 3
-        song_start_el.value = Date.now();
+            song_duration_el.value = data.duration;
+            song_offset_el.value = 0;
+            song_start_el.value = Date.now();
+        }, 3000)
     }
 
     function on_keep_alive() {
         last_keep_alive = Date.now();
     }
 
-    setTimeout(function(){
+    setInterval(function(){
         var time_delta = Date.now() - last_keep_alive;
         if (time_delta.minute > 3){
             location.reload();

@@ -96,7 +96,7 @@
         pop();
 
         song_progress = (Date.now() - parseInt(song_start_el.value)) / parseInt(song_duration_el.value) / 1000;
-        console.log(song_progress * 100);
+        if (song_progress > 1) song_progress = 1;
         strokeWeight(10);
         noFill();
         stroke(127,125,161,210)
