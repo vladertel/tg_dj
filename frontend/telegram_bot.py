@@ -543,10 +543,12 @@ class TgFrontend:
             message_text = "🎵 %s\n\nДлительность: %s\nМесто в очереди: %d" % \
                            (song.full_title(), duration, position)
 
+            hated = data["hated"]
+            h_label = ("✅" if hated else "👎") + " Плохая музыка"
+            if superuser:
+                h_label += " (%d)" % len(song.haters)
             kb.row(
-                telebot.types.InlineKeyboardButton(text="👍", callback_data="vote:up:%s" % song_id),
-                telebot.types.InlineKeyboardButton(text="%+d" % song.rating, callback_data="//"),
-                telebot.types.InlineKeyboardButton(text="👎", callback_data="vote:down:%s" % song_id),
+                telebot.types.InlineKeyboardButton(text=h_label, callback_data="vote:down:%s" % song_id),
             )
 
             if superuser or user.id == song.user_id:

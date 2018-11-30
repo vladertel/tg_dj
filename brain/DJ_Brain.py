@@ -319,6 +319,7 @@ class DjBrain:
 
         return {
             "song": song,
+            "hated": user_id in song.haters,
             "position": position,
             "superuser": user.superuser
         }

@@ -29,8 +29,7 @@ class Song:
         self.user_id = user_id
         self.media = media_path
 
-        self.votes = {}
-        self.rating = 0
+        self.haters = []
 
     def __repr__(self):
         return "Song(title: %s, artist: %s, id: %d)".format(self.title, self.artist, self.id)
@@ -46,7 +45,7 @@ class Song:
             "duration": self.duration,
             "user_id": self.user_id,
             "media": self.media,
-            "votes": self.votes,
+            "haters": self.haters,
         }
 
     def full_title(self):
@@ -59,19 +58,20 @@ class Song:
         else:
             return os.path.splitext(os.path.basename(self.media))[0]
 
-    def vote(self, user_id, value):
-        self.votes[user_id] = value
-        self.recalculate_rating()
+    def add_hater(self, user_id):
+        if user_id not in self.haters:
+            self.haters.append(user_id)
 
-    def recalculate_rating(self):
-        self.rating = sum(self.votes[uid] for uid in self.votes)
+    def remove_hater(self, user_id):
+        if user_id not in self.haters:
+            self.haters.remove(user_id)
 
     @classmethod
     def from_dict(cls, song_dict):
         obj = cls(song_dict["media"], song_dict["title"], song_dict["artist"],
                   song_dict["duration"], song_dict["user_id"], forced_id=song_dict["id"])
-        obj.votes = song_dict["votes"]
-        obj.recalculate_rating()
+        if "haters" in song_dict:
+            obj.haters = song_dict["haters"]
         return obj
 
 
@@ -98,7 +98,6 @@ class Scheduler:
                     for d in dicts["songs"]:
                         queue.append(Song.from_dict(d))
                     self.playlist = queue
-                    self.sort_queue()
                 try:
                     self.backlog_played_media = dicts["backlog_played_media"]
                 except KeyError:
@@ -217,26 +216,22 @@ class Scheduler:
     def queue_length(self):
         return len(self.playlist)
 
-    def sort_queue(self, lock=True):
-        if lock:
-            self.lock.acquire()
-        self.playlist = sorted(self.playlist, key=lambda x: x.id - sum([x.votes[k] for k in x.votes]))
-        if lock:
-            self.lock.release()
-
-    def _vote(self, user_id, song_id, value):
+    def vote_up(self, user_id, song_id):
         self.lock.acquire()
         try:
             song = next(s for s in self.playlist if s.id == song_id)
-            song.votes[user_id] = value
-            song.recalculate_rating()
-            self.sort_queue(lock=False)
+            if user_id in song.haters:
+                song.haters.remove(user_id)
         except (ValueError, StopIteration):
-            print("WARNING [Scheduler - vote]: Unable to find song #%d in the playlist")
+            print("WARNING [Scheduler - vote_up]: Unable to find song #%d in the playlist")
         self.lock.release()
 
-    def vote_up(self, user_id, sid):
-        self._vote(user_id, sid, +1)
-
-    def vote_down(self, user_id, sid):
-        self._vote(user_id, sid, -1)
+    def vote_down(self, user_id, song_id):
+        self.lock.acquire()
+        try:
+            song = next(s for s in self.playlist if s.id == song_id)
+            if user_id not in song.haters:
+                song.haters.append(user_id)
+        except (ValueError, StopIteration):
+            print("WARNING [Scheduler - vote_down]: Unable to find song #%d in the playlist")
+        self.lock.release()
