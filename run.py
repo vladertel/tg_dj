@@ -40,5 +40,8 @@ try:
 except AttributeError:
     traceback.print_exc()
 
+print("FATAL: Closing loop...")
+loop.run_until_complete(asyncio.sleep(1))
+loop.stop()
 loop.close()
 print("DEBUG: Exit")

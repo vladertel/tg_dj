@@ -80,6 +80,7 @@ class TgFrontend:
         self.users_per_page = 10
 
         self.thread_pool = concurrent.futures.ThreadPoolExecutor()
+        self.stop_polling = False
 
     def bind_core(self, core):
         self.core = core
@@ -93,9 +94,10 @@ class TgFrontend:
         self.core.loop.create_task(self.bot_polling())
 
     async def bot_polling(self):
-        while True:
+        while not self.stop_polling:
             await asyncio.sleep(self.interval)
             await self.core.loop.run_in_executor(self.thread_pool, self.get_updates)
+        print("INFO [Bot]: Polling have been stopped")
 
     def get_updates(self):
         try:
@@ -126,7 +128,10 @@ class TgFrontend:
                 asyncio.run_coroutine_threadsafe(self.callback_query_handler(update.callback_query), self.core.loop)
 
     def cleanup(self):
-        pass
+        print("INFO [Bot - cleanup]: Destroying telegram polling loop...")
+        self.stop_polling = True
+        self.thread_pool.shutdown()
+        print("INFO [Bot - cleanup]: Polling have been stopped")
 
     async def message_handler(self, message):
         try:
