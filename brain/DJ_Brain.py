@@ -10,8 +10,8 @@ import datetime
 import platform
 import traceback
 
-from .config import *
 from .scheduler import Scheduler
+from .models import User, Request
 
 
 class UserQuotaReached(Exception):
@@ -32,53 +32,6 @@ class PermissionDenied(Exception):
 
 class DownloadFailed(Exception):
     pass
-
-
-db = peewee.SqliteDatabase("db/dj_brain.db")
-
-
-class BaseModel(peewee.Model):
-    class Meta:
-        database = db
-
-
-class User(BaseModel):
-    id = peewee.PrimaryKeyField()
-    name = peewee.TextField(null=True)
-    banned = peewee.BooleanField(default=False)
-    superuser = peewee.BooleanField(default=False)
-
-    def check_requests_quota(self):
-        check_interval_start = datetime.datetime.now() - datetime.timedelta(seconds=USER_REQUESTS_THRESHOLD_INTERVAL)
-        count = Request.select().where(Request.user == self, Request.time >= check_interval_start).count()
-        if count >= USER_REQUESTS_THRESHOLD_VALUE:
-            return False
-        else:
-            return True
-
-
-class Request(BaseModel):
-    user = peewee.ForeignKeyField(User)
-    text = peewee.CharField()
-    time = peewee.DateTimeField(default=datetime.datetime.now)
-
-
-db.connect()
-
-
-def users_from_json(self, objecta):
-    for req in objecta['past_requests']:
-        self.past_requests.append(
-            Request(req['user'],
-                    req['text'],
-                    datetime.datetime.utcfromtimestamp(req['time']) + datetime.timedelta(hours=3))
-        )
-    for req in objecta['recent_requests']:
-        self.recent_requests.append(
-            Request(req['user'],
-                    req['text'],
-                    datetime.datetime.utcfromtimestamp(req['time']) + datetime.timedelta(hours=3))
-        )
 
 
 class DjBrain:
@@ -103,8 +56,11 @@ class DjBrain:
 
         self.play_next_track()
 
+        self.queue_rating_check_task = self.loop.create_task(self.watch_queue_rating())
+
     def cleanup(self):
         print("DEBUG [Bot]: Cleaning up...")
+        self.queue_rating_check_task.cancel()
         self.scheduler.play_next(self.backend.get_current_song())
         self.scheduler.cleanup()
 
@@ -129,6 +85,11 @@ class DjBrain:
         if u.banned:
             raise UserBanned
         return u
+
+    @staticmethod
+    def store_user_activity(user):
+        user.last_activity = datetime.datetime.now()
+        user.save()
 
     def add_state_update_callback(self, fn):
         self.state_update_callbacks.append(fn)
@@ -168,6 +129,7 @@ class DjBrain:
             raise UserRequestQuotaReached
 
         song, position = self.scheduler.push_track(file_path, title, artist, duration, user_id)
+        self.store_user_activity(user)
 
         if self.backend.now_playing is None:
             self.play_next_track()
@@ -182,10 +144,23 @@ class DjBrain:
         return await self.downloader.search(query, message_callback)
 
     def play_next_track(self):
-        track = self.scheduler.pop_first_track()
+        while True:
+            track = self.scheduler.pop_first_track()
+            if track is None:
+                return
+            if track.check_rating():
+                break
+
+            print("INFO [Core]: Song #%d (%s) have been skipped" % (track.id, track.full_title()))
+            self.frontend.notify_user(
+                "⚠️ Ваш трек удалён из очереди, так как он не нравится другим пользователям:\n%s"
+                % track.full_title(),
+                track.user_id
+            )
+
+        print("DEBUG [Core]: New track rating: %d" % len(track.haters))
+
         next_track = self.scheduler.get_next_song()
-        if track is None:
-            return
 
         self.backend.switch_track(track)
 
@@ -319,18 +294,36 @@ class DjBrain:
 
         return {
             "song": song,
-            "hated": user_id in song.haters,
+            "hated": user_id in song.haters if song else False,
             "position": position,
             "superuser": user.superuser
         }
 
     def vote_song(self, user_id, sign, song_id):
+        user = self.get_user(user_id)
         if sign == "up":
             self.scheduler.vote_up(user_id, song_id)
         elif sign == "down":
             self.scheduler.vote_down(user_id, song_id)
         else:
             raise ValueError("Sign value should be either 'up' or 'down'")
+
+        self.store_user_activity(user)
+
+    async def watch_queue_rating(self):
+        while True:
+            await asyncio.sleep(30)
+            for song in self.scheduler.get_queue()[:]:
+                if song.check_rating():
+                    continue
+
+                self.scheduler.remove_from_queue(song.id)
+                print("INFO [Core]: Song #%d (%s) have been removed from queue" % (song.id, song.full_title()))
+                self.frontend.notify_user(
+                    "⚠️ Ваш трек удалён из очереди, так как он не нравится другим пользователям:\n%s"
+                    % song.full_title(),
+                    song.user_id
+                )
 
     def get_users(self, user_id, offset=0, limit=0):
         user = self.get_user(user_id)
