@@ -1,3 +1,5 @@
+requests
+lxml
 tornado
 jinja2
 peewee
