@@ -9,8 +9,6 @@ import traceback
 from .jinja_env import env
 import asyncio
 
-from .private_config import token
-
 from brain.DJ_Brain import UserBanned, UserRequestQuotaReached, DownloadFailed, PermissionDenied
 from downloader.exceptions import NotAccepted
 
@@ -65,7 +63,9 @@ db.connect()
 
 class TgFrontend:
 
-    def __init__(self):
+    def __init__(self, config):
+        self.config = config
+
         self.last_update_id = 0
         self.error_interval = .25
         self.interval = 0
@@ -85,7 +85,7 @@ class TgFrontend:
     def bind_core(self, core):
         self.core = core
 
-        self.bot = telebot.TeleBot(token)
+        self.bot = telebot.TeleBot(self.config.get("telegram", "token"))
         self.bot_init()
 
 # INIT #####

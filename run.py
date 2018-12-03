@@ -2,6 +2,7 @@ import sys
 import asyncio
 import traceback
 import argparse
+import configparser
 
 from brain.DJ_Brain import DjBrain
 from streamer.VLCStreamer import VLCStreamer
@@ -13,14 +14,16 @@ sys.stdout = open(sys.stdout.fileno(), mode='w', encoding='utf8', buffering=1)
 sys.stderr = sys.stdout
 
 parser = argparse.ArgumentParser()
-parser.add_argument("-p", "--stat-port", type=int, default=8911)
-parser.add_argument("-a", "--stat-address", type=str, default='127.0.0.1')
+parser.add_argument("-f", "--config-file", type=str, default="config.ini")
 args = parser.parse_args()
 
-modules = [TgFrontend(), MasterDownloader(), VLCStreamer()]
-brain = DjBrain(*modules)
+config = configparser.ConfigParser()
+config.read(args.config_file)
 
-web = StatusWebServer(args.stat_address, args.stat_port)
+modules = [TgFrontend(config), MasterDownloader(config), VLCStreamer(config)]
+brain = DjBrain(config, *modules)
+
+web = StatusWebServer(config)
 web.bind_core(brain)
 
 loop = asyncio.get_event_loop()

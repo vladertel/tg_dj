@@ -1,15 +1,7 @@
 import os
 
-from frontend.private_config import token as bot_token
-try:
-    from frontend.private_config import tg_api_url
-except ImportError:
-    tg_api_url = "https://api.telegram.org/"
-
-from .config import mediaDir, _DEBUG_, MAXIMUM_DURATION, MAXIMUM_FILE_SIZE
 from .AbstractDownloader import AbstractDownloader
 from .exceptions import *
-from .storage_checker import filter_storage
 
 
 class FileDownloader(AbstractDownloader):
@@ -24,22 +16,20 @@ class FileDownloader(AbstractDownloader):
         file_size = query["size"]
         file_info = query["info"]
 
-        if _DEBUG_:
-            print("DEBUG [FileDownloader]: Downloading song #" + str(file_id))
+        print("DEBUG [FileDownloader]: Downloading song #" + str(file_id))
 
         artist = query["artist"].strip()
         title = query["title"].strip()
 
-        if _DEBUG_:
-            print("DEBUG [FileDownloader]: Title for song #" + str(file_id) + ": " + title)
+        print("DEBUG [FileDownloader]: Title for song #" + str(file_id) + ": " + title)
 
-        if duration > MAXIMUM_DURATION:
+        if duration > self.config.getint("downloader", "max_duration", fallback=self._default_max_duration):
             raise MediaIsTooLong(duration)
 
-        if file_size > MAXIMUM_FILE_SIZE:
+        if file_size > 1000000 * self.config.getint("downloader", "max_file_size", fallback=self._default_max_size):
             raise MediaIsTooBig(file_size)
 
-        file_dir = os.path.join(os.getcwd(), mediaDir)
+        file_dir = self.config.get("downloader", "media_dir", fallback="media")
         file_name = file_id + ".mp3"
         file_path = os.path.join(file_dir, file_name)
 
@@ -47,8 +37,9 @@ class FileDownloader(AbstractDownloader):
             return file_path, title, artist, duration
 
         user_message("Скачиваем...\n%s" % title)
-        if _DEBUG_:
-            print("DEBUG [FileDownloader]: Querying Telegram API")
+        print("DEBUG [FileDownloader]: Querying Telegram API")
+        tg_api_url = self.config.get("telegram", "api_url", fallback="https://api.telegram.org/")
+        bot_token = self.config.get("telegram", "token")
 
         self.get_file(
             url=tg_api_url + 'file/bot{0}/{1}'.format(bot_token, file_info.file_path),
@@ -57,13 +48,10 @@ class FileDownloader(AbstractDownloader):
             percent_callback=lambda p: user_message("Скачиваем [%d%%]...\n%s" % (int(p), title)),
         )
 
-        if _DEBUG_:
-            print("DEBUG [FileDownloader]: Download complete #" + str(file_id))
+        print("DEBUG [FileDownloader]: Download complete #" + str(file_id))
 
         self.touch_without_creation(file_path)
-        filter_storage()
 
-        if _DEBUG_:
-            print("DEBUG [FileDownloader]: File stored in path: " + file_path)
+        print("DEBUG [FileDownloader]: File stored in path: " + file_path)
 
         return file_path, title, artist, duration

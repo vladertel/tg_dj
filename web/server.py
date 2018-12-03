@@ -4,7 +4,6 @@ import tornado.ioloop
 import tornado.web
 import tornado.websocket
 import asyncio
-from .config import stream_url, ws_url
 
 
 # noinspection PyAbstractClass,PyAttributeOutsideInit
@@ -53,12 +52,14 @@ class MainHandler(tornado.web.RequestHandler):
 
     def get(self):
         song, progress = self.server.get_current_state()
-        self.render("index.html", song_info=song, song_progress=progress, stream_url=stream_url, ws_url=ws_url)
+        self.render("index.html", song_info=song, song_progress=progress,
+                    stream_url=self.server.stream_url, ws_url=self.server.ws_url)
 
 
 class StatusWebServer:
 
-    def __init__(self, address, port):
+    def __init__(self, config):
+        self.config = config
 
         settings = {
             "static_path": os.path.join(os.path.dirname(__file__), "static"),
@@ -70,11 +71,17 @@ class StatusWebServer:
             (r'/ws', WebSocketHandler, dict(server=self)),
         ], **settings)
 
-        app.listen(port, address=address)
+        app.listen(
+            port=self.config.getint("web_server", "listen_port", fallback=8080),
+            address=self.config.get("web_server", "listen_addr", fallback="127.0.0.1"),
+        )
 
         self.core = None
         self.ws_clients = []
         self.KEEP_ALIVE_INTERVAL = 60
+
+        self.stream_url = self.config.get("web_server", "stream_url")
+        self.ws_url = self.config.get("web_server", "ws_url", fallback="ws://localhost:8080/ws")
 
     def bind_core(self, core):
         self.core = core

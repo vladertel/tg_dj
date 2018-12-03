@@ -4,8 +4,6 @@ import os
 import random
 
 from utils import get_mp3_info
-
-from .config import queueDir
 from .models import Song
 
 
@@ -15,7 +13,12 @@ def get_files_in_dir(directory):
 
 
 class Scheduler:
-    def __init__(self):
+    def __init__(self, config):
+        """
+        :param configparser.ConfigParser config:
+        """
+        self.config = config
+
         self.is_media_playing = False
         self.playlist = []
         self.backlog = []
@@ -29,7 +32,8 @@ class Scheduler:
 
     def load_init(self):
         try:
-            with open(os.path.join(queueDir, "queue")) as f:
+            queue_file = self.config.get("scheduler", "queue_file", fallback="brain/queue.json")
+            with open(queue_file) as f:
                 dicts = json.loads(f.read())
                 Song.counter = dicts["last_id"]
                 queue = []
@@ -67,10 +71,10 @@ class Scheduler:
             "songs": [a.to_dict() for a in self.playlist],
             "backlog_played_media": [a.media for a in self.backlog_played]
         }
-        file_name = os.path.join(queueDir, "queue")
-        with open(file_name, "w") as f:
+        queue_file = self.config.get("scheduler", "queue_file", fallback="brain/queue.json")
+        with open(queue_file, "w") as f:
             f.write(json.dumps(out_dict, ensure_ascii=False))
-            print("INFO [Scheduler - cleanup]: Queue has been saved to file \"%s\"" % file_name)
+            print("INFO [Scheduler - cleanup]: Queue has been saved to file \"%s\"" % queue_file)
 
     def push_track(self, path, title, artist, duration, user_id):
         self.lock.acquire()

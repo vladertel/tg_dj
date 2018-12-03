@@ -1,7 +1,6 @@
 import peewee
 import datetime
 import os
-from .config import *
 
 db = peewee.SqliteDatabase("db/dj_brain.db")
 
@@ -17,14 +16,6 @@ class User(BaseModel):
     banned = peewee.BooleanField(default=False)
     last_activity = peewee.DateTimeField(null=True)
     superuser = peewee.BooleanField(default=False)
-
-    def check_requests_quota(self):
-        check_interval_start = datetime.datetime.now() - datetime.timedelta(seconds=USER_REQUESTS_THRESHOLD_INTERVAL)
-        count = Request.select().where(Request.user == self, Request.time >= check_interval_start).count()
-        if count >= USER_REQUESTS_THRESHOLD_VALUE:
-            return False
-        else:
-            return True
 
 
 class Request(BaseModel):
@@ -88,17 +79,6 @@ class Song:
     def remove_hater(self, user_id):
         if user_id not in self.haters:
             self.haters.remove(user_id)
-
-    def check_rating(self):
-        active_users = User.filter(User.last_activity > datetime.datetime.now() - datetime.timedelta(minutes=60))
-        active_users_cnt = active_users.count()
-        active_haters_cnt = active_users.filter(User.id << self.haters).count()
-
-        if active_haters_cnt >= HATERS_MIN_CNT and active_haters_cnt / active_users_cnt >= HATERS_THRESHOLD_RATE:
-            print("INFO [Core]: Song #%d has bad rating: %s (haters: %d, active: %d)"
-                  % (self.id, self.full_title(), active_haters_cnt, active_users_cnt))
-            return False
-        return True
 
     @classmethod
     def from_dict(cls, song_dict):

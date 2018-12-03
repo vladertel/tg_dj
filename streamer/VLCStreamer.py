@@ -1,14 +1,11 @@
 import time
 import vlc
 
-from .private_config import vlc_options
 
-# vlc_options = 'sout=#transcode{acodec=mp3,ab=320,channels=2,samplerate=44100}' \
-#               ':duplicate{dst=gather:http{mux=ts,dst=:1233/},dst=display}'
+class VLCStreamer:
+    def __init__(self, config):
+        self.config = config
 
-
-class VLCStreamer():
-    def __init__(self):
         self.is_playing = False
         self.now_playing = None
         self.song_start_time = 0
@@ -46,6 +43,7 @@ class VLCStreamer():
 
     def switch_track(self, track):
         uri = track.media
+        vlc_options = self.config.get("streamer_vlc", "vlc_options")
         media = self.vlc_instance.media_new(uri, vlc_options, "sout-keep")
         self.player.set_media(media)
         self.player.play()
