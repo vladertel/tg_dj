@@ -5,16 +5,14 @@ import re
 from urllib import parse
 
 from .AbstractDownloader import AbstractDownloader
-from .config import mediaDir, _DEBUG_, MAXIMUM_DURATION, MAXIMUM_FILE_SIZE
 from .exceptions import *
-from .storage_checker import filter_storage
 from utils import get_mp3_info, sanitize_file_name
 
 
 class LinkDownloader(AbstractDownloader):
 
-    def __init__(self):
-        super().__init__()
+    def __init__(self, config):
+        super().__init__(config)
         self.mp3_dns_regex = re.compile(
             r"(?:https?://)?(?:www\.)?(?:[a-zA-Z0-9_-]{3,30}\.)+[a-zA-Z]{2,4}\/.*[a-zA-Z0-9_\?\&\=\-]*",
             flags=re.IGNORECASE)
@@ -44,10 +42,11 @@ class LinkDownloader(AbstractDownloader):
         if url is None:
             raise UnappropriateArgument()
 
-        if _DEBUG_:
-            print("DEBUG [LinkDownloader]: Sending HEAD to url: " + url)
+        print("DEBUG [LinkDownloader]: Sending HEAD to url: " + url)
 
-        file_dir = os.path.join(os.getcwd(), mediaDir)
+        media_dir = self.config.get("downloader", "media_dir", fallback="media")
+
+        file_dir = os.path.join(os.getcwd(), media_dir)
         file_name = sanitize_file_name(parse.unquote(url).split("/")[-1] + ".mp3")
         file_path = os.path.join(file_dir, file_name)
 
@@ -56,8 +55,7 @@ class LinkDownloader(AbstractDownloader):
             return file_path, title, artist, duration
 
         user_message("Скачиваем...")
-        if _DEBUG_:
-            print("DEBUG [LinkDownloader]: Querying URL")
+        print("DEBUG [LinkDownloader]: Querying URL")
 
         try:
             response_head = requests.head(url, allow_redirects=True)
@@ -66,12 +64,12 @@ class LinkDownloader(AbstractDownloader):
         if response_head.status_code != 200:
             raise BadReturnStatus(response_head.status_code)
         try:
-            file_size = response_head.headers['content-length']
-        except KeyError as e:
+            file_size = int(response_head.headers['content-length'])
+        except KeyError:
             print("ERROR [LinkDownloader]: No content-length header. See headers below:")
             print(str(response_head.headers))
             raise MediaSizeUnspecified()
-        if int(file_size) > MAXIMUM_FILE_SIZE:
+        if file_size > 1000000 * self.config.getint("downloader", "max_file_size", fallback=self._default_max_size):
             raise MediaIsTooBig()
 
         self.get_file(
@@ -82,11 +80,10 @@ class LinkDownloader(AbstractDownloader):
         )
 
         title, artist, duration = get_mp3_info(file_path)
-        if duration > MAXIMUM_DURATION:
+        if duration > self.config.getint("downloader", "max_duration", fallback=self._default_max_duration):
             os.unlink(file_path)
             raise MediaIsTooLong()
 
         self.touch_without_creation(file_path)
-        filter_storage()
 
         return file_path, title, artist, duration

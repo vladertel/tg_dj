@@ -7,15 +7,16 @@ from queue import Queue
 from threading import Thread
 from telnetlib import Telnet
 
-from .config import *
 
 class TelnetWrapper(Telnet):
     def readwrite(self, data):
         self.write(data.encode())
         return self.read_eager()
 
-class LiquidStreamer():
-    def __init__(self):
+
+class LiquidStreamer:
+    def __init__(self, config):
+        self.config = config
         self.input_queue = Queue()
         self.output_queue = Queue()
         self.queue_thread = Thread(daemon=True, target=self.queue_listener)
@@ -24,9 +25,12 @@ class LiquidStreamer():
         self.init_telnet()
         
     def init_liquid(self):
-        self.liquidsoap = subprocess.Popen(
-            [liquidsoap_exe_path, liquidsoap_config_path],
-            stdout=subprocess.PIPE)
+        self.liquidsoap = subprocess.Popen([
+            self.config.get("streamer_liquidsoap", "exe_path"),
+            self.config.get("streamer_liquidsoap", "config_path"),
+            ],
+            stdout=subprocess.PIPE
+        )
         atexit.register(self.kill_liquid)
         self.liquid_thread = Thread(daemon=True, target=self.liquidsoap_reader)
         self.liquid_thread.start()

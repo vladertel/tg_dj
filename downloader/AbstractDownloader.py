@@ -11,8 +11,14 @@ class ShouldNotBeCalled(Exception):
 class AbstractDownloader():
     """docstring for AbstractDownloader"""
 
-    def __init__(self):
-        pass
+    _default_max_duration = 400  # seconds
+    _default_max_size = 20  # megabytes
+
+    def __init__(self, config):
+        """
+        :param configparser.ConfigParser config:
+        """
+        self.config = config
 
     def is_acceptable(self, kind, query):
         raise ShouldNotBeCalled(
