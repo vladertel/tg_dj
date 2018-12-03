@@ -3,6 +3,7 @@ import asyncio
 import traceback
 import argparse
 import configparser
+import signal
 
 from brain.DJ_Brain import DjBrain
 from streamer.VLCStreamer import VLCStreamer
@@ -19,6 +20,15 @@ args = parser.parse_args()
 
 config = configparser.ConfigParser()
 config.read(args.config_file)
+
+
+def hup_handler(_signum, _frame):
+    print("INFO: Caught sighup signal. Reloading configuration...")
+    config.read(args.config_file)
+    print("INFO: Config reloaded")
+
+
+signal.signal(signal.SIGHUP, hup_handler)
 
 modules = [TgFrontend(config), MasterDownloader(config), VLCStreamer(config)]
 brain = DjBrain(config, *modules)
