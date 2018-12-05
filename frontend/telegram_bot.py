@@ -8,6 +8,7 @@ import traceback
 
 from .jinja_env import env
 import asyncio
+from prometheus_client import Counter
 
 from brain.DJ_Brain import UserBanned, UserRequestQuotaReached, DownloadFailed, PermissionDenied
 from downloader.exceptions import NotAccepted
@@ -82,6 +83,12 @@ class TgFrontend:
         self.thread_pool = concurrent.futures.ThreadPoolExecutor()
         self.telegram_polling_task = None
 
+        # noinspection PyArgumentList
+        self.mon_tg_updates = Counter('dj_tg_updates', 'Telegram updates counter')
+
+        # noinspection PyArgumentList
+        self.mon_tg_api_errors = Counter('dj_tg_api_errors', 'Telegram API errors')
+
     def bind_core(self, core):
         self.core = core
 
@@ -103,9 +110,11 @@ class TgFrontend:
             updates = self.bot.get_updates(self.last_update_id + 1, None, self.timeout, )
             self.error_interval = .25
             if len(updates):
-                print("DEBUG [Bot]: Updates received: %s" % str(updates))
+                self.mon_tg_updates.inc(len(updates))
+                print("DEBUG [Bot]: Updates received: %s" % len(updates))
             self.updates_handler(updates)
         except telebot.apihelper.ApiException as e:
+            self.mon_tg_api_errors.inc(1)
             print("ERROR [Bot]: API Exception")
             print(e)
             print("DEBUG [Bot]: Waiting for %d seconds until retry" % self.error_interval)
