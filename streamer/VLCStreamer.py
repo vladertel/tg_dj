@@ -12,6 +12,7 @@ class VLCStreamer:
         self.song_start_time = 0
         self.core = None
 
+        # noinspection PyArgumentList
         self.mon_is_playing = Gauge('dj_is_playing', 'Is something paying now')
         self.mon_is_playing.set_function(lambda: 1 if self.is_playing else 0)
 

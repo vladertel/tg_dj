@@ -107,7 +107,7 @@ class TgFrontend:
 
     def get_updates(self):
         try:
-            updates = self.bot.get_updates(self.last_update_id + 1, None, self.timeout, )
+            updates = self.bot.get_updates(self.last_update_id + 1, None, self.timeout)
             self.error_interval = .25
             if len(updates):
                 self.mon_tg_updates.inc(len(updates))

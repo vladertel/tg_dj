@@ -27,8 +27,10 @@ class Scheduler:
         self.backlog_played_media = []
         self.backlog_initial_size = 0
 
+        # noinspection PyArgumentList
         self.mon_playlist_len = Gauge('dj_playlist_length', 'Playlist length')
         self.mon_playlist_len.set_function(lambda: len(self.playlist))
+        # noinspection PyArgumentList
         self.mon_backlog_len = Gauge('dj_backlog_length', 'Backlog length')
         self.mon_backlog_len.set_function(lambda: len(self.backlog))
 
