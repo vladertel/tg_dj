@@ -1,5 +1,5 @@
 import telebot
-import threading
+import concurrent.futures
 import re
 import peewee
 import time
@@ -8,8 +8,6 @@ import traceback
 
 from .jinja_env import env
 import asyncio
-
-from .private_config import token
 
 from brain.DJ_Brain import UserBanned, UserRequestQuotaReached, DownloadFailed, PermissionDenied
 from downloader.exceptions import NotAccepted
@@ -65,7 +63,9 @@ db.connect()
 
 class TgFrontend:
 
-    def __init__(self):
+    def __init__(self, config):
+        self.config = config
+
         self.last_update_id = 0
         self.error_interval = .25
         self.interval = 0
@@ -79,20 +79,24 @@ class TgFrontend:
         self.songs_per_page = 10
         self.users_per_page = 10
 
+        self.thread_pool = concurrent.futures.ThreadPoolExecutor()
+        self.telegram_polling_task = None
+
     def bind_core(self, core):
         self.core = core
 
-        self.bot = telebot.TeleBot(token)
+        self.bot = telebot.TeleBot(self.config.get("telegram", "token"))
         self.bot_init()
 
 # INIT #####
     def bot_init(self):
-        print("INFO [Bot %s]: Starting polling..." % threading.get_ident())
-        self.core.loop.create_task(self.bot_polling())
+        print("INFO [Bot]: Starting polling...")
+        self.telegram_polling_task = self.core.loop.create_task(self.bot_polling())
 
     async def bot_polling(self):
-        await asyncio.sleep(self.interval)
-        threading.Thread(daemon=True, target=self.get_updates).start()
+        while True:
+            await asyncio.sleep(self.interval)
+            await self.core.loop.run_in_executor(self.thread_pool, self.get_updates)
 
     def get_updates(self):
         try:
@@ -122,10 +126,12 @@ class TgFrontend:
             elif update.callback_query:
                 asyncio.run_coroutine_threadsafe(self.callback_query_handler(update.callback_query), self.core.loop)
 
-        asyncio.run_coroutine_threadsafe(self.bot_polling(), self.core.loop)
-
     def cleanup(self):
-        pass
+        print("INFO [Bot - cleanup]: Destroying telegram polling loop...")
+        if self.telegram_polling_task is not None:
+            self.telegram_polling_task.cancel()
+        self.thread_pool.shutdown()
+        print("INFO [Bot - cleanup]: Polling have been stopped")
 
     async def message_handler(self, message):
         try:
@@ -204,6 +210,11 @@ class TgFrontend:
             position = self.core.delete_track(user.core_id, song_id)
             offset = ((position - 1) // self.songs_per_page) * self.songs_per_page
             self.send_menu_queue(user, offset)
+
+        elif path[0] == "admin" and path[1] == "raise":
+            song_id = int(path[2])
+            self.core.raise_track(user.core_id, song_id)
+            self.send_menu_main(user)
 
         elif path[0] == "admin" and path[1] == "list_users":
             offset = int(path[2]) if len(path) >= 2 else 0
@@ -537,10 +548,12 @@ class TgFrontend:
             message_text = "🎵 %s\n\nДлительность: %s\nМесто в очереди: %d" % \
                            (song.full_title(), duration, position)
 
+            hated = data["hated"]
+            h_label = ("✅" if hated else "👎") + " Плохая музыка"
+            if superuser:
+                h_label += " (%d)" % len(song.haters)
             kb.row(
-                telebot.types.InlineKeyboardButton(text="👍", callback_data="vote:up:%s" % song_id),
-                telebot.types.InlineKeyboardButton(text="%+d" % song.rating, callback_data="//"),
-                telebot.types.InlineKeyboardButton(text="👎", callback_data="vote:down:%s" % song_id),
+                telebot.types.InlineKeyboardButton(text=h_label, callback_data="vote:down:%s" % song_id),
             )
 
             if superuser or user.id == song.user_id:
@@ -548,6 +561,9 @@ class TgFrontend:
                     telebot.types.InlineKeyboardButton(text="🚫 Удалить 🚫", callback_data="admin:delete:%s" % song_id)
                 )
             if superuser:
+                kb.row(
+                    telebot.types.InlineKeyboardButton(text="⬆️ Играть следующим ⬆️", callback_data="admin:raise:%s" % song_id)
+                )
                 author = self.core.get_user_info(user, song.user_id)["info"]
                 kb.row(
                     telebot.types.InlineKeyboardButton(text="👤 %s" % author.name, callback_data="admin:user_info:%s" % author.id)

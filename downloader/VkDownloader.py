@@ -6,9 +6,7 @@ from time import sleep
 from user_agent import generate_user_agent
 
 from .AbstractDownloader import AbstractDownloader
-from .config import mediaDir, _DEBUG_, DATMUSIC_API_ENDPOINT, MAXIMUM_FILE_SIZE
 from .exceptions import *
-from .storage_checker import filter_storage
 from utils import sanitize_file_name
 
 
@@ -19,8 +17,8 @@ class CaptchaNeeded(ApiError):
 class VkDownloader(AbstractDownloader):
     name = "vk downloader"
 
-    def __init__(self):
-        super().__init__()
+    def __init__(self, config):
+        super().__init__(config)
 
         self.songs_cache = {}
 
@@ -46,16 +44,16 @@ class VkDownloader(AbstractDownloader):
         }
 
     def search(self, query, user_message=lambda text: True):
-        if _DEBUG_:
-            print("DEBUG [VkDownloader]: Search query: " + query)
+        print("DEBUG [VkDownloader]: Search query: " + query)
 
         if len(query.strip()) == 0:
             return []
 
-        if _DEBUG_:
-            print("DEBUG [VkDownloader]: Getting data from " + DATMUSIC_API_ENDPOINT + " with query " + query)
+        api_url = self.config.get("downloader_vk", "datmusic_api_url", fallback="https://api-2.datmusic.xyz/search")
+
+        print("DEBUG [VkDownloader]: Getting data from " + api_url + " with query " + query)
         headers = self.get_headers()
-        songs = requests.get(DATMUSIC_API_ENDPOINT, params=self.get_payload(query), headers=headers)
+        songs = requests.get(api_url, params=self.get_payload(query), headers=headers)
         if songs.status_code != 200:
             raise BadReturnStatus(songs.status_code)
 
@@ -71,8 +69,7 @@ class VkDownloader(AbstractDownloader):
         except KeyError as e:
             print("ERROR [VkDownloader]: Payload has no data: %s" % songs.text)
             raise e
-        if _DEBUG_:
-            print("DEBUG [VkDownloader]: Got " + str(len(data)) + " results")
+        print("DEBUG [VkDownloader]: Got " + str(len(data)) + " results")
 
         length = len(data)
         if length == 0:
@@ -94,8 +91,9 @@ class VkDownloader(AbstractDownloader):
 
     def download(self, task, user_message=lambda text: True):
         result_id = task["result_id"]
-        if _DEBUG_:
-            print("DEBUG [VkDownloader]: Downloading result #" + str(result_id))
+        print("DEBUG [VkDownloader]: Downloading result #" + str(result_id))
+
+        media_dir = self.config.get("downloader", "media_dir", fallback="media")
 
         try:
             song = self.songs_cache[result_id]
@@ -106,16 +104,15 @@ class VkDownloader(AbstractDownloader):
         title = song["title"]
         artist = song["artist"]
         file_name = sanitize_file_name("vk-" + str(result_id) + '.mp3')
-        file_path = os.path.join(os.getcwd(), mediaDir, file_name)
+        file_path = os.path.join(os.getcwd(), media_dir, file_name)
 
         if self.is_in_cache(file_path):
             print("INFO [VkDownloader]: File %s already in cache" % result_id)
             return file_path, title, artist, song["duration"]
 
-        if not os.path.exists(os.path.join(os.getcwd(), mediaDir)):
-            os.makedirs(os.path.join(os.getcwd(), mediaDir))
-            if _DEBUG_:
-                print("DEBUG [VkDownloader]: Media dir have been created: %s" % os.path.join(os.getcwd(), mediaDir))
+        if not os.path.exists(os.path.join(os.getcwd(), media_dir)):
+            os.makedirs(os.path.join(os.getcwd(), media_dir))
+            print("DEBUG [VkDownloader]: Media dir have been created: %s" % os.path.join(os.getcwd(), media_dir))
 
         print("INFO [VkDownloader]: Downloading vk song #" + result_id)
         user_message("Скачиваем...\n%s" % title)
@@ -128,11 +125,11 @@ class VkDownloader(AbstractDownloader):
         if response_head.status_code != 200:
             raise BadReturnStatus(response_head.status_code)
         try:
-            file_size = response_head.headers['content-length']
+            file_size = int(response_head.headers['content-length'])
         except KeyError as e:
             print("ERROR [VkDownloader]: Тo such header: content-length. More information below\n" + str(e))
             raise ApiError
-        if int(file_size) > MAXIMUM_FILE_SIZE:
+        if file_size > 1000000 * self.config.getint("downloader", "max_file_size", fallback=self._default_max_size):
             raise MediaIsTooBig(file_size)
 
         sleep(1)
@@ -144,13 +141,10 @@ class VkDownloader(AbstractDownloader):
             percent_callback=lambda p: user_message("Скачиваем [%d%%]...\n%s" % (int(p), title)),
         )
 
-        if _DEBUG_:
-            print("DEBUG [VkDownloader]: Download complete #" + str(result_id))
+        print("DEBUG [VkDownloader]: Download complete #" + str(result_id))
 
         self.touch_without_creation(file_path)
-        filter_storage()
 
-        if _DEBUG_:
-            print("DEBUG [VkDownloader]: File stored in path: " + file_path)
+        print("DEBUG [VkDownloader]: File stored in path: " + file_path)
 
         return file_path, title, artist, song["duration"]

@@ -1,3 +1,5 @@
+requests
+lxml
 prometheus_client
 tornado
 jinja2

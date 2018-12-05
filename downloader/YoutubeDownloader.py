@@ -8,18 +8,15 @@ import traceback
 from pytube import YouTube
 
 from .AbstractDownloader import AbstractDownloader
-from .config import mediaDir, _DEBUG_, MAXIMUM_DURATION, MAXIMUM_FILE_SIZE
-from .private_config import YT_API_KEY
 from .exceptions import *
-from .storage_checker import filter_storage
 from utils import sanitize_file_name
 
 
 class YoutubeDownloader(AbstractDownloader):
     name = "YouTube downloader"
 
-    def __init__(self):
-        super().__init__()
+    def __init__(self, config):
+        super().__init__(config)
         self.yt_regex = re.compile(r"((?:https?://)?(?:www\.)?(?:m\.)?youtube\.com/watch\?v=[a-zA-Z0-9_-]{11})|((?:https?://)?(?:www\.)?(?:m\.)?youtu\.be/[a-zA-Z0-9_-]{11})", flags=re.IGNORECASE)
 
         self.download_status = {}
@@ -53,9 +50,11 @@ class YoutubeDownloader(AbstractDownloader):
         else:
             raise UnappropriateArgument()
 
-        if _DEBUG_:
-            print("INFO [YoutubeDownloader]: Getting url: " + url)
+        print("INFO [YoutubeDownloader]: Getting url: " + url)
         user_message("Загружаем информацию о видео...")
+
+        media_dir = self.config.get("downloader", "media_dir", fallback="media")
+        api_key = self.config.get("downloader_youtube", "api_key")
 
         try:
             video = YouTube(url, on_progress_callback=self.video_download_progress)
@@ -68,15 +67,15 @@ class YoutubeDownloader(AbstractDownloader):
         if video_id is None:
             raise UrlProblem()
 
-        file_size = stream.filesize
-        if int(file_size) > MAXIMUM_FILE_SIZE:
+        file_size = int(stream.filesize)
+        if file_size > 1000000 * self.config.getint("downloader", "max_file_size", fallback=self._default_max_size):
             raise MediaIsTooBig()
 
-        file_dir = os.path.join(os.getcwd(), mediaDir)
+        file_dir = media_dir
         file_name = sanitize_file_name("youtube-" + str(video_id))
 
         search_url = "https://www.googleapis.com/youtube/v3/videos?id=" + video_id + \
-            "&key=" + YT_API_KEY + "&part=contentDetails"
+            "&key=" + api_key + "&part=contentDetails"
         try:
             response = urllib.request.urlopen(search_url).read()
         except Exception:
@@ -90,7 +89,7 @@ class YoutubeDownloader(AbstractDownloader):
         for match in m:
             seconds += (int(match) * multiplier)
             multiplier *= 60
-        if seconds > MAXIMUM_DURATION:
+        if seconds > self.config.getint("downloader", "max_duration", fallback=self._default_max_duration):
             raise MediaIsTooLong()
 
         self.download_status[str(video_id)] = {
@@ -104,23 +103,19 @@ class YoutubeDownloader(AbstractDownloader):
 
         file_path = os.path.join(file_dir, file_name) + ".mp4"
         if self.is_in_cache(file_path):
-            if _DEBUG_:
-                print("DEBUG [YoutubeDownloader]: Loading from cache: " + file_path)
+            print("DEBUG [YoutubeDownloader]: Loading from cache: " + file_path)
             return file_path, video_title, "", seconds
 
         if not os.path.exists(file_dir):
             os.makedirs(file_dir)
-            if _DEBUG_:
-                print("DEBUG [YoutubeDownloader]: Media dir have been created: " + file_dir)
+            print("DEBUG [YoutubeDownloader]: Media dir have been created: " + file_dir)
 
         print("INFO [YoutubeDownloader]: Downloading audio from video: " + video_id)
         user_message("Скачиваем...\n%s" % video_title)
 
         stream.download(output_path=file_dir, filename=file_name)
         self.touch_without_creation(file_path)
-        filter_storage()
 
-        if _DEBUG_:
-            print("DEBUG [YoutubeDownloader]: File stored in path: " + file_path)
+        print("DEBUG [YoutubeDownloader]: File stored in path: " + file_path)
 
         return file_path, video_title, "", seconds

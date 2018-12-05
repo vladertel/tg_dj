@@ -7,13 +7,11 @@ import os
 import asyncio
 
 import datetime
-from threading import Thread
 import platform
+import traceback
 
-from .config import *
 from .scheduler import Scheduler
-
-from utils import make_endless_unfailable
+from .models import User, Request
 
 
 class UserQuotaReached(Exception):
@@ -36,56 +34,17 @@ class DownloadFailed(Exception):
     pass
 
 
-db = peewee.SqliteDatabase("db/dj_brain.db")
-
-
-class BaseModel(peewee.Model):
-    class Meta:
-        database = db
-
-
-class User(BaseModel):
-    id = peewee.PrimaryKeyField()
-    name = peewee.TextField(null=True)
-    banned = peewee.BooleanField(default=False)
-    superuser = peewee.BooleanField(default=False)
-
-    def check_requests_quota(self):
-        check_interval_start = datetime.datetime.now() - datetime.timedelta(seconds=USER_REQUESTS_THRESHOLD_INTERVAL)
-        count = Request.select().where(Request.user == self, Request.time >= check_interval_start).count()
-        if count >= USER_REQUESTS_THRESHOLD_VALUE:
-            return False
-        else:
-            return True
-
-
-class Request(BaseModel):
-    user = peewee.ForeignKeyField(User)
-    text = peewee.CharField()
-    time = peewee.DateTimeField(default=datetime.datetime.now)
-
-
-db.connect()
-
-
-def users_from_json(self, objecta):
-    for req in objecta['past_requests']:
-        self.past_requests.append(
-            Request(req['user'],
-                    req['text'],
-                    datetime.datetime.utcfromtimestamp(req['time']) + datetime.timedelta(hours=3))
-        )
-    for req in objecta['recent_requests']:
-        self.recent_requests.append(
-            Request(req['user'],
-                    req['text'],
-                    datetime.datetime.utcfromtimestamp(req['time']) + datetime.timedelta(hours=3))
-        )
-
-
 class DjBrain:
 
-    def __init__(self, frontend, downloader, backend):
+    def __init__(self, config, frontend, downloader, backend):
+        """
+        :param configparser.ConfigParser config:
+        :param frontend:
+        :param downloader:
+        :param backend:
+        """
+        self.config = config
+
         self.isWindows = False
         if platform.system() == "Windows":
             self.isWindows = True
@@ -93,22 +52,23 @@ class DjBrain:
         self.downloader = downloader
         self.backend = backend
 
-        self.scheduler = Scheduler()
+        self.scheduler = Scheduler(config)
 
         self.loop = asyncio.get_event_loop()
 
         self.frontend.bind_core(self)
         self.downloader.bind_core(self)
+        self.backend.bind_core(self)
 
-        Thread(daemon=True, target=self.backend_listener).start()
+        self.state_update_callbacks = []
 
         self.play_next_track()
 
-        self.request_futures = {}
-        self.request_counter = 0
+        self.queue_rating_check_task = self.loop.create_task(self.watch_queue_rating())
 
     def cleanup(self):
         print("DEBUG [Bot]: Cleaning up...")
+        self.queue_rating_check_task.cancel()
         self.scheduler.play_next(self.backend.get_current_song())
         self.scheduler.cleanup()
 
@@ -134,11 +94,44 @@ class DjBrain:
             raise UserBanned
         return u
 
+    @staticmethod
+    def store_user_activity(user):
+        user.last_activity = datetime.datetime.now()
+        user.save()
+
+    def check_requests_quota(self, user):
+        interval = self.config.getint("core", "user_requests_limit_interval", fallback=600)
+        limit = self.config.getint("core", "user_requests_limit", fallback=10)
+        check_interval_start = datetime.datetime.now() - datetime.timedelta(
+            seconds=interval)
+        count = Request.select().where(Request.user == user, Request.time >= check_interval_start).count()
+        if count >= limit:
+            return False
+        else:
+            return True
+
+    def check_song_rating(self, song):
+        rating_threshold = self.config.getfloat("core", "song_rating_threshold", fallback=0.3)
+        rating_min_cnt = self.config.getint("core", "song_rating_cnt_min", fallback=3)
+
+        active_users = User.filter(User.last_activity > datetime.datetime.now() - datetime.timedelta(minutes=60))
+        active_users_cnt = active_users.count()
+        active_haters_cnt = active_users.filter(User.id << song.haters).count()
+
+        if active_haters_cnt >= rating_min_cnt and active_haters_cnt / active_users_cnt >= rating_threshold:
+            print("INFO [Core]: Song #%d has bad rating: %s (haters: %d, active: %d)"
+                  % (song.id, song.full_title(), active_haters_cnt, active_users_cnt))
+            return False
+        return True
+
+    def add_state_update_callback(self, fn):
+        self.state_update_callbacks.append(fn)
+
     async def download_action(self, user_id, text=None, result=None, file=None, progress_callback=None):
         user = self.get_user(user_id)
         progress_callback = progress_callback or (lambda _state: None)
 
-        if not user.check_requests_quota() and not user.superuser:
+        if not self.check_requests_quota(user) and not user.superuser:
             print("DEBUG [Core]: Request quota reached by user#%d (%s)" % (user.id, user.name))
             raise UserRequestQuotaReached
 
@@ -165,12 +158,13 @@ class DjBrain:
 
         author = User.get(id=int(user_id))
         Request.create(user=author, text=(artist or "") + " - " + (title or ""))
-        if not author.superuser and not author.check_requests_quota():
+        if not author.superuser and not self.check_requests_quota(author):
             raise UserRequestQuotaReached
 
         song, position = self.scheduler.push_track(file_path, title, artist, duration, user_id)
+        self.store_user_activity(user)
 
-        if not self.backend.is_playing:
+        if self.backend.now_playing is None:
             self.play_next_track()
 
         return song, position
@@ -182,28 +176,26 @@ class DjBrain:
         print("DEBUG [Core]: New search query \"%s\" from user#%d (%s)" % (query, user.id, user.name))
         return await self.downloader.search(query, message_callback)
 
-    @make_endless_unfailable
-    def backend_listener(self):
-        task = self.backend.output_queue.get()
-        action = task['action']
-        if action == "song_finished":
-            self.play_next_track()
-        else:
-            print('ERROR [Core]: Message not supported:', str(task))
-        self.backend.output_queue.task_done()
-
     def play_next_track(self):
-        track = self.scheduler.pop_first_track()
+        while True:
+            track = self.scheduler.pop_first_track()
+            if track is None:
+                return
+            if self.check_song_rating(track):
+                break
+
+            print("INFO [Core]: Song #%d (%s) have been skipped" % (track.id, track.full_title()))
+            self.frontend.notify_user(
+                "⚠️ Ваш трек удалён из очереди, так как он не нравится другим пользователям:\n%s"
+                % track.full_title(),
+                track.user_id
+            )
+
+        print("DEBUG [Core]: New track rating: %d" % len(track.haters))
+
         next_track = self.scheduler.get_next_song()
-        if track is None:
-            return
 
-        next_track_task = {
-            "action": "play_song",
-            "song": track,
-        }
-
-        self.backend.input_queue.put(next_track_task)
+        self.backend.switch_track(track)
 
         json_file_path = os.path.join(os.getcwd(), "web", "dynamic", "current_song_info.json")
         with open(json_file_path, 'w') as json_file:
@@ -224,7 +216,16 @@ class DjBrain:
             if user_curr_id is not None:
                 self.frontend.notify_user("🎶 Запускаю ваш трек:\n%s" % track.full_title(), user_curr_id)
 
+        for fn in self.state_update_callbacks:
+            fn(track)
+
         return track, next_track
+
+    def track_end_event(self):
+        try:
+            self.play_next_track()
+        except:
+            traceback.print_exc()
 
     def switch_track(self, user_id):
         user = self.get_user(user_id)
@@ -245,6 +246,16 @@ class DjBrain:
         position = self.scheduler.remove_from_queue(song_id)
 
         return position
+
+    def raise_track(self, user_id, song_id):
+        user = self.get_user(user_id)
+
+        if not user.superuser:
+            song, _ = self.scheduler.get_song(song_id)
+            if user.id != song.user_id:
+                raise PermissionDenied()
+
+        self.scheduler.raise_track(song_id)
 
     def stop_playback(self, user_id):
         user = self.get_user(user_id)
@@ -316,17 +327,36 @@ class DjBrain:
 
         return {
             "song": song,
+            "hated": user_id in song.haters if song else False,
             "position": position,
             "superuser": user.superuser
         }
 
     def vote_song(self, user_id, sign, song_id):
+        user = self.get_user(user_id)
         if sign == "up":
             self.scheduler.vote_up(user_id, song_id)
         elif sign == "down":
             self.scheduler.vote_down(user_id, song_id)
         else:
             raise ValueError("Sign value should be either 'up' or 'down'")
+
+        self.store_user_activity(user)
+
+    async def watch_queue_rating(self):
+        while True:
+            await asyncio.sleep(30)
+            for song in self.scheduler.get_queue()[:]:
+                if self.check_song_rating(song):
+                    continue
+
+                self.scheduler.remove_from_queue(song.id)
+                print("INFO [Core]: Song #%d (%s) have been removed from queue" % (song.id, song.full_title()))
+                self.frontend.notify_user(
+                    "⚠️ Ваш трек удалён из очереди, так как он не нравится другим пользователям:\n%s"
+                    % song.full_title(),
+                    song.user_id
+                )
 
     def get_users(self, user_id, offset=0, limit=0):
         user = self.get_user(user_id)

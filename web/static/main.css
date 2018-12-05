@@ -5,6 +5,30 @@ body{
     min-width: 320px;
 }
 
+canvas{
+    position: fixed;
+    top: 0;
+    left: 0;
+    pointer-events: none;
+    z-index: -1;
+}
+
+#playback{
+    position: fixed;
+    bottom: 0;
+    right: 0;
+}
+
+img#logo{
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 200px;
+    height: 200px;
+    cursor: pointer;
+}
+
 a{
     color: white;
     text-decoration: none;
@@ -12,6 +36,7 @@ a{
 
 header, section, footer{
     text-align: center;
+    margin: 2em;
 }
 
 h1{
@@ -20,20 +45,9 @@ h1{
     margin-bottom: -0.3em;
 }
 
-img#logo{
-    max-height: 200px;
-    width: auto;
-}
-
 #now-playing #title{
     font-size: 4em;
     font-weight: 700;
-}
-
-#now-playing #info{
-    color: #9299a2;
-    font-size: 2em;
-    margin: 2em 0;
 }
 
 @media only screen and (max-width: 900px){
@@ -48,10 +62,10 @@ img#logo{
     }
 }
 
-#links{
-    margin: 2em 0;
-}
-
 footer{
+    text-align: left;
     margin-top: 5em;
+    position: absolute;
+    bottom: 0;
+    left: 0;
 }

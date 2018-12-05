@@ -1,32 +1,26 @@
-from queue import Queue
-from threading import Thread
 import time
 import vlc
 from prometheus_client import Gauge
 
-from .private_config import vlc_options
-from utils import make_endless_unfailable
 
-# vlc_options = 'sout=#transcode{acodec=mp3,ab=320,channels=2,samplerate=44100}' \
-#               ':duplicate{dst=gather:http{mux=ts,dst=:1233/},dst=display}'
+class VLCStreamer:
+    def __init__(self, config):
+        self.config = config
 
-
-class VLCStreamer():
-    def __init__(self):
         self.is_playing = False
         self.now_playing = None
         self.song_start_time = 0
+        self.core = None
 
         self.mon_is_playing = Gauge('dj_is_playing', 'Is something paying now')
         self.mon_is_playing.set_function(lambda: 1 if self.is_playing else 0)
 
-        self.input_queue = Queue()
-        self.output_queue = Queue()
-        self.queue_thread = Thread(daemon=True, target=self.queue_listener)
-        self.queue_thread.start()
         self.vlc_instance = vlc.Instance()
         self.player = self.vlc_instance.media_player_new()
         self.init_handlers()
+
+    def bind_core(self, core):
+        self.core = core
 
     def init_handlers(self):
         events = self.player.event_manager()
@@ -35,12 +29,10 @@ class VLCStreamer():
     def cleanup(self):
         self.player.stop()
 
-    def vlc_song_finished(self, event):
+    def vlc_song_finished(self, _event):
         self.is_playing = False
         self.now_playing = None
-        self.output_queue.put({
-            "action": "song_finished",
-        })
+        self.core.loop.call_soon_threadsafe(self.core.track_end_event)
 
     def get_current_song(self):
         return self.now_playing
@@ -53,23 +45,15 @@ class VLCStreamer():
         self.is_playing = False
         self.now_playing = None
 
-    @make_endless_unfailable
-    def queue_listener(self):
-        task = self.input_queue.get()
-        action = task['action']
-        if action == 'play_song':
-            song = task["song"]
-            uri = song.media
-            media = self.vlc_instance.media_new(uri, vlc_options, "sout-keep")
-            # media = self.vlc_instance.media_new(uri)
-            self.player.set_media(media)
-            self.player.play()
-            self.is_playing = True
-            self.now_playing = song
-            self.song_start_time = time.time()
-        else:
-            print('ERROR [VLC]: Message not supported:', task)
-        self.input_queue.task_done()
+    def switch_track(self, track):
+        uri = track.media
+        vlc_options = self.config.get("streamer_vlc", "vlc_options")
+        media = self.vlc_instance.media_new(uri, vlc_options, "sout-keep")
+        self.player.set_media(media)
+        self.player.play()
+        self.is_playing = True
+        self.now_playing = track
+        self.song_start_time = time.time()
 
 
 # found example

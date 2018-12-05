@@ -5,8 +5,7 @@ import random
 from prometheus_client import Gauge
 
 from utils import get_mp3_info
-
-from .config import queueDir
+from .models import Song
 
 
 def get_files_in_dir(directory):
@@ -14,70 +13,13 @@ def get_files_in_dir(directory):
             os.path.isfile(os.path.join(directory, f)) and not f.startswith(".")]
 
 
-class Song:
-    counter = 0
-
-    def __init__(self, media_path, title, artist, duration, user_id, forced_id=None):
-        if forced_id is None:
-            self.__class__.counter += 1
-            self.id = self.__class__.counter
-        else:
-            self.id = forced_id
-
-        self.title = title
-        self.artist = artist
-        self.duration = duration
-        self.user_id = user_id
-        self.media = media_path
-
-        self.votes = {}
-        self.rating = 0
-
-    def __repr__(self):
-        return "Song(title: %s, artist: %s, id: %d)".format(self.title, self.artist, self.id)
-
-    def __str__(self):
-        return "Song(title: %s, artist: %s, id: %d)".format(self.title, self.artist, self.id)
-
-    def to_dict(self):
-        return {
-            "id": self.id,
-            "title": self.title,
-            "artist": self.artist,
-            "duration": self.duration,
-            "user_id": self.user_id,
-            "media": self.media,
-            "votes": self.votes,
-        }
-
-    def full_title(self):
-        if self.artist is not None and len(self.artist) > 0 and self.title is not None and len(self.title) > 0:
-            return self.artist + " — " + self.title
-        elif self.artist is not None and len(self.artist) > 0:
-            return self.artist
-        elif self.title is not None and len(self.title) > 0:
-            return self.title
-        else:
-            return os.path.splitext(os.path.basename(self.media))[0]
-
-    def vote(self, user_id, value):
-        self.votes[user_id] = value
-        self.recalculate_rating()
-
-    def recalculate_rating(self):
-        self.rating = sum(self.votes[uid] for uid in self.votes)
-
-    @classmethod
-    def from_dict(cls, song_dict):
-        obj = cls(song_dict["media"], song_dict["title"], song_dict["artist"],
-                  song_dict["duration"], song_dict["user_id"], forced_id=song_dict["id"])
-        obj.votes = song_dict["votes"]
-        obj.recalculate_rating()
-        return obj
-
-
 class Scheduler:
-    def __init__(self):
+    def __init__(self, config):
+        """
+        :param configparser.ConfigParser config:
+        """
+        self.config = config
+
         self.is_media_playing = False
         self.playlist = []
         self.backlog = []
@@ -96,7 +38,8 @@ class Scheduler:
 
     def load_init(self):
         try:
-            with open(os.path.join(queueDir, "queue")) as f:
+            queue_file = self.config.get("scheduler", "queue_file", fallback="brain/queue.json")
+            with open(queue_file) as f:
                 dicts = json.loads(f.read())
                 Song.counter = dicts["last_id"]
                 queue = []
@@ -104,7 +47,6 @@ class Scheduler:
                     for d in dicts["songs"]:
                         queue.append(Song.from_dict(d))
                     self.playlist = queue
-                    self.sort_queue()
                 try:
                     self.backlog_played_media = dicts["backlog_played_media"]
                 except KeyError:
@@ -135,10 +77,10 @@ class Scheduler:
             "songs": [a.to_dict() for a in self.playlist],
             "backlog_played_media": [a.media for a in self.backlog_played]
         }
-        file_name = os.path.join(queueDir, "queue")
-        with open(file_name, "w") as f:
+        queue_file = self.config.get("scheduler", "queue_file", fallback="brain/queue.json")
+        with open(queue_file, "w") as f:
             f.write(json.dumps(out_dict, ensure_ascii=False))
-            print("INFO [Scheduler - cleanup]: Queue has been saved to file \"%s\"" % file_name)
+            print("INFO [Scheduler - cleanup]: Queue has been saved to file \"%s\"" % queue_file)
 
     def push_track(self, path, title, artist, duration, user_id):
         self.lock.acquire()
@@ -210,29 +152,35 @@ class Scheduler:
         self.lock.release()
         return position
 
+    def raise_track(self, sid):
+        self.lock.acquire()
+        try:
+            song = next(s for s in self.playlist if s.id == sid)
+            self.playlist.remove(song)
+            self.playlist.insert(0, song)
+        except (ValueError, StopIteration):
+            print("WARNING [Scheduler - remove]: Unable to raise song #%d")
+        self.lock.release()
+
     def queue_length(self):
         return len(self.playlist)
 
-    def sort_queue(self, lock=True):
-        if lock:
-            self.lock.acquire()
-        self.playlist = sorted(self.playlist, key=lambda x: x.id - sum([x.votes[k] for k in x.votes]))
-        if lock:
-            self.lock.release()
-
-    def _vote(self, user_id, song_id, value):
+    def vote_up(self, user_id, song_id):
         self.lock.acquire()
         try:
             song = next(s for s in self.playlist if s.id == song_id)
-            song.votes[user_id] = value
-            song.recalculate_rating()
-            self.sort_queue(lock=False)
+            if user_id in song.haters:
+                song.haters.remove(user_id)
         except (ValueError, StopIteration):
-            print("WARNING [Scheduler - vote]: Unable to find song #%d in the playlist")
+            print("WARNING [Scheduler - vote_up]: Unable to find song #%d in the playlist")
         self.lock.release()
 
-    def vote_up(self, user_id, sid):
-        self._vote(user_id, sid, +1)
-
-    def vote_down(self, user_id, sid):
-        self._vote(user_id, sid, -1)
+    def vote_down(self, user_id, song_id):
+        self.lock.acquire()
+        try:
+            song = next(s for s in self.playlist if s.id == song_id)
+            if user_id not in song.haters:
+                song.haters.append(user_id)
+        except (ValueError, StopIteration):
+            print("WARNING [Scheduler - vote_down]: Unable to find song #%d in the playlist")
+        self.lock.release()

@@ -10,7 +10,6 @@ from .HtmlDownloader import HtmlDownloader
 from .FileDownloader import FileDownloader
 from .LinkDownloader import LinkDownloader
 from .exceptions import *
-from .config import MAXIMUM_FILE_SIZE, SEARCH_RESULTS_LIMIT, mediaDir
 
 
 mon_downloads_in_progress = Gauge('dj_downloads_in_progress', 'Downloads in progress')
@@ -20,21 +19,25 @@ mon_search_duration = Histogram('dj_search_duration', 'Time spent in search', ['
 
 
 class MasterDownloader:
-    def __init__(self):
-        # https://youtu.be/qAeybdD5UoQ
+    def __init__(self, config):
+        """
+        :param configparser.ConfigParser config:
+        """
+        self.config = config
+
         self.handlers = OrderedDict([
-            ("yt", YoutubeDownloader()),
-            ("file", FileDownloader()),
-            ("html", HtmlDownloader()),
-            ("link", LinkDownloader()),
+            ("yt", YoutubeDownloader(config)),
+            ("file", FileDownloader(config)),
+            ("html", HtmlDownloader(config)),
+            ("link", LinkDownloader(config)),
         ])
 
         self.thread_pool = concurrent.futures.ThreadPoolExecutor()
         self.core = None
 
-        cache_dir = os.path.join(os.getcwd(), mediaDir)
-        if not os.path.exists(cache_dir):
-            os.mkdir(cache_dir)
+        media_dir = self.config.get("downloader", "media_dir", fallback="media")
+        if not os.path.exists(media_dir):
+            os.mkdir(media_dir)
 
     def bind_core(self, core):
         self.core = core
@@ -42,6 +45,25 @@ class MasterDownloader:
     def cleanup(self):
         pass
         # TODO: Delete incomplete downloads
+
+    def _filter_storage(self):
+        media_dir = self.config.get("downloader", "media_dir", fallback="media")
+        files_storage_limit = self.config.getint("downloader", "files_storage_limit", fallback=60)
+
+        files_dir = os.path.join(os.getcwd(), media_dir)
+
+        files = [os.path.join(files_dir, f) for f in os.listdir(files_dir) if
+                 os.path.isfile(os.path.join(files_dir, f)) and not f.startswith(".")]
+
+        files.sort(key=lambda x: -os.path.getmtime(x))
+        print("Number of files: " + str(len(files)))
+        if len(files) <= files_storage_limit:
+            print("filter_storage files < MAXIMUM_FILES_COUNT")
+            return
+        files_to_delete = files[files_storage_limit:]
+        for file in files_to_delete:
+            os.unlink(file)
+            print("deleted: " + file)
 
     @mon_downloads_in_progress.track_inprogress()
     def thread_download(self, kind, query, callback):
@@ -64,11 +86,12 @@ class MasterDownloader:
                 result = downloader.download(query, user_message=callback)
                 end_time = time.time()
                 mon_download_duration.labels(handler_name).observe(end_time - start_time)
+                self._filter_storage()
                 return result
             except MediaIsTooLong as e:
                 callback("Трек слишком длинный (" + str(e.args[0]) + " секунд)")
-            except MediaIsTooBig:
-                callback("Трек слишком много весит ( > " + str(MAXIMUM_FILE_SIZE / 1000000) + " MB)")
+            except MediaIsTooBig as e:
+                callback("Трек слишком много весит ( > " + ("%.2f" % (e.args[0] / 1000000)) + " MB)")
             except MediaSizeUnspecified:
                 callback("Трек не будет загружен, так как не удаётся определить его размер")
             except BadReturnStatus as e:
@@ -89,6 +112,8 @@ class MasterDownloader:
 
     @mon_searches_in_progress.track_inprogress()
     def thread_search(self, query, callback):
+        results_limit = self.config.getint("downloader", "search_max_results", fallback=10)
+
         for dwnld_name in self.handlers:
             downloader = self.handlers[dwnld_name]
             arg = downloader.is_acceptable("search", query)
@@ -100,7 +125,7 @@ class MasterDownloader:
                     user_message=callback,
                 )
                 start_time = time.time()
-                search_results = search_results[0:min(SEARCH_RESULTS_LIMIT, len(search_results))]
+                search_results = search_results[0:min(results_limit, len(search_results))]
                 end_time = time.time()
                 mon_search_duration.labels(dwnld_name).observe(end_time - start_time)
 
