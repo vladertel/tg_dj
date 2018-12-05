@@ -10,6 +10,8 @@ import datetime
 import platform
 import traceback
 
+from prometheus_client import Gauge
+
 from .scheduler import Scheduler
 from .models import User, Request
 
@@ -66,6 +68,10 @@ class DjBrain:
 
         self.queue_rating_check_task = self.loop.create_task(self.watch_queue_rating())
 
+        # noinspection PyArgumentList
+        self.mon_active_users = Gauge('dj_active_users', 'Active users')
+        self.mon_active_users.set_function(self.get_active_users_cnt)
+
     def cleanup(self):
         print("DEBUG [Bot]: Cleaning up...")
         self.queue_rating_check_task.cancel()
@@ -98,6 +104,11 @@ class DjBrain:
     def store_user_activity(user):
         user.last_activity = datetime.datetime.now()
         user.save()
+
+    @staticmethod
+    def get_active_users_cnt():
+        active_users = User.filter(User.last_activity > datetime.datetime.now() - datetime.timedelta(minutes=60))
+        return active_users.count()
 
     def check_requests_quota(self, user):
         interval = self.config.getint("core", "user_requests_limit_interval", fallback=600)
