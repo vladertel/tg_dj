@@ -2,7 +2,7 @@ import concurrent.futures
 from collections import OrderedDict
 import os
 import time
-from prometheus_client import Gauge, Histogram
+from prometheus_client import Gauge, Summary
 
 
 from .YoutubeDownloader import YoutubeDownloader
@@ -11,11 +11,12 @@ from .FileDownloader import FileDownloader
 from .LinkDownloader import LinkDownloader
 from .exceptions import *
 
-
+# noinspection PyArgumentList
 mon_downloads_in_progress = Gauge('dj_downloads_in_progress', 'Downloads in progress')
+# noinspection PyArgumentList
 mon_searches_in_progress = Gauge('dj_searches_in_progress', 'Searches in progress')
-mon_download_duration = Histogram('dj_download_duration', 'Time spent in downloading', ['handler'])
-mon_search_duration = Histogram('dj_search_duration', 'Time spent in search', ['handler'])
+mon_download_duration = Summary('dj_download_duration', 'Time spent in downloading', ['handler'])
+mon_search_duration = Summary('dj_search_duration', 'Time spent in search', ['handler'])
 
 
 class MasterDownloader:
