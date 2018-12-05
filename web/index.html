@@ -6,15 +6,13 @@
     <title>INBICST DJ</title>
     <link href="https://fonts.googleapis.com/css?family=Raleway:200,400,700,900" rel="stylesheet">
     <link href="static/main.css" rel="stylesheet">
-    <script>
-        var ws_addr = '{{ ws_url }}';
-    </script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/0.7.2/p5.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/0.7.2/addons/p5.dom.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/0.7.2/addons/p5.sound.min.js"></script>
+
+    <script>var ws_addr = '{{ ws_url }}';</script>
     <script src="static/wson.js"></script>
     <script src="static/socket.js"></script>
-
-    <script src="static/libraries/p5.js"></script>
-    <script src="static/libraries/p5.dom.js"></script>
-    <script src="static/libraries/p5.sound.js"></script>
     <script src="static/aav.js"></script>
 </head>
 <body>
