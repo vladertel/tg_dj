@@ -4,6 +4,7 @@ import tornado.ioloop
 import tornado.web
 import tornado.websocket
 import asyncio
+from prometheus_client import Gauge
 
 
 # noinspection PyAbstractClass,PyAttributeOutsideInit
@@ -79,6 +80,10 @@ class StatusWebServer:
         self.core = None
         self.ws_clients = []
         self.KEEP_ALIVE_INTERVAL = 60
+
+        # noinspection PyArgumentList
+        self.mon_web_ws_clients = Gauge('dj_web_ws_clients', 'Number of websocket connections')
+        self.mon_web_ws_clients.set_function(lambda: len(self.ws_clients))
 
         self.stream_url = self.config.get("web_server", "stream_url")
         self.ws_url = self.config.get("web_server", "ws_url", fallback="ws://localhost:8080/ws")

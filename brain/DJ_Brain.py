@@ -10,6 +10,8 @@ import datetime
 import platform
 import traceback
 
+from prometheus_client import Gauge
+
 from .scheduler import Scheduler
 from .models import User, Request
 
@@ -66,6 +68,10 @@ class DjBrain:
 
         self.queue_rating_check_task = self.loop.create_task(self.watch_queue_rating())
 
+        # noinspection PyArgumentList
+        self.mon_active_users = Gauge('dj_active_users', 'Active users')
+        self.mon_active_users.set_function(self.get_active_users_cnt)
+
     def cleanup(self):
         print("DEBUG [Bot]: Cleaning up...")
         self.queue_rating_check_task.cancel()
@@ -99,6 +105,11 @@ class DjBrain:
         user.last_activity = datetime.datetime.now()
         user.save()
 
+    @staticmethod
+    def get_active_users_cnt():
+        active_users = User.filter(User.last_activity > datetime.datetime.now() - datetime.timedelta(minutes=60))
+        return active_users.count()
+
     def check_requests_quota(self, user):
         interval = self.config.getint("core", "user_requests_limit_interval", fallback=600)
         limit = self.config.getint("core", "user_requests_limit", fallback=10)
@@ -111,18 +122,23 @@ class DjBrain:
             return True
 
     def check_song_rating(self, song):
+        active_users_cnt = self.get_active_users_cnt()
+        active_haters_cnt = User\
+            .filter(User.id << song.haters)\
+            .filter(User.last_activity > datetime.datetime.now() - datetime.timedelta(minutes=60))\
+            .count()
+
+        if self.check_song_rating_values(active_users_cnt, active_haters_cnt):
+            return True
+
+        print("INFO [Core]: Song #%d (%s) has bad rating (haters: %d, active: %d)"
+              % (song.id, song.full_title(), active_haters_cnt, active_users_cnt))
+        return False
+
+    def check_song_rating_values(self, all_users, voted_users):
         rating_threshold = self.config.getfloat("core", "song_rating_threshold", fallback=0.3)
         rating_min_cnt = self.config.getint("core", "song_rating_cnt_min", fallback=3)
-
-        active_users = User.filter(User.last_activity > datetime.datetime.now() - datetime.timedelta(minutes=60))
-        active_users_cnt = active_users.count()
-        active_haters_cnt = active_users.filter(User.id << song.haters).count()
-
-        if active_haters_cnt >= rating_min_cnt and active_haters_cnt / active_users_cnt >= rating_threshold:
-            print("INFO [Core]: Song #%d has bad rating: %s (haters: %d, active: %d)"
-                  % (song.id, song.full_title(), active_haters_cnt, active_users_cnt))
-            return False
-        return True
+        return not (voted_users >= rating_min_cnt and voted_users / all_users >= rating_threshold)
 
     def add_state_update_callback(self, fn):
         self.state_update_callbacks.append(fn)
@@ -177,11 +193,16 @@ class DjBrain:
         return await self.downloader.search(query, message_callback)
 
     def play_next_track(self):
+        active_users = User.filter(User.last_activity > datetime.datetime.now() - datetime.timedelta(minutes=60))
+        active_users_cnt = active_users.count()
+
         while True:
             track = self.scheduler.pop_first_track()
             if track is None:
                 return
-            if self.check_song_rating(track):
+
+            active_haters_cnt = active_users.filter(User.id << track.haters).count()
+            if self.check_song_rating_values(active_users_cnt, active_haters_cnt):
                 break
 
             print("INFO [Core]: Song #%d (%s) have been skipped" % (track.id, track.full_title()))

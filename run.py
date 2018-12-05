@@ -4,6 +4,7 @@ import traceback
 import argparse
 import configparser
 import signal
+import prometheus_client
 
 from brain.DJ_Brain import DjBrain
 from streamer.VLCStreamer import VLCStreamer
@@ -35,6 +36,8 @@ brain = DjBrain(config, *modules)
 
 web = StatusWebServer(config)
 web.bind_core(brain)
+
+prometheus_client.start_http_server(8910)
 
 loop = asyncio.get_event_loop()
 try:

@@ -1,5 +1,6 @@
 requests
 lxml
+prometheus_client
 tornado
 jinja2
 peewee
