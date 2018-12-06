@@ -271,9 +271,9 @@ class TgFrontend:
     async def search(self, data, user):
         query = data.query.lstrip()
 
-        def message_callback(test):
+        def message_callback(text):
             try:
-                self.bot.send_message(user.tg_id, test)
+                self._send_text_message(user, text)
             except telebot.apihelper.ApiException:
                 pass
 
@@ -294,13 +294,10 @@ class TgFrontend:
 
     async def search_select(self, data, user):
         downloader, result_id = data.result_id.split(" ")
-        reply = self.bot.send_message(user.tg_id, "Запрос обрабатывается...")
+        reply = self._send_text_message(user, "Запрос обрабатывается...")
 
         def progress_callback(progress_msg):
-            try:
-                self.bot.edit_message_text(progress_msg, reply.chat.id, reply.message_id)
-            except telebot.apihelper.ApiException:
-                pass
+            self._update_or_send_text_message(user, reply, progress_msg)
 
         try:
             song, position = await self.core.download_action(
@@ -308,14 +305,13 @@ class TgFrontend:
                 result={"downloader": downloader, "id": result_id},
                 progress_callback=progress_callback
             )
-            self.bot.edit_message_text(
-                "Песня в очереди. Позиция: %d\n%s" % (position, song.full_title()),
-                reply.chat.id, reply.message_id
+            self._update_or_send_text_message(
+                user, reply, "Песня в очереди. Позиция: %d\n%s" % (position, song.full_title())
             )
         except NotAccepted:
-            self.bot.send_message(user.tg_id, "🚫 Внутренняя ошибка: ни один загрузчик не принял запрос")
+            self._send_error(user, "🚫 Внутренняя ошибка: ни один загрузчик не принял запрос")
         except DownloadFailed:
-            self.bot.send_message(user.tg_id, "🚫 Не удалось загрузить песню")
+            self._send_error(user, "🚫 Не удалось загрузить песню")
         except UserRequestQuotaReached:
             self._show_quota_reached_msg(user)
 
@@ -349,42 +345,30 @@ class TgFrontend:
         if text[0:2] == "//":
             return
 
-        if re.search(r'^@\w+ ', text) is not None:
-            self.bot.send_message(user.tg_id, "Выберите из интерактивного меню, пожалуйста. "
-                                              "Интерактивное меню появляется во время ввода сообщения")
-            return
-
-        reply = self.bot.send_message(user.tg_id, "Запрос обрабатывается...")
+        reply = self._send_text_message(user, "Запрос обрабатывается...")
 
         def progress_callback(progress_msg):
-            try:
-                self.bot.edit_message_text(progress_msg, reply.chat.id, reply.message_id)
-            except telebot.apihelper.ApiException:
-                pass
+            self._update_or_send_text_message(user, reply, progress_msg)
 
         try:
             song, position = await self.core.download_action(user.id, text=text, progress_callback=progress_callback)
-            self.bot.edit_message_text(
-                "Песня в очереди. Позиция: %d\n%s" % (position, song.full_title()),
-                reply.chat.id, reply.message_id
+            self._update_or_send_text_message(
+                user, reply, "Песня в очереди. Позиция: %d\n%s" % (position, song.full_title())
             )
         except NotAccepted:
-            self._suggest_search(text, reply.chat.id, reply.message_id)
+            self._suggest_search(user, reply, text)
         except DownloadFailed:
-            self.bot.send_message(user.tg_id, "🚫 Не удалось загрузить песню")
+            self._send_error(user, "🚫 Не удалось загрузить песню")
         except UserRequestQuotaReached:
             self._show_quota_reached_msg(user)
 
     async def add_audio_file(self, message, user):
         file_info = self.bot.get_file(message.audio.file_id)
 
-        reply = self.bot.send_message(user.tg_id, "Запрос обрабатывается...")
+        reply = self._send_text_message(user, "Запрос обрабатывается...")
 
         def progress_callback(progress_msg):
-            try:
-                self.bot.edit_message_text(progress_msg, reply.chat.id, reply.message_id)
-            except telebot.apihelper.ApiException:
-                pass
+            self._update_or_send_text_message(user, reply, progress_msg)
 
         file = {
             "id": message.audio.file_id,
@@ -397,14 +381,13 @@ class TgFrontend:
 
         try:
             song, position = await self.core.download_action(user.id, file=file, progress_callback=progress_callback)
-            self.bot.edit_message_text(
-                "Песня в очереди. Позиция: %d\n%s" % (position, song.full_title()),
-                reply.chat.id, reply.message_id
+            self._update_or_send_text_message(
+                user, reply, "Песня в очереди. Позиция: %d\n%s" % (position, song.full_title())
             )
         except NotAccepted:
-            self.bot.send_message(user.tg_id, "🚫 Внутренняя ошибка: ни один загрузчик не принял запрос")
+            self._send_error(user, "🚫 Внутренняя ошибка: ни один загрузчик не принял запрос")
         except DownloadFailed:
-            self.bot.send_message(user.tg_id, "🚫 Не удалось загрузить песню")
+            self._send_error(user, "🚫 Не удалось загрузить песню")
         except UserRequestQuotaReached:
             self._show_quota_reached_msg(user)
 
@@ -508,7 +491,7 @@ class TgFrontend:
         message_text = template.render(**state)
 
         self.remove_old_menu(user)
-        self.bot.send_message(user.tg_id, message_text, reply_markup=kb)
+        self._send_text_message(user, message_text, reply_markup=kb)
 
     def send_menu_queue(self, user, offset):
         data = self.core.get_queue(user.core_id, offset, self.songs_per_page)
@@ -548,7 +531,7 @@ class TgFrontend:
                telebot.types.InlineKeyboardButton(text=STR_REFRESH, callback_data="queue:%d" % offset))
 
         self.remove_old_menu(user)
-        self.bot.send_message(user.tg_id, message_text, reply_markup=kb)
+        self._send_text_message(user, message_text, reply_markup=kb)
 
     def send_menu_song(self, user, song_id):
         data = self.core.get_song_info(user.core_id, song_id)
@@ -601,7 +584,7 @@ class TgFrontend:
         )
 
         self.remove_old_menu(user)
-        self.bot.send_message(user.tg_id, message_text, reply_markup=kb)
+        self._send_text_message(user, message_text, reply_markup=kb)
 
     def send_menu_admin_list_users(self, user, offset):
         data = self.core.get_users(user.core_id, offset, self.users_per_page)
@@ -642,7 +625,7 @@ class TgFrontend:
                telebot.types.InlineKeyboardButton(text=STR_REFRESH, callback_data="admin:list_users:%d" % offset))
 
         self.remove_old_menu(user)
-        self.bot.send_message(user.tg_id, message_text, reply_markup=kb)
+        self._send_text_message(user, message_text, reply_markup=kb)
 
     def send_menu_admin_user(self, user, handled_user_id):
         data = self.core.get_user_info(user.core_id, handled_user_id)
@@ -692,45 +675,78 @@ class TgFrontend:
         message_text += "\n"
 
         self.remove_old_menu(user)
-        self.bot.send_message(user.tg_id, message_text, reply_markup=kb)
+        self._send_text_message(user, message_text, reply_markup=kb)
 
-    def notify_user(self, message, uid):
+    def notify_user(self, uid, message):
         self.logger.debug("Trying to notify user#%d" % uid)
         try:
             user = User.get(User.core_id == uid)
         except peewee.DoesNotExist:
             self.logger.warning("Trying to notify nonexistent user#%d" % uid)
             return
-        self._show_status(message, user)
+        self._send_text_message(user, message)
 
-    def _show_status(self, message, user):
-        self.bot.send_message(user.tg_id, message)
+    def _send_text_message(self, user, message, reply_markup=None):
+        try:
+            return self.bot.send_message(user.tg_id, message, reply_markup=reply_markup)
+        except telebot.apihelper.ApiException as e:
+            self.logger.warning("Can't send message to user %d: %s", user.tg_id, str(e))
 
-    def _show_error(self, message, user):
-        self.bot.send_message(user.tg_id, message)
+    def _update_text_message(self, chat_id, message_id, new_text):
+        try:
+            return self.bot.edit_message_text(new_text, chat_id, message_id)
+        except telebot.apihelper.ApiException as e:
+            self.logger.warning("Can't edit message #%d in chat #%d: %s", message_id, chat_id, str(e))
+
+    def _update_or_send_text_message(self, user, reply, new_text):
+        if reply is None:
+            return self._send_text_message(user, new_text)
+        else:
+            self._update_text_message(reply.chat.id, reply.message_id, new_text)
+            return reply
+
+    def _send_greeting_message(self, user):
+        try:
+            self.bot.send_message(user.tg_id, help_message, disable_web_page_preview=True)
+        except telebot.apihelper.ApiException as e:
+            self.logger.warning("Can't send message to user %d: %s", user.tg_id, str(e))
+
+    def _send_error(self, user, message):
+        self._send_text_message(user, message)
 
     def _show_blocked_msg(self, user):
-        self.bot.send_message(user.tg_id, "К вашему сожалению, вы были заблокированы :/")
+        try:
+            self.bot.send_message(user.tg_id, "К вашему сожалению, вы были заблокированы :/")
 
-        if user.tg_id not in self.bamboozled_users:
-            self.bamboozled_users.append(user.tg_id)
-            self.bot.send_sticker(user.tg_id, data="CAADAgADiwgAArcKFwABQMmDfPtchVkC")
+            if user.tg_id not in self.bamboozled_users:
+                self.bamboozled_users.append(user.tg_id)
+                self.bot.send_sticker(user.tg_id, data="CAADAgADiwgAArcKFwABQMmDfPtchVkC")
+        except telebot.apihelper.ApiException as e:
+            self.logger.warning("Can't send message to user %d: %s", user.tg_id, str(e))
 
     def _show_quota_reached_msg(self, user):
-        self.bot.send_message(user.tg_id, "🛑 Превышена квота на количество запросов. Попробуйте позже.")
+        self._send_error(user, "🛑 Превышена квота на количество запросов. Попробуйте позже")
 
     def _show_access_denied(self, user):
-        self.bot.send_message(user.tg_id, "❌ Доступ запрещён")
+        self._send_error(user, "❌ Доступ запрещён")
 
-    def _suggest_search(self, text, chat_id, message_id):
+    def _suggest_search(self, user, reply, text):
         kb = telebot.types.InlineKeyboardMarkup(row_width=2)
         kb.row(telebot.types.InlineKeyboardButton(
             text="🔍 " + text,
             switch_inline_query_current_chat=text,
         ))
-        self.bot.edit_message_text("Запрос не распознан. Нажмите на кнопку ниже, чтобы включить поиск",
-                                   chat_id, message_id)
-        self.bot.edit_message_reply_markup(chat_id, message_id, reply_markup=kb)
+
+        reply = self._update_or_send_text_message(
+            user, reply, "Запрос не распознан. Нажмите на кнопку ниже, чтобы включить поиск"
+        )
+        if reply is not None:
+            try:
+                return self.bot.edit_message_reply_markup(reply.chat.id, reply.message_id, reply_markup=kb)
+            except telebot.apihelper.ApiException as e:
+                self.logger.warning(
+                    "Can't edit message markup #%d in chat #%d: %s", reply.message_id, reply.chat.id, str(e)
+                )
 
 
 # COMMANDS HANDLERS #####
@@ -738,7 +754,7 @@ class TgFrontend:
     def broadcast_to_all_users(self, message, user):
         text = message.text.replace("/broadcast", "").strip()
         if len(text) == 0:
-            self.notify_user("Сообщение не должно быть пустым", user.core_id)
+            self._send_text_message(user, "Сообщение не должно быть пустым")
         else:
             self.core.broadcast_message(user.core_id, text)
 
@@ -749,7 +765,7 @@ class TgFrontend:
         self.core.switch_track(user.core_id)
 
     def start_handler(self, _message, user):
-        self.bot.send_message(user.tg_id, help_message, disable_web_page_preview=True)
+        self._send_greeting_message(user)
         self.send_menu_main(user)
 
 # USER INITIALIZATION #####
@@ -774,13 +790,19 @@ class TgFrontend:
                 last_name=user_info.last_name,
             )
             self.core.set_user_name(core_id, user.full_name())
-            self.bot.send_message(user.tg_id, help_message, disable_web_page_preview=True)
+            self._send_greeting_message(user)
             return user
 
 # USER MESSAGES HANDLERS #####
 
     def file_handler(self, message):
-        self.bot.send_message(message.from_user.id, "К сожалению, ваш файл не определяется как музыкальный")
+        try:
+            self.bot.send_message(message.from_user.id, "К сожалению, ваш файл не определяется как музыкальный")
+        except telebot.apihelper.ApiException as e:
+            self.logger.warning("Can't send message to user %d: %s", message.from_user.id, str(e))
 
     def sticker_handler(self, message):
-        self.bot.send_sticker(message.from_user.id, data="CAADAgADLwMAApAAAVAg-c0RjgqiVyMC")
+        try:
+            self.bot.send_sticker(message.from_user.id, data="CAADAgADLwMAApAAAVAg-c0RjgqiVyMC")
+        except telebot.apihelper.ApiException as e:
+            self.logger.warning("Can't send message to user %d: %s", message.from_user.id, str(e))
