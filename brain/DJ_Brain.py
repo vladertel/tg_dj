@@ -380,6 +380,16 @@ class DjBrain:
                     song.user_id
                 )
 
+    def broadcast_message(self, author_id, message):
+        author = self.get_user(author_id)
+
+        if not author.superuser:
+            raise PermissionDenied()
+
+        users = User.select()
+        for user in users:
+            self.frontend.notify_user("✉️ Сообщение от администратора\n\n%s" % message, user.id)
+
     def get_users(self, user_id, offset=0, limit=0):
         user = self.get_user(user_id)
 
