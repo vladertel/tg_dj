@@ -79,8 +79,7 @@ class DjBrain:
         self.scheduler.play_next(self.backend.get_current_song())
         self.scheduler.cleanup()
 
-    @staticmethod
-    def user_init_action():
+    def user_init_action(self):
         u = User.create()
         self.logger.info('New user#%d with name %s' % (u.id, u.name))
         return u.id
