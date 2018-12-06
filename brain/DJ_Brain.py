@@ -415,7 +415,7 @@ class DjBrain:
         if not user.superuser:
             raise PermissionDenied()
 
-        handled_user = self.get_user(handled_user_id)
+        handled_user = User.get(id=handled_user_id)
         requests = Request.select().filter(Request.user == handled_user).order_by(-Request.time).limit(10)
         counter = Request.select().filter(Request.user == handled_user).count()
 
