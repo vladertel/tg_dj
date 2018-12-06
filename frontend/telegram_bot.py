@@ -104,9 +104,16 @@ class TgFrontend:
         self.telegram_polling_task = self.core.loop.create_task(self.bot_polling())
 
     async def bot_polling(self):
-        while True:
-            await asyncio.sleep(self.interval)
-            await self.core.loop.run_in_executor(self.thread_pool, self.get_updates)
+        # noinspection PyBroadException
+        try:
+            while True:
+                await asyncio.sleep(self.interval)
+                await self.core.loop.run_in_executor(self.thread_pool, self.get_updates)
+        except concurrent.futures.CancelledError:
+            self.logger.info("Polling task have been canceled")
+        except Exception as e:
+            self.logger.error("Polling exception: %s", str(e))
+            traceback.print_exc()
 
     def get_updates(self):
         try:
