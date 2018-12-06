@@ -15,7 +15,6 @@ from web.server import StatusWebServer
 # Parse arguments
 parser = argparse.ArgumentParser()
 parser.add_argument("-f", "--config-file", type=str, default="config.ini")
-parser.add_argument("-v", "--verbosity", type=str, default=None)
 args = parser.parse_args()
 
 config = configparser.ConfigParser()
@@ -32,10 +31,6 @@ def hup_handler(_signum, _frame):
 signal.signal(signal.SIGHUP, hup_handler)
 
 # Setup logging
-if args.verbosity:
-    log_level = getattr(logging, args.verbosity.upper())
-else:
-    log_level = getattr(logging, config.get(config.default_section, "verbosity").upper())
 logging.basicConfig(format='%(asctime)s %(levelname)s [%(name)s - %(funcName)s]: %(message)s')
 
 # Start modules
