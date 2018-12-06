@@ -207,9 +207,9 @@ class DjBrain:
 
             self.logger.info("Song #%d (%s) have been skipped" % (track.id, track.full_title()))
             self.frontend.notify_user(
+                track.user_id,
                 "⚠️ Ваш трек удалён из очереди, так как он не нравится другим пользователям:\n%s"
                 % track.full_title(),
-                track.user_id
             )
 
         self.logger.debug("New track rating: %d" % len(track.haters))
@@ -228,14 +228,14 @@ class DjBrain:
 
         if user_curr_id is not None and user_next_id is not None and user_curr_id == user_next_id:
             self.frontend.notify_user(
+                user_curr_id,
                 "🎶 Запускаю ваш трек:\n%s\n\n🕓 Следующий тоже ваш:\n%s" % (track.full_title(), next_track.full_title()),
-                user_curr_id
             )
         else:
             if user_next_id is not None:
-                self.frontend.notify_user("🕓 Следующий трек ваш:\n%s" % next_track.full_title(), user_next_id)
+                self.frontend.notify_user(user_next_id, "🕓 Следующий трек ваш:\n%s" % next_track.full_title())
             if user_curr_id is not None:
-                self.frontend.notify_user("🎶 Запускаю ваш трек:\n%s" % track.full_title(), user_curr_id)
+                self.frontend.notify_user(user_curr_id, "🎶 Запускаю ваш трек:\n%s" % track.full_title())
 
         for fn in self.state_update_callbacks:
             fn(track)
@@ -374,9 +374,9 @@ class DjBrain:
                 self.scheduler.remove_from_queue(song.id)
                 self.logger.info("Song #%d (%s) have been removed from queue", song.id, song.full_title())
                 self.frontend.notify_user(
+                    song.user_id,
                     "⚠️ Ваш трек удалён из очереди, так как он не нравится другим пользователям:\n%s"
                     % song.full_title(),
-                    song.user_id
                 )
 
     def broadcast_message(self, author_id, message):
@@ -387,7 +387,7 @@ class DjBrain:
 
         users = User.select()
         for user in users:
-            self.frontend.notify_user("✉️ Сообщение от администратора\n\n%s" % message, user.id)
+            self.frontend.notify_user(user.id, "✉️ Сообщение от администратора\n\n%s" % message)
 
     def get_users(self, user_id, offset=0, limit=0):
         user = self.get_user(user_id)
