@@ -324,9 +324,8 @@ class TgFrontend:
         handlers = {
            'start': self.start_handler,
            'broadcast': self.broadcast_to_all_users,
-           'get_info': self.get_user_info,
-           'stop_playing': self.stop_playing,
-           'stop': self.stop_playing,
+           'stop_playback': self.stop_playback,
+           'stop_playing': self.stop_playback,
            'skip_song': self.skip_song,
            'skip': self.skip_song,
         }
@@ -341,7 +340,7 @@ class TgFrontend:
                 self.logger.warning("Unknown command: %s" % command)
                 return
 
-            handlers[command](message)
+            handlers[command](message, user)
 
     async def download(self, message, user):
         self.logger.debug("Download: " + str(message.text))
@@ -729,54 +728,26 @@ class TgFrontend:
         self.bot.edit_message_reply_markup(chat_id, message_id, reply_markup=kb)
 
 
-# UTILITY FUNCTIONS #####
-    def broadcast_to_all_users(self, message):
-        pass
-        # if message.from_user.id in superusers:
-        #     text = message.text.lstrip("/broadcast ")
-        #     if len(text) > 0:
-        #         for user in self.user_info:
-        #             self.bot.send_message(user, text)
-        # else:
-        #     self.bot.send_message(message.from_user.id, "You have no power here")
+# COMMANDS HANDLERS #####
 
-    def get_user_info(self, message):
-        pass
-        # if message.from_user.id in superusers:
-        #     try:
-        #         num = int(message.text.lstrip("/get_info "))
-        #     except ValueError:
-        #         self.bot.send_message(message.from_user.id, "bad id")
-        #     else:
-        #         if num in self.user_info:
-        #             self.bot.send_message(message.from_user.id, str(self.bot.get_chat(num).__dict__))
-        #         else:
-        #             self.bot.send_message(message.from_user.id, "no such user")
-        # else:
-        #     self.bot.send_message(message.from_user.id, "You have no power here")
+    def broadcast_to_all_users(self, message, user):
+        text = message.text.replace("/broadcast", "").strip()
+        if len(text) == 0:
+            self.notify_user("Сообщение не должно быть пустым", user.core_id)
+        else:
+            self.core.broadcast_message(user.core_id, text)
 
-# COMMANDS #####
-    def stop_playing(self, message):
-        user = self.init_user(message.from_user)
-        if user is None:
-            return
+    def stop_playback(self, _message, user):
+        self.core.stop_playback(user.core_id)
 
-        self.core.menu_action(["admin", "stop_playing"], user.core_id)
+    def skip_song(self, _message, user):
+        self.core.switch_track(user.core_id)
 
-    def skip_song(self, message):
-        user = self.init_user(message.from_user)
-        if user is None:
-            return
-
-        self.core.menu_action(["admin", "skip_song"], user.core_id)
-
-    def start_handler(self, message):
-        user = self.init_user(message.from_user)
-        if user is None:
-            return
-
+    def start_handler(self, _message, user):
         self.bot.send_message(user.tg_id, help_message, disable_web_page_preview=True)
         self.send_menu_main(user)
+
+# USER INITIALIZATION #####
 
     def init_user(self, user_info):
         try:
