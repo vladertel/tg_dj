@@ -153,6 +153,7 @@ class TgFrontend:
         self.logger.info("Polling have been stopped")
 
     async def message_handler(self, message):
+        # noinspection PyBroadException
         try:
             if message.entities and any(e.type == "bot_command" for e in message.entities):
                 await self.tg_handler(message, self.command)
@@ -164,25 +165,28 @@ class TgFrontend:
                 self.sticker_handler(message)
             else:
                 self.file_handler(message)
-        except Exception as e:
+        except Exception:
             traceback.print_exc()
 
     async def inline_query_handler(self, inline_query):
+        # noinspection PyBroadException
         try:
             await self.tg_handler(inline_query, self.search)
-        except Exception as e:
+        except Exception:
             traceback.print_exc()
 
     async def chosen_inline_result_handler(self, chosen_inline_result):
+        # noinspection PyBroadException
         try:
             await self.tg_handler(chosen_inline_result, self.search_select)
-        except Exception as e:
+        except Exception:
             traceback.print_exc()
 
     async def callback_query_handler(self, callback_query):
+        # noinspection PyBroadException
         try:
             await self.tg_handler(callback_query, self.menu_handler)
-        except Exception as e:
+        except Exception:
             traceback.print_exc()
 
     async def menu_handler(self, data, user):
@@ -217,7 +221,6 @@ class TgFrontend:
 
         elif path[0] == "admin" and path[1] == "skip_song":
             self.core.switch_track(user.core_id)
-            # TODO: await track switch
             self.send_menu_main(user)
 
         elif path[0] == "admin" and path[1] == "stop_playing":
