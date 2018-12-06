@@ -1,8 +1,8 @@
-import sys
 import asyncio
 import traceback
 import argparse
 import configparser
+import logging
 import signal
 import prometheus_client
 
@@ -12,40 +12,49 @@ from downloader.MasterDownloader import MasterDownloader
 from frontend.telegram_bot import TgFrontend
 from web.server import StatusWebServer
 
-sys.stdout = open(sys.stdout.fileno(), mode='w', encoding='utf8', buffering=1)
-sys.stderr = sys.stdout
-
+# Parse arguments
 parser = argparse.ArgumentParser()
 parser.add_argument("-f", "--config-file", type=str, default="config.ini")
+parser.add_argument("-v", "--verbosity", type=str, default=None)
 args = parser.parse_args()
 
 config = configparser.ConfigParser()
 config.read(args.config_file)
 
 
+# Reload config on sighup signal
 def hup_handler(_signum, _frame):
-    print("INFO: Caught sighup signal. Reloading configuration...")
+    logging.info("Caught sighup signal. Reloading configuration...")
     config.read(args.config_file)
-    print("INFO: Config reloaded")
+    logging.info("Config reloaded")
 
 
 signal.signal(signal.SIGHUP, hup_handler)
 
+# Setup logging
+if args.verbosity:
+    log_level = getattr(logging, args.verbosity.upper())
+else:
+    log_level = getattr(logging, config.get(config.default_section, "verbosity").upper())
+logging.basicConfig(format='%(asctime)s %(levelname)s [%(name)s - %(funcName)s]: %(message)s')
+
+# Start modules
 modules = [TgFrontend(config), MasterDownloader(config), VLCStreamer(config)]
 brain = DjBrain(config, *modules)
-
 web = StatusWebServer(config)
 web.bind_core(brain)
 
+# Start prometheus server
 prometheus_client.start_http_server(8910)
 
+# Run event loop
 loop = asyncio.get_event_loop()
 try:
     loop.run_forever()
 except (KeyboardInterrupt, SystemExit):
     pass
-print("FATAL: Main event loop has ended")
-print("DEBUG: Cleaning...")
+logging.info("Main event loop has ended")
+logging.debug("Cleaning...")
 for module in modules:
     try:
         module.cleanup()
@@ -56,8 +65,8 @@ try:
 except AttributeError:
     traceback.print_exc()
 
-print("FATAL: Closing loop...")
+logging.info("Closing loop...")
 loop.run_until_complete(asyncio.sleep(1))
 loop.stop()
 loop.close()
-print("DEBUG: Exit")
+logging.debug("Exit")

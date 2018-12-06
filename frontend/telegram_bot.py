@@ -5,6 +5,7 @@ import peewee
 import time
 import math
 import traceback
+import logging
 
 from .jinja_env import env
 import asyncio
@@ -66,6 +67,8 @@ class TgFrontend:
 
     def __init__(self, config):
         self.config = config
+        self.logger = logging.getLogger('tg_dj.bot')
+        self.logger.setLevel(getattr(logging, self.config.get("telegram", "verbosity", fallback="warning").upper()))
 
         self.last_update_id = 0
         self.error_interval = .25
@@ -97,7 +100,7 @@ class TgFrontend:
 
 # INIT #####
     def bot_init(self):
-        print("INFO [Bot]: Starting polling...")
+        self.logger.info("Starting polling...")
         self.telegram_polling_task = self.core.loop.create_task(self.bot_polling())
 
     async def bot_polling(self):
@@ -111,13 +114,13 @@ class TgFrontend:
             self.error_interval = .25
             if len(updates):
                 self.mon_tg_updates.inc(len(updates))
-                print("DEBUG [Bot]: Updates received: %s" % len(updates))
+                self.logger.debug("Updates received: %s" % len(updates))
             self.updates_handler(updates)
         except telebot.apihelper.ApiException as e:
             self.mon_tg_api_errors.inc(1)
-            print("ERROR [Bot]: API Exception")
-            print(e)
-            print("DEBUG [Bot]: Waiting for %d seconds until retry" % self.error_interval)
+            self.logger.error("API Exception: %s", str(e))
+            traceback.print_exc()
+            self.logger.debug("Waiting for %d seconds until retry" % self.error_interval)
             time.sleep(self.error_interval)
             self.error_interval *= 2
 
@@ -136,11 +139,11 @@ class TgFrontend:
                 asyncio.run_coroutine_threadsafe(self.callback_query_handler(update.callback_query), self.core.loop)
 
     def cleanup(self):
-        print("INFO [Bot - cleanup]: Destroying telegram polling loop...")
+        self.logger.info("Destroying telegram polling loop...")
         if self.telegram_polling_task is not None:
             self.telegram_polling_task.cancel()
         self.thread_pool.shutdown()
-        print("INFO [Bot - cleanup]: Polling have been stopped")
+        self.logger.info("Polling have been stopped")
 
     async def message_handler(self, message):
         try:
@@ -185,7 +188,7 @@ class TgFrontend:
 
         path = data.data.split(":")
         if len(path) == 0:
-            print("ERROR [Bot]: Bad menu path: " + str(path))
+            self.logger.error("Bad menu path: " + str(path))
             return
 
         if path[0] == "main":
@@ -244,7 +247,7 @@ class TgFrontend:
             self.send_menu_admin_user(user, handled_user_id)
 
         else:
-            print("ERROR [Bot]: Unknown menu: " + str(path))
+            self.logger.error("Unknown menu: %s", str(path))
 
     async def tg_handler(self, data, method):
         user = self.init_user(data.from_user)
@@ -265,7 +268,7 @@ class TgFrontend:
                 pass
 
         results = await self.core.search_action(user.id, query=query, message_callback=message_callback)
-        print("DEBUG [Bot - search]: Response from core: %d results" % len(results))
+        self.logger.debug("Response from core: %d results" % len(results))
 
         results_articles = []
         for song in results:
@@ -325,13 +328,13 @@ class TgFrontend:
             command = message.text[e.offset + 1:e.offset + e.length]
 
             if command not in handlers:
-                print("WARNING [Bot]: Unknown command: %s" % command)
+                self.logger.warning("Unknown command: %s" % command)
                 return
 
             handlers[command](message)
 
     async def download(self, message, user):
-        print("DEBUG [Bot]: Download: " + str(message.text))
+        self.logger.debug("Download: " + str(message.text))
         text = message.text
 
         if text[0:2] == "//":
@@ -409,7 +412,7 @@ class TgFrontend:
             try:
                 self.bot.delete_message(user.menu_chat_id, user.menu_message_id)
             except Exception as e:
-                print("WARNING [Bot]: delete_message exception: " + str(e))
+                self.logger.warning("Can't delete message: %s", str(e))
 
     def build_markup(self, text):
         lines = text.splitlines(False)
@@ -678,11 +681,11 @@ class TgFrontend:
         self.bot.send_message(user.tg_id, message_text, reply_markup=kb)
 
     def notify_user(self, message, uid):
-        print("DEBUG [Bot]: Trying to notify user#%d" % uid)
+        self.logger.debug("Trying to notify user#%d" % uid)
         try:
             user = User.get(User.core_id == uid)
         except peewee.DoesNotExist:
-            print("WARNING [Bot]: Trying to notify unexistent user#%d" % uid)
+            self.logger.warning("Trying to notify nonexistent user#%d" % uid)
             return
         self._show_status(message, user)
 
@@ -773,7 +776,7 @@ class TgFrontend:
                 user.last_name = user_info.last_name
                 user.save()
                 self.core.set_user_name(user.core_id, user.full_name())
-                print("DEBUG [Bot]: User name updated: " + user.full_name())
+                self.logger.info("User name updated: " + user.full_name())
             return user
         except peewee.DoesNotExist:
             core_id = self.core.user_init_action()

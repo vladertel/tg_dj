@@ -4,6 +4,7 @@ import re
 import os
 import time
 import traceback
+import logging
 
 from pytube import YouTube
 
@@ -17,6 +18,10 @@ class YoutubeDownloader(AbstractDownloader):
 
     def __init__(self, config):
         super().__init__(config)
+        self.logger = logging.getLogger("tg_dj.downloader.youtube")
+        self.logger.setLevel(
+            getattr(logging, self.config.get("downloader_youtube", "verbosity", fallback="warning").upper())
+        )
         self.yt_regex = re.compile(r"((?:https?://)?(?:www\.)?(?:m\.)?youtube\.com/watch\?v=[a-zA-Z0-9_-]{11})|((?:https?://)?(?:www\.)?(?:m\.)?youtu\.be/[a-zA-Z0-9_-]{11})", flags=re.IGNORECASE)
 
         self.download_status = {}
@@ -50,7 +55,7 @@ class YoutubeDownloader(AbstractDownloader):
         else:
             raise UnappropriateArgument()
 
-        print("INFO [YoutubeDownloader]: Getting url: " + url)
+        self.logger.info("Getting url: " + url)
         user_message("Загружаем информацию о видео...")
 
         media_dir = self.config.get("downloader", "media_dir", fallback="media")
@@ -103,19 +108,19 @@ class YoutubeDownloader(AbstractDownloader):
 
         file_path = os.path.join(file_dir, file_name) + ".mp4"
         if self.is_in_cache(file_path):
-            print("DEBUG [YoutubeDownloader]: Loading from cache: " + file_path)
+            self.logger.debug("Loading from cache: " + file_path)
             return file_path, video_title, "", seconds
 
         if not os.path.exists(file_dir):
             os.makedirs(file_dir)
-            print("DEBUG [YoutubeDownloader]: Media dir have been created: " + file_dir)
+            self.logger.debug("Media dir have been created: " + file_dir)
 
-        print("INFO [YoutubeDownloader]: Downloading audio from video: " + video_id)
+        self.logger.info("Downloading audio from video: " + video_id)
         user_message("Скачиваем...\n%s" % video_title)
 
         stream.download(output_path=file_dir, filename=file_name)
         self.touch_without_creation(file_path)
 
-        print("DEBUG [YoutubeDownloader]: File stored in path: " + file_path)
+        self.logger.debug("File stored in path: " + file_path)
 
         return file_path, video_title, "", seconds

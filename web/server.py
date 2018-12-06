@@ -4,6 +4,7 @@ import tornado.ioloop
 import tornado.web
 import tornado.websocket
 import asyncio
+import logging
 from prometheus_client import Gauge
 
 
@@ -20,11 +21,11 @@ class WebSocketHandler(tornado.websocket.WebSocketHandler):
         return True
 
     def open(self):
-        print(self.request.remote_ip, 'connected')
+        self.server.logger.info('Websocket connected: %s', str(self.request.connection.context.address))
         self.server.ws_clients.append(self)
 
     def on_close(self):
-        print(self.request.remote_ip, 'closed')
+        self.server.logger.info('Websocket disconnected: %s', str(self.request.connection.context.address))
         self.active = False
         try:
             self.server.ws_clients.remove(self)
@@ -41,7 +42,7 @@ class WebSocketHandler(tornado.websocket.WebSocketHandler):
         try:
             self.write_message(line)
         except tornado.websocket.WebSocketClosedError:
-            print(self.request.remote_ip, 'connection lost')
+            self.server.logger.info('Lost websocket %s', str(self.request.connection.context.address))
             self.on_close()
 
 
@@ -61,6 +62,8 @@ class StatusWebServer:
 
     def __init__(self, config):
         self.config = config
+        self.logger = logging.getLogger("tg_dj.web")
+        self.logger.setLevel(getattr(logging, self.config.get("web_server", "verbosity", fallback="warning").upper()))
 
         settings = {
             "static_path": os.path.join(os.path.dirname(__file__), "static"),
