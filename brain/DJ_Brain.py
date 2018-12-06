@@ -9,6 +9,7 @@ import asyncio
 import datetime
 import platform
 import traceback
+import logging
 
 from prometheus_client import Gauge
 
@@ -46,6 +47,8 @@ class DjBrain:
         :param backend:
         """
         self.config = config
+        self.logger = logging.getLogger('tg_dj.core')
+        self.logger.setLevel(getattr(logging, self.config.get("core", "verbosity", fallback="warning").upper()))
 
         self.isWindows = False
         if platform.system() == "Windows":
@@ -63,9 +66,7 @@ class DjBrain:
         self.backend.bind_core(self)
 
         self.state_update_callbacks = []
-
         self.play_next_track()
-
         self.queue_rating_check_task = self.loop.create_task(self.watch_queue_rating())
 
         # noinspection PyArgumentList
@@ -73,7 +74,7 @@ class DjBrain:
         self.mon_active_users.set_function(self.get_active_users_cnt)
 
     def cleanup(self):
-        print("DEBUG [Bot]: Cleaning up...")
+        self.logger.debug("Cleaning up...")
         self.queue_rating_check_task.cancel()
         self.scheduler.play_next(self.backend.get_current_song())
         self.scheduler.cleanup()
@@ -81,7 +82,7 @@ class DjBrain:
     @staticmethod
     def user_init_action():
         u = User.create()
-        print('INFO [Core]: New user#%d with name %s' % (u.id, u.name))
+        self.logger.info('New user#%d with name %s' % (u.id, u.name))
         return u.id
 
     @staticmethod
@@ -131,8 +132,8 @@ class DjBrain:
         if self.check_song_rating_values(active_users_cnt, active_haters_cnt):
             return True
 
-        print("INFO [Core]: Song #%d (%s) has bad rating (haters: %d, active: %d)"
-              % (song.id, song.full_title(), active_haters_cnt, active_users_cnt))
+        self.logger.info("Song #%d (%s) has bad rating (haters: %d, active: %d)",
+                     song.id, song.full_title(), active_haters_cnt, active_users_cnt)
         return False
 
     def check_song_rating_values(self, all_users, voted_users):
@@ -148,23 +149,23 @@ class DjBrain:
         progress_callback = progress_callback or (lambda _state: None)
 
         if not self.check_requests_quota(user) and not user.superuser:
-            print("DEBUG [Core]: Request quota reached by user#%d (%s)" % (user.id, user.name))
+            self.logger.debug("Request quota reached by user#%d (%s)" % (user.id, user.name))
             raise UserRequestQuotaReached
 
         if text:
-            print("DEBUG [Core]: New download (%s) from user#%d (%s)" % (text, user.id, user.name))
+            self.logger.debug("New download (%s) from user#%d (%s)" % (text, user.id, user.name))
             response = await self.downloader.download("text", text, progress_callback)
         elif result:
-            print("DEBUG [Core]: New download (%s) from user#%d (%s)" % (str(result), user.id, user.name))
+            self.logger.debug("New download (%s) from user#%d (%s)" % (str(result), user.id, user.name))
             response = await self.downloader.download("search_result", result, progress_callback)
         elif file:
-            print("DEBUG [Core]: New file #%s from user#%d (%s)" % (file["id"], user.id, user.name))
+            self.logger.debug("New file #%s from user#%d (%s)" % (file["id"], user.id, user.name))
             response = await self.downloader.download("file", file, progress_callback)
         else:
-            print("ERROR [Core]: No data for downloader (%s)" % (str(locals())))
+            self.logger.debug("No data for downloader (%s)" % (str(locals())))
             raise ValueError("No data for downloader")
 
-        print("DEBUG [Core]: Response from downloader: (%s)" % str(response))
+        self.logger.debug("Response from downloader: (%s)" % str(response))
         if response is None:
             raise DownloadFailed()
         file_path, title, artist, duration = response
@@ -189,7 +190,7 @@ class DjBrain:
         user = self.get_user(user_id)
         message_callback = message_callback or (lambda _state: None)
 
-        print("DEBUG [Core]: New search query \"%s\" from user#%d (%s)" % (query, user.id, user.name))
+        self.logger.debug("New search query \"%s\" from user#%d (%s)" % (query, user.id, user.name))
         return await self.downloader.search(query, message_callback)
 
     def play_next_track(self):
@@ -205,14 +206,14 @@ class DjBrain:
             if self.check_song_rating_values(active_users_cnt, active_haters_cnt):
                 break
 
-            print("INFO [Core]: Song #%d (%s) have been skipped" % (track.id, track.full_title()))
+            self.logger.info("Song #%d (%s) have been skipped" % (track.id, track.full_title()))
             self.frontend.notify_user(
                 "⚠️ Ваш трек удалён из очереди, так как он не нравится другим пользователям:\n%s"
                 % track.full_title(),
                 track.user_id
             )
 
-        print("DEBUG [Core]: New track rating: %d" % len(track.haters))
+        self.logger.debug("New track rating: %d" % len(track.haters))
 
         next_track = self.scheduler.get_next_song()
 
@@ -297,9 +298,9 @@ class DjBrain:
             handled_user = User.get(id=handled_user_id)
             handled_user.banned = True
             handled_user.save()
-            print("DEBUG [Core]: User banned")
+            self.logger.debug("User banned")
         except KeyError:
-            print("ERROR [Core]: User does not exists: can't ban user")
+            self.logger.error("User does not exists: can't ban user")
             raise KeyError("User does not exists: can't ban user")
 
     def unban_user(self, user_id, handled_user_id):
@@ -312,9 +313,9 @@ class DjBrain:
             handled_user = User.get(id=handled_user_id)
             handled_user.banned = False
             handled_user.save()
-            print("DEBUG [Core]: User unbanned")
+            self.logger.debug("User unbanned")
         except KeyError:
-            print("ERROR [Core]: User does not exists: can't unban user")
+            self.logger.error("User does not exists: can't unban user")
             raise KeyError("User does not exists: can't unban user")
 
     def get_state(self, user_id):
@@ -372,7 +373,7 @@ class DjBrain:
                     continue
 
                 self.scheduler.remove_from_queue(song.id)
-                print("INFO [Core]: Song #%d (%s) have been removed from queue" % (song.id, song.full_title()))
+                self.logger.info("Song #%d (%s) have been removed from queue", song.id, song.full_title())
                 self.frontend.notify_user(
                     "⚠️ Ваш трек удалён из очереди, так как он не нравится другим пользователям:\n%s"
                     % song.full_title(),

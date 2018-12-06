@@ -1,6 +1,7 @@
 import os
 import requests
 import re
+import logging
 
 from urllib import parse
 
@@ -13,6 +14,10 @@ class LinkDownloader(AbstractDownloader):
 
     def __init__(self, config):
         super().__init__(config)
+        self.logger = logging.getLogger("tg_dj.downloader.link")
+        self.logger.setLevel(
+            getattr(logging, self.config.get("downloader_link", "verbosity", fallback="warning").upper())
+        )
         self.mp3_dns_regex = re.compile(
             r"(?:https?://)?(?:www\.)?(?:[a-zA-Z0-9_-]{3,30}\.)+[a-zA-Z]{2,4}\/.*[a-zA-Z0-9_\?\&\=\-]*",
             flags=re.IGNORECASE)
@@ -42,7 +47,7 @@ class LinkDownloader(AbstractDownloader):
         if url is None:
             raise UnappropriateArgument()
 
-        print("DEBUG [LinkDownloader]: Sending HEAD to url: " + url)
+        self.logger.debug("Sending HEAD to url: " + url)
 
         media_dir = self.config.get("downloader", "media_dir", fallback="media")
 
@@ -55,7 +60,7 @@ class LinkDownloader(AbstractDownloader):
             return file_path, title, artist, duration
 
         user_message("Скачиваем...")
-        print("DEBUG [LinkDownloader]: Querying URL")
+        self.logger.debug("Querying URL")
 
         try:
             response_head = requests.head(url, allow_redirects=True)
@@ -66,8 +71,7 @@ class LinkDownloader(AbstractDownloader):
         try:
             file_size = int(response_head.headers['content-length'])
         except KeyError:
-            print("ERROR [LinkDownloader]: No content-length header. See headers below:")
-            print(str(response_head.headers))
+            self.logger.error("No content-length header. Headers: %s", str(response_head.headers))
             raise MediaSizeUnspecified()
         if file_size > 1000000 * self.config.getint("downloader", "max_file_size", fallback=self._default_max_size):
             raise MediaIsTooBig()

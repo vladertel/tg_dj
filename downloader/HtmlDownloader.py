@@ -3,6 +3,7 @@ import requests
 from time import sleep
 import lxml.html
 import hashlib
+import logging
 
 from user_agent import generate_user_agent
 
@@ -16,7 +17,10 @@ class HtmlDownloader(AbstractDownloader):
 
     def __init__(self, config):
         super().__init__(config)
-
+        self.logger = logging.getLogger("tg_dj.downloader.html")
+        self.logger.setLevel(
+            getattr(logging, self.config.get("downloader_html", "verbosity", fallback="warning").upper())
+        )
         self.songs_cache = {}
 
     def is_acceptable(self, kind, query):
@@ -30,7 +34,7 @@ class HtmlDownloader(AbstractDownloader):
         }
 
     def search(self, query, user_message=lambda text: True):
-        print("DEBUG [HtmlDownloader]: Search query: " + query)
+        self.logger.debug("Search query: " + query)
 
         if len(query.strip()) == 0:
             return []
@@ -38,7 +42,7 @@ class HtmlDownloader(AbstractDownloader):
         base_uri = self.config.get("downloader_html", "base_uri")
         search_uri = self.config.get("downloader_html", "search_page_uri")
 
-        print("DEBUG [HtmlDownloader]: Getting data from " + base_uri + " with query " + query)
+        self.logger.debug("Getting data from " + base_uri + " with query " + query)
         headers = self.get_headers()
         search_request = requests.get((base_uri + search_uri).format(query), headers=headers)
         if search_request.status_code != 200:
@@ -84,7 +88,7 @@ class HtmlDownloader(AbstractDownloader):
 
     def download(self, query, user_message=lambda text: True):
         result_id = query["id"]
-        print("DEBUG [HtmlDownloader]: Downloading result #" + str(result_id))
+        self.logger.debug("Downloading result #" + str(result_id))
 
         base_uri = self.config.get("downloader_html", "base_uri")
         download_xpath = self.config.get("downloader_html", "download_page_xpath")
@@ -93,7 +97,7 @@ class HtmlDownloader(AbstractDownloader):
         try:
             song = self.songs_cache[result_id]
         except KeyError:
-            print("ERROR [HtmlDownloader]: No search cache entry for id " + result_id)
+            self.logger.error("No search cache entry for id " + result_id)
             raise Exception("Внутренняя ошибка (запрошенная песня отсутствует в кэше поиска)")
 
         if song["duration"] > self.config.getint("downloader", "max_duration", fallback=self._default_max_duration):
@@ -110,14 +114,14 @@ class HtmlDownloader(AbstractDownloader):
         file_path = os.path.join(os.getcwd(), media_dir, file_name)
 
         if self.is_in_cache(file_path):
-            print("INFO [HtmlDownloader]: File %s already in cache" % result_id)
+            self.logger.info("File %s already in cache" % result_id)
             return file_path, song["title"], song["artist"], song["duration"]
 
         if not os.path.exists(os.path.join(os.getcwd(), media_dir)):
             os.makedirs(os.path.join(os.getcwd(), media_dir))
-            print("DEBUG [HtmlDownloader]: Media dir have been created: %s" % os.path.join(os.getcwd(), media_dir))
+            self.logger.debug("Media dir have been created: %s" % os.path.join(os.getcwd(), media_dir))
 
-        print("INFO [HtmlDownloader]: Downloading song #" + result_id)
+        self.logger.info("Downloading song #" + result_id)
         user_message("Скачиваем...\n%s — %s" % (song["artist"], song["title"]))
 
         response_head = requests.head(
@@ -130,7 +134,7 @@ class HtmlDownloader(AbstractDownloader):
         try:
             file_size = int(response_head.headers['content-length'])
         except KeyError as e:
-            print("ERROR [HtmlDownloader]: Тo such header: content-length. More information below\n" + str(e))
+            self.logger.error("No header \"content-length\". More information below\n" + str(e))
             raise ApiError
         if file_size > 1000000 * self.config.getint("downloader", "max_file_size", fallback=self._default_max_size):
             raise MediaIsTooBig(file_size)
@@ -145,10 +149,10 @@ class HtmlDownloader(AbstractDownloader):
                                                     % (int(p), song["artist"], song["title"])),
         )
 
-        print("DEBUG [HtmlDownloader]: Download complete #" + str(result_id))
+        self.logger.debug("Download completed #" + str(result_id))
 
         self.touch_without_creation(file_path)
 
-        print("DEBUG [HtmlDownloader]: File stored in path: " + file_path)
+        self.logger.debug("File stored in path: " + file_path)
 
         return file_path, song["title"], song["artist"], song["duration"]

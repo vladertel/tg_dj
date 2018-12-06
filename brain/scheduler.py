@@ -2,6 +2,7 @@ import threading
 import json
 import os
 import random
+import logging
 from prometheus_client import Gauge
 
 from utils import get_mp3_info
@@ -19,6 +20,8 @@ class Scheduler:
         :param configparser.ConfigParser config:
         """
         self.config = config
+        self.logger = logging.getLogger("tg_dj.scheduler")
+        self.logger.setLevel(getattr(logging, self.config.get("scheduler", "verbosity", fallback="warning").upper()))
 
         self.is_media_playing = False
         self.playlist = []
@@ -71,7 +74,7 @@ class Scheduler:
         random.shuffle(add_to_end)
         self.backlog += add_to_end
 
-        print("INFO [Scheduler - populate_backlog]: Fallback playlist length: %d " % len(self.backlog))
+        self.logger.info("Fallback playlist length: %d " % len(self.backlog))
 
     def cleanup(self):
         out_dict = {
@@ -82,7 +85,7 @@ class Scheduler:
         queue_file = self.config.get("scheduler", "queue_file", fallback="brain/queue.json")
         with open(queue_file, "w") as f:
             f.write(json.dumps(out_dict, ensure_ascii=False))
-            print("INFO [Scheduler - cleanup]: Queue has been saved to file \"%s\"" % queue_file)
+            self.logger.info("Queue has been saved to file \"%s\"" % queue_file)
 
     def push_track(self, path, title, artist, duration, user_id):
         self.lock.acquire()
@@ -101,11 +104,11 @@ class Scheduler:
         self.lock.acquire()
         if len(self.playlist) > 0:
             song = self.playlist.pop(0)
-            print("INFO [Scheduler - pop]: Playing song from main playlist: %s" % song.title)
+            self.logger.info("Playing song from main playlist: %s", song.title)
         else:
             try:
                 song = self.backlog.pop(0)
-                print("INFO [Scheduler - pop]: Playing song from fallback playlist: %s" % song.title)
+                self.logger.info("Playing song from fallback playlist: %s", song.title)
                 self.backlog_played.append(song)
 
                 if len(self.backlog) <= self.backlog_initial_size // 2:
@@ -150,7 +153,7 @@ class Scheduler:
             self.playlist.remove(song)
         except (ValueError, StopIteration):
             position = None
-            print("WARNING [Scheduler - remove]: Unable to remove song #%d from the playlist")
+            self.logger.warning("Unable to remove song #%d from the playlist")
         self.lock.release()
         return position
 
@@ -161,7 +164,7 @@ class Scheduler:
             self.playlist.remove(song)
             self.playlist.insert(0, song)
         except (ValueError, StopIteration):
-            print("WARNING [Scheduler - remove]: Unable to raise song #%d")
+            self.logger.warning("Unable to raise song #%d")
         self.lock.release()
 
     def queue_length(self):
@@ -174,7 +177,7 @@ class Scheduler:
             if user_id in song.haters:
                 song.haters.remove(user_id)
         except (ValueError, StopIteration):
-            print("WARNING [Scheduler - vote_up]: Unable to find song #%d in the playlist")
+            self.logger.warning("Unable to find song #%d in the playlist")
         self.lock.release()
 
     def vote_down(self, user_id, song_id):
@@ -184,5 +187,5 @@ class Scheduler:
             if user_id not in song.haters:
                 song.haters.append(user_id)
         except (ValueError, StopIteration):
-            print("WARNING [Scheduler - vote_down]: Unable to find song #%d in the playlist")
+            self.logger.warning("Unable to find song #%d in the playlist")
         self.lock.release()

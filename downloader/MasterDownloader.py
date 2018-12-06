@@ -2,6 +2,7 @@ import concurrent.futures
 from collections import OrderedDict
 import os
 import time
+import logging
 from prometheus_client import Gauge, Summary
 
 
@@ -25,6 +26,10 @@ class MasterDownloader:
         :param configparser.ConfigParser config:
         """
         self.config = config
+        self.logger = logging.getLogger("tg_dj.downloader.master")
+        self.logger.setLevel(
+            getattr(logging, self.config.get("downloader", "verbosity", fallback="warning").upper())
+        )
 
         self.handlers = OrderedDict([
             ("yt", YoutubeDownloader(config)),
@@ -57,14 +62,14 @@ class MasterDownloader:
                  os.path.isfile(os.path.join(files_dir, f)) and not f.startswith(".")]
 
         files.sort(key=lambda x: -os.path.getmtime(x))
-        print("Number of files: " + str(len(files)))
+        self.logger.debug("Number of files: %d / %d", len(files), files_storage_limit)
         if len(files) <= files_storage_limit:
-            print("filter_storage files < MAXIMUM_FILES_COUNT")
+            self.logger.debug("File storage: OK")
             return
         files_to_delete = files[files_storage_limit:]
         for file in files_to_delete:
             os.unlink(file)
-            print("deleted: " + file)
+            self.logger.info("File have been deleted: " + file)
 
     @mon_downloads_in_progress.track_inprogress()
     def thread_download(self, kind, query, callback):
@@ -105,7 +110,7 @@ class MasterDownloader:
             except NothingFound:
                 callback("Ничего не нашел по этому запросу :(")
             except Exception as e:
-                print("ERROR [MasterDownloader]: " + str(e))
+                self.logger.error(str(e))
                 raise e
             break
         if not accepted:
@@ -144,13 +149,13 @@ class MasterDownloader:
             except NothingFound:
                 return []
             except Exception as e:
-                print("ERROR [MasterDownloader]: " + str(e))
+                self.logger.error(str(e))
                 raise e
 
     async def download(self, kind, query, callback):
-        print("INFO [MasterDownloader]: Download action")
+        self.logger.info("Download action")
         return await self.core.loop.run_in_executor(self.thread_pool, self.thread_download, kind, query, callback)
 
     async def search(self, query, callback):
-        print("INFO [MasterDownloader]: Search action")
+        self.logger.info("Search action")
         return await self.core.loop.run_in_executor(self.thread_pool, self.thread_search, query, callback)

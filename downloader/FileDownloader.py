@@ -1,4 +1,5 @@
 import os
+import logging
 
 from .AbstractDownloader import AbstractDownloader
 from .exceptions import *
@@ -6,6 +7,13 @@ from .exceptions import *
 
 class FileDownloader(AbstractDownloader):
     name = "file downloader"
+
+    def __init__(self, config):
+        super().__init__(config)
+        self.logger = logging.getLogger("tg_dj.downloader.file")
+        self.logger.setLevel(
+            getattr(logging, self.config.get("downloader_file", "verbosity", fallback="warning").upper())
+        )
 
     def is_acceptable(self, kind, query):
         return kind == "file"
@@ -16,12 +24,12 @@ class FileDownloader(AbstractDownloader):
         file_size = query["size"]
         file_info = query["info"]
 
-        print("DEBUG [FileDownloader]: Downloading song #" + str(file_id))
+        self.logger.debug("Downloading song #" + str(file_id))
 
         artist = query["artist"].strip()
         title = query["title"].strip()
 
-        print("DEBUG [FileDownloader]: Title for song #" + str(file_id) + ": " + title)
+        self.logger.debug("Title for song #" + str(file_id) + ": " + title)
 
         if duration > self.config.getint("downloader", "max_duration", fallback=self._default_max_duration):
             raise MediaIsTooLong(duration)
@@ -37,7 +45,7 @@ class FileDownloader(AbstractDownloader):
             return file_path, title, artist, duration
 
         user_message("Скачиваем...\n%s" % title)
-        print("DEBUG [FileDownloader]: Querying Telegram API")
+        self.logger.debug("Querying Telegram API")
         tg_api_url = self.config.get("telegram", "api_url", fallback="https://api.telegram.org/")
         bot_token = self.config.get("telegram", "token")
 
@@ -48,10 +56,10 @@ class FileDownloader(AbstractDownloader):
             percent_callback=lambda p: user_message("Скачиваем [%d%%]...\n%s" % (int(p), title)),
         )
 
-        print("DEBUG [FileDownloader]: Download complete #" + str(file_id))
+        self.logger.debug("Download complete #" + str(file_id))
 
         self.touch_without_creation(file_path)
 
-        print("DEBUG [FileDownloader]: File stored in path: " + file_path)
+        self.logger.debug("File stored in path: " + file_path)
 
         return file_path, title, artist, duration
