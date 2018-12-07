@@ -34,6 +34,8 @@ help_message = """Приветствую тебя, %ЮЗЕРНЕЙМ%!
 
 STR_BACK = "🔙 Назад"
 STR_REFRESH = "🔄 Обновить"
+STR_REFRESH_SMALL = "Обновить"
+STR_HOME = "🏠 Домой"
 
 
 db = peewee.SqliteDatabase("db/telegram_bot.db")
@@ -580,7 +582,8 @@ class TgFrontend:
 
         kb.row(
             telebot.types.InlineKeyboardButton(text=STR_BACK, callback_data="queue:%d" % list_offset),
-            telebot.types.InlineKeyboardButton(text=STR_REFRESH, callback_data="song:%s" % song_id),
+            telebot.types.InlineKeyboardButton(text=STR_REFRESH_SMALL, callback_data="song:%s" % song_id),
+            telebot.types.InlineKeyboardButton(text=STR_HOME, callback_data="main"),
         )
 
         self.remove_old_menu(user)
@@ -640,14 +643,11 @@ class TgFrontend:
             )
         )
         kb.row(
+            telebot.types.InlineKeyboardButton(text=STR_BACK, callback_data="admin:list_users:0"),
             telebot.types.InlineKeyboardButton(
-                text=STR_BACK,
-                callback_data="admin:list_users:0"
+                text=STR_REFRESH_SMALL, callback_data="admin:user_info:%d" % handled_user_id
             ),
-            telebot.types.InlineKeyboardButton(
-                text=STR_REFRESH,
-                callback_data="admin:user_info:%d" % handled_user_id
-            )
+            telebot.types.InlineKeyboardButton(text=STR_HOME, callback_data="main"),
         )
 
         message_text = "👤 %s\n\n" % handled_user.name
