@@ -134,18 +134,19 @@ class TgFrontend:
             self.error_interval *= 2
 
     def updates_handler(self, updates):
+        loop = self.core.loop
         for update in updates:
             if update.update_id > self.last_update_id:
                 self.last_update_id = update.update_id
 
             if update.message:
-                asyncio.run_coroutine_threadsafe(self.message_handler(update.message), self.core.loop)
+                asyncio.run_coroutine_threadsafe(self.message_handler(update.message), loop)
             elif update.inline_query:
-                asyncio.run_coroutine_threadsafe(self.inline_query_handler(update.inline_query), self.core.loop)
+                asyncio.run_coroutine_threadsafe(self.inline_query_handler(update.inline_query), loop)
             elif update.chosen_inline_result:
-                asyncio.run_coroutine_threadsafe(self.chosen_inline_result_handler(update.chosen_inline_result), self.core.loop)
+                asyncio.run_coroutine_threadsafe(self.chosen_inline_result_handler(update.chosen_inline_result), loop)
             elif update.callback_query:
-                asyncio.run_coroutine_threadsafe(self.callback_query_handler(update.callback_query), self.core.loop)
+                asyncio.run_coroutine_threadsafe(self.callback_query_handler(update.callback_query), loop)
 
     def cleanup(self):
         self.logger.info("Destroying telegram polling loop...")
@@ -408,7 +409,8 @@ class TgFrontend:
             except Exception as e:
                 self.logger.warning("Can't delete message: %s", str(e))
 
-    def build_markup(self, text):
+    @staticmethod
+    def build_markup(text):
         lines = text.splitlines(False)
         btn_re = re.compile(r"(?:^|\|\|)\s*(?P<text>(?:[^|\\]|\\\|)+)|"
                             r"(?P<attr>(?:[^|\\=]|\\.)+)\s*=\s*(?P<val>(?:[^|\\]|\\.)*)")
