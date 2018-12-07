@@ -423,4 +423,5 @@ class DjBrain:
             "info": handled_user,
             "last_requests": [r for r in requests],
             "total_requests": counter,
+            "songs_in_queue": {p: s for p, s in enumerate(self.scheduler.get_queue()) if s.user_id == handled_user_id},
         }

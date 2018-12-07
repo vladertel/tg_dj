@@ -634,8 +634,14 @@ class TgFrontend:
         data = self.core.get_user_info(user.core_id, handled_user_id)
 
         handled_user = data["info"]
+        songs_in_queue = data["songs_in_queue"]
 
         kb = telebot.types.InlineKeyboardMarkup(row_width=2)
+        for pos in songs_in_queue:
+            kb.row(telebot.types.InlineKeyboardButton(
+                text="#%d: %s" % (pos + 1, songs_in_queue[pos].full_title()),
+                callback_data="song:%d" % songs_in_queue[pos].id
+            ))
         kb.row(
             telebot.types.InlineKeyboardButton(
                 text="Разбанить" if handled_user.banned else "Забанить нафиг",
