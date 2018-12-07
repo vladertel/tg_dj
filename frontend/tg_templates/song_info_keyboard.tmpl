@@ -1,0 +1,15 @@
+{% if superuser or user.id == song.user_id %}
+{{ "✅" if hated else "👎" }} Плохая музыка ({{ song.haters | length }}) | callback_data=vote:down:{{ song.id }}
+🚫 Удалить 🚫 | callback_data=admin:delete:{{ song.id }}
+{% else %}
+{{ "✅" if hated else "👎" }} Плохая музыка | callback_data=vote:down:{{ song.id }}
+{% endif %}
+{% if superuser %}
+    ⬆️ Играть следующим ⬆️ | callback_data=admin:raise:{{ song.id }}
+    {% if author is none %}
+        - 👨‍🎓 - | callback_data=//
+    {% else %}
+        👤 {{ author.name }} | callback_data=admin:user_info:{{ author.id }}
+    {% endif %}
+{% endif %}
+{{ STR_BACK }} | callback_data=queue:{{ list_offset }} || {{ STR_REFRESH_SMALL }} | callback_data=song:{{ song.id }} || {{ STR_HOME }} | callback_data=main

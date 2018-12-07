@@ -1,0 +1,9 @@
+{% for pos in songs_in_queue %}
+    #{{ pos + 1 }}: {{ songs_in_queue[pos].full_title() }} | callback_data=song:{{ songs_in_queue[pos].id }}
+{% endfor %}
+{% if info.banned %}
+    Разбанить | admin:unban_user:{{ info.id }}
+{% else %}
+    Забанить нафиг | admin:ban_user:{{ info.id }}
+{% endif %}
+{{ STR_BACK }} | callback_data=admin:list_users:0 || {{ STR_REFRESH_SMALL }} | callback_data=admin:user_info:{{ info.id }} || {{ STR_HOME }} | callback_data=main

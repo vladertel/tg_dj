@@ -1,0 +1,10 @@
+{% if current_song is not none %}
+🔊 [{{ current_song_progress | format_duration }} / {{ current_song.duration | format_duration }}]    👤 {{ current_user.name if current_user else "Студсовет" }}
+{{ current_song.full_title() }}
+
+{% endif %}
+{% if superuser and next_song is not none %}
+Следующий трек:
+⏱ {{ next_song.duration | format_duration }}    👤 {{ next_user.name if next_user else "Студсовет" }}
+{{ next_song.full_title() }}
+{% endif %}
