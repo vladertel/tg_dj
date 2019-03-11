@@ -1,4 +1,4 @@
-from brain.DJ_Brain import User, Request, db as brain_db
+from brain.models import User, Request, db as brain_db
 from frontend.telegram_bot import User as TgUser, db as tg_bot_db
 import peewee
 
