@@ -7,7 +7,7 @@ import signal
 import prometheus_client
 
 from brain.DJ_Brain import DjBrain
-from streamer.VLCStreamer import VLCStreamer
+from streamer.MPDStreamer import MPDStreamer
 from downloader.MasterDownloader import MasterDownloader
 from frontend.telegram_bot import TgFrontend
 from web.server import StatusWebServer
@@ -34,7 +34,7 @@ signal.signal(signal.SIGHUP, hup_handler)
 logging.basicConfig(format='%(asctime)s %(levelname)s [%(name)s - %(funcName)s]: %(message)s')
 
 # Start modules
-modules = [TgFrontend(config), MasterDownloader(config), VLCStreamer(config)]
+modules = [TgFrontend(config), MasterDownloader(config), MPDStreamer(config)]
 brain = DjBrain(config, *modules)
 web = StatusWebServer(config)
 web.bind_core(brain)

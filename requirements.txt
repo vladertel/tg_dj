@@ -9,4 +9,5 @@ mutagen
 user_agent
 pytelegrambotapi
 unidecode
-python-vlc
+#python-vlc
+python-mpd2
