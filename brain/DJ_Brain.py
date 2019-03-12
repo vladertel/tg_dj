@@ -218,11 +218,6 @@ class DjBrain:
 
         self.backend.switch_track(track)
 
-        json_file_path = os.path.join(os.getcwd(), "web", "dynamic", "current_song_info.json")
-        with open(json_file_path, 'w') as json_file:
-            data_to_save = json.dumps(track.to_dict())
-            json_file.write(data_to_save)
-
         user_curr_id = track.user_id
         user_next_id = None if next_track is None else next_track.user_id
 
