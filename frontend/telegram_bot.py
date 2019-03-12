@@ -77,8 +77,8 @@ class TgFrontend:
 
         self.bamboozled_users = []
 
-        self.songs_per_page = 3
-        self.users_per_page = 2
+        self.songs_per_page = 10
+        self.users_per_page = 10
 
         self.thread_pool = concurrent.futures.ThreadPoolExecutor()
         self.telegram_polling_task = None
