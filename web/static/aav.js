@@ -16,6 +16,9 @@
 
     var global_volume = 0.05;
 
+    var start_time = (new Date()).getTime();
+    var initial_lag = null;
+
     function preload() {
         var audioCtx = getAudioContext();
         myMediaElement = document.getElementById('stream');
@@ -28,6 +31,27 @@
 
         song_start_el = document.getElementById("song_start");
         song_duration_el = document.getElementById("song_duration");
+
+        initial_lag = get_lag();
+        console.log("Initial lag: " + initial_lag);
+
+        setInterval(
+            function (){
+                var lag = get_lag();
+                if (lag - initial_lag > 1) {
+                    myMediaElement.currentTime = myMediaElement.buffered.end(0)-1;
+                    console.log("Lag: " + (lag - initial_lag));
+                    console.log("Seeking forward...");
+                }
+            },
+            5000
+        );
+    }
+
+    function get_lag() {
+        var buf_size = myMediaElement.buffered.end(0) - myMediaElement.buffered.start(0);
+        var time_elapsed = ((new Date()).getTime() - start_time) / 1000;
+        return time_elapsed - buf_size;
     }
 
     function set_volume(value) {
