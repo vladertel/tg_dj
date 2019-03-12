@@ -14,7 +14,10 @@
     var line_offset = 120;
     var line_length = 255;
 
-    var global_volume = 0.05;
+    var volume_cookie_name = "dj_volume";
+    var global_volume = get_cookie(volume_cookie_name);
+    if (typeof global_volume === "undefined")
+        global_volume = 0.05
 
     var start_time = (new Date()).getTime();
     var initial_lag = null;
@@ -48,6 +51,13 @@
         );
     }
 
+    function get_cookie(name) {
+        var matches = document.cookie.match(new RegExp(
+            "(?:^|; )" + name.replace(/([\.$?*|{}\(\)\[\]\\\/\+^])/g, '\\$1') + "=([^;]*)"
+        ));
+        return matches ? decodeURIComponent(matches[1]) : undefined;
+    }
+
     function get_lag() {
         var buf_size = myMediaElement.buffered.end(0) - myMediaElement.buffered.start(0);
         var time_elapsed = ((new Date()).getTime() - start_time) / 1000;
@@ -56,6 +66,7 @@
 
     function set_volume(value) {
         myMediaElement.volume = global_volume = value;
+        document.cookie = (volume_cookie_name + "=" + global_volume + "; path=/");
     }
 
     function setup() {
