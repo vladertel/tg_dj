@@ -42,6 +42,12 @@ class MPDStreamer:
         self.mpd_client.connect("localhost", 6600)
         print(self.mpd_client.mpd_version)
 
+        self.mpd_client.stop()
+        self.mpd_client.clear()
+        self.mpd_client.consume(1)
+        self.mpd_client.single(0)
+        self.mpd_client.addid("silence.mp3")
+
     async def mpd_status_polling(self):
         try:
             while True:
@@ -57,7 +63,7 @@ class MPDStreamer:
 
     def get_updates(self):
         try:
-            updates = self.mpd_client.idle("player")
+            updates = self.mpd_client.idle("playlist")
             print(updates)
             self.error_interval = .25
             if len(updates):
@@ -71,10 +77,10 @@ class MPDStreamer:
             self.error_interval *= 2
 
     def updates_handler(self, updates):
-        if "player" in updates:
+        if "playlist" in updates:
             status = self.mpd_client.status()
             print(self.mpd_client.status())
-            if status["state"] == "stop":
+            if status["playlistlength"] == "1":
                 self.mpd_song_finished()
 
     def cleanup(self):
@@ -112,7 +118,8 @@ class MPDStreamer:
         except MPDCommandError:
             pass
         self.mpd_client.update("/")
-        track_id = self.mpd_client.addid(uri)
+        playlist_len = int(self.mpd_client.status()["playlistlength"])
+        track_id = self.mpd_client.addid(uri, playlist_len)
         self.mpd_client.playid(track_id)
         self.is_playing = True
         self.now_playing = track
