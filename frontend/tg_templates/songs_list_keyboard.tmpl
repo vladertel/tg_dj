@@ -1,0 +1,9 @@
+{% for song in list %}
+    {{ song.full_title() }} | callback_data=song:{{ song.id }}
+{% endfor %}
+
+{% if prev_offset >= 0 or next_offset < cnt %}
+    {% if offset == 0 %} . | callback_data=// {% else %} ⬅️ | callback_data=queue:{{ prev_offset }} {% endif %} || Стр. {{ page }} | callback_data=// || {% if next_offset >= cnt %} . | callback_data=// {% else %} ➡️ | callback_data=queue:{{ next_offset }} {% endif %}
+{% endif %}
+
+{{ STR_BACK }} | callback_data=main || {{ STR_REFRESH }} | callback_data=queue:{{ offset }}

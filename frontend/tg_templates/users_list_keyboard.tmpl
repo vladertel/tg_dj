@@ -1,0 +1,9 @@
+{% for user in list %}
+    #{{ user.id }}{% if user.name %} - {{ user.name }}{% endif %} | callback_data=admin:user_info:{{ user.id }}
+{% endfor %}
+
+{% if prev_offset >= 0 or next_offset < cnt %}
+    {% if offset == 0 %} . | callback_data=// {% else %} ⬅️ | callback_data=admin:list_users:{{ prev_offset }} {% endif %} || Стр. {{ page }} | callback_data=// || {% if next_offset >= cnt %} . | callback_data=// {% else %} ➡️ | callback_data=admin:list_users:{{ next_offset }} {% endif %}
+{% endif %}
+
+{{ STR_BACK }} | callback_data=main || {{ STR_REFRESH }} | callback_data=admin:list_users:{{ offset }}

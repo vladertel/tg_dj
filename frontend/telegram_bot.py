@@ -32,11 +32,6 @@ help_message = """Приветствую тебя, %ЮЗЕРНЕЙМ%!
 Если у вас исчезло меню, то вернуть его на место можно командой /start
 """
 
-STR_BACK = "🔙 Назад"
-STR_REFRESH = "🔄 Обновить"
-STR_REFRESH_SMALL = "Обновить"
-STR_HOME = "🏠 Домой"
-
 
 db = peewee.SqliteDatabase("db/telegram_bot.db")
 
@@ -453,182 +448,59 @@ class TgFrontend:
         return markup
 
     def send_menu_main(self, user):
-        menu_template = """
-            {% if superuser %}
-                {% if current_song is not none %}
-                    ⏹ Остановить | callback_data=admin:stop_playing || ▶️ Переключить | callback_data=admin:skip_song
-                {% else %}
-                    ▶️ Запустить | callback_data=admin:skip_song
-                {% endif %}
-            {% endif %}
-            {% if queue_len %}
-                📂 Очередь: {{ queue_len | make_caption(['трек', '', 'а', 'а', 'а', 'ов']) }} | callback_data=queue:0
-            {% endif %}
-            {% for pos in my_songs %}
-                #{{ pos + 1 }}: {{ my_songs[pos].full_title() }} | callback_data=song:{{ my_songs[pos].id }}
-            {% endfor %}
-            {% if superuser %}
-                👥 Пользователи | callback_data=admin:list_users:0
-            {% endif %}
-            🔍 Поиск музыки | switch_inline_query_current_chat=
-            🔄 Обновить | callback_data=main
-        """
-
-        msg_template = """
-            {% if current_song is not none %}
-                🔊 [{{ current_song_progress | format_duration }} / {{ current_song.duration | format_duration }}]    👤 {{ current_user.name if current_user else "Студсовет" }}
-                {{ current_song.full_title() }}\n
-            {% endif %}
-            {% if superuser and next_song is not none %}
-                Следующий трек:
-                ⏱ {{ next_song.duration | format_duration }}    👤 {{ next_user.name if next_user else "Студсовет" }}
-                {{ next_song.full_title() }}
-            {% endif %}
-        """
-
         state = self.core.get_state(user.core_id)
 
-        template = env.from_string(menu_template)
-        rendered = template.render(**state)
-        kb = self.build_markup(rendered)
-
-        template = env.from_string('\n'.join([l.strip() for l in msg_template.splitlines(False)]))
-        message_text = template.render(**state)
+        message_text = env.get_template("main_menu_text.tmpl").render(**state)
+        kb_text = env.get_template("main_menu_keyboard.tmpl").render(**state)
+        kb = self.build_markup(kb_text)
 
         self.remove_old_menu(user)
         self._send_text_message(user, message_text, reply_markup=kb)
 
     def send_menu_queue(self, user, offset):
         data = self.core.get_queue(user.core_id, offset, self.songs_per_page)
-        songs = data["list"]
-        songs_cnt = data["cnt"]
+        data["offset"] = offset
+        data["page"] = math.ceil(offset / self.songs_per_page) + 1
+        data["next_offset"] = offset + self.songs_per_page
+        data["prev_offset"] = max(offset - self.songs_per_page, 0)
 
+        songs_cnt = data["cnt"]
         if songs_cnt == 0:
             message_text = "Очередь воспроизведения пуста"
         else:
             message_text = "Очередь воспроизведения\nПесен в очереди: %d" % songs_cnt
 
-        kb = telebot.types.InlineKeyboardMarkup(row_width=3)
-        for song in songs:
-            kb.row(telebot.types.InlineKeyboardButton(text=song.full_title(), callback_data="song:%d" % song.id))
-
-        page = math.ceil(offset / self.songs_per_page) + 1
-        next_offset = offset + self.songs_per_page
-        prev_offset = max(offset - self.songs_per_page, 0)
-
-        nav = []
-        if prev_offset >= 0 or next_offset < songs_cnt:
-            nav.append(telebot.types.InlineKeyboardButton(
-                text="." if offset == 0 else "⬅️",
-                callback_data="//" if offset == 0 else "queue:%d" % prev_offset,
-            ))
-            nav.append(telebot.types.InlineKeyboardButton(
-                text="Стр. %d" % page,
-                callback_data="//"
-            ))
-            nav.append(telebot.types.InlineKeyboardButton(
-                text="." if next_offset >= songs_cnt else "➡️",
-                callback_data="//" if next_offset >= songs_cnt else "queue:%d" % next_offset
-            ))
-            kb.row(*nav)
-
-        kb.row(telebot.types.InlineKeyboardButton(text=STR_BACK, callback_data="main"),
-               telebot.types.InlineKeyboardButton(text=STR_REFRESH, callback_data="queue:%d" % offset))
+        kb_text = env.get_template("songs_list_keyboard.tmpl").render(**data)
+        kb = self.build_markup(kb_text)
 
         self.remove_old_menu(user)
         self._send_text_message(user, message_text, reply_markup=kb)
 
     def send_menu_song(self, user, song_id):
         data = self.core.get_song_info(user.core_id, song_id)
+        data["user"] = user
+        data["author"] = self.core.get_user_info(user, data["song"].user_id)["info"]
+        data["list_offset"] = ((data["position"] - 1) // self.songs_per_page) * self.songs_per_page
 
-        superuser = data['superuser']
-        kb = telebot.types.InlineKeyboardMarkup(row_width=3)
-
-        song = data["song"]
-        if song is None:
-            message_text = "🚫 Не удалось загрузить информацию о песне"
-            list_offset = 0
-        else:
-            duration = "{:d}:{:02d}".format(*list(divmod(song.duration, 60)))
-            position = data["position"]
-
-            list_offset = ((position - 1) // self.songs_per_page) * self.songs_per_page
-
-            message_text = "🎵 %s\n\nДлительность: %s\nМесто в очереди: %d" % \
-                           (song.full_title(), duration, position)
-
-            hated = data["hated"]
-            h_label = ("✅" if hated else "👎") + " Плохая музыка"
-            if superuser:
-                h_label += " (%d)" % len(song.haters)
-            kb.row(
-                telebot.types.InlineKeyboardButton(text=h_label, callback_data="vote:down:%s" % song_id),
-            )
-
-            if superuser or user.id == song.user_id:
-                kb.row(
-                    telebot.types.InlineKeyboardButton(text="🚫 Удалить 🚫", callback_data="admin:delete:%s" % song_id)
-                )
-            if superuser:
-                kb.row(
-                    telebot.types.InlineKeyboardButton(text="⬆️ Играть следующим ⬆️", callback_data="admin:raise:%s" % song_id)
-                )
-                author = self.core.get_user_info(user, song.user_id)["info"]
-                if author is None:
-                    kb.row(telebot.types.InlineKeyboardButton(
-                        text="- 👨‍🎓 -", callback_data="//"
-                    ))
-                else:
-                    kb.row(telebot.types.InlineKeyboardButton(
-                        text="👤 %s" % author.name, callback_data="admin:user_info:%s" % author.id
-                    ))
-
-        kb.row(
-            telebot.types.InlineKeyboardButton(text=STR_BACK, callback_data="queue:%d" % list_offset),
-            telebot.types.InlineKeyboardButton(text=STR_REFRESH_SMALL, callback_data="song:%s" % song_id),
-            telebot.types.InlineKeyboardButton(text=STR_HOME, callback_data="main"),
-        )
+        message_text = env.get_template("song_info_text.tmpl").render(**data)
+        kb_text = env.get_template("song_info_keyboard.tmpl").render(**data)
+        kb = self.build_markup(kb_text)
 
         self.remove_old_menu(user)
         self._send_text_message(user, message_text, reply_markup=kb)
 
     def send_menu_admin_list_users(self, user, offset):
         data = self.core.get_users(user.core_id, offset, self.users_per_page)
-        users = data["list"]
+        data["offset"] = offset
+        data["page"] = math.ceil(offset / self.users_per_page) + 1
+        data["next_offset"] = offset + self.users_per_page
+        data["prev_offset"] = max(offset - self.users_per_page, 0)
+
         users_cnt = data["cnt"]
 
-        if users_cnt == 0:
-            message_text = "Нет ни одного пользователя"
-        else:
-            message_text = "Количество пользователей: %d" % users_cnt
-
-        kb = telebot.types.InlineKeyboardMarkup(row_width=2)
-        for u in users:
-            button_text = "#" + str(u.id) + (" - %s" % u.name if u.name else "")
-            kb.row(telebot.types.InlineKeyboardButton(text=button_text, callback_data="admin:user_info:%d" % u.id))
-
-        page = math.ceil(offset / self.users_per_page) + 1
-        next_offset = offset + self.users_per_page
-        prev_offset = max(offset - self.users_per_page, 0)
-
-        nav = []
-        if prev_offset >= 0 or next_offset < users_cnt:
-            nav.append(telebot.types.InlineKeyboardButton(
-                text="." if offset == 0 else "⬅️",
-                callback_data="//" if offset == 0 else "admin:list_users:%d" % prev_offset,
-            ))
-            nav.append(telebot.types.InlineKeyboardButton(
-                text="Стр. %d" % page,
-                callback_data="//"
-            ))
-            nav.append(telebot.types.InlineKeyboardButton(
-                text="." if next_offset >= users_cnt else "➡️",
-                callback_data="//" if next_offset >= users_cnt else "admin:list_users:%d" % next_offset,
-            ))
-            kb.row(*nav)
-
-        kb.row(telebot.types.InlineKeyboardButton(text=STR_BACK, callback_data="main"),
-               telebot.types.InlineKeyboardButton(text=STR_REFRESH, callback_data="admin:list_users:%d" % offset))
+        message_text = "Нет ни одного пользователя" if users_cnt == 0 else "Количество пользователей: %d" % users_cnt
+        kb_text = env.get_template("users_list_keyboard.tmpl").render(**data)
+        kb = self.build_markup(kb_text)
 
         self.remove_old_menu(user)
         self._send_text_message(user, message_text, reply_markup=kb)
@@ -636,52 +508,18 @@ class TgFrontend:
     def send_menu_admin_user(self, user, handled_user_id):
         data = self.core.get_user_info(user.core_id, handled_user_id)
 
-        handled_user = data["info"]
-        songs_in_queue = data["songs_in_queue"]
-
-        kb = telebot.types.InlineKeyboardMarkup(row_width=2)
-        for pos in songs_in_queue:
-            kb.row(telebot.types.InlineKeyboardButton(
-                text="#%d: %s" % (pos + 1, songs_in_queue[pos].full_title()),
-                callback_data="song:%d" % songs_in_queue[pos].id
-            ))
-        kb.row(
-            telebot.types.InlineKeyboardButton(
-                text="Разбанить" if handled_user.banned else "Забанить нафиг",
-                callback_data=("admin:unban_user:%d" if handled_user.banned else "admin:ban_user:%d") % handled_user_id,
-            )
-        )
-        kb.row(
-            telebot.types.InlineKeyboardButton(text=STR_BACK, callback_data="admin:list_users:0"),
-            telebot.types.InlineKeyboardButton(
-                text=STR_REFRESH_SMALL, callback_data="admin:user_info:%d" % handled_user_id
-            ),
-            telebot.types.InlineKeyboardButton(text=STR_HOME, callback_data="main"),
-        )
-
-        message_text = "👤 %s\n\n" % handled_user.name
-
         try:
-            about_user_tg = User.get(User.core_id == handled_user.id)
-            message_text += "Telegram ID: %d\n" % about_user_tg.tg_id
-
+            about_user_tg = User.get(User.core_id == handled_user_id)
             if about_user_tg.login is None:
                 login = self.bot.get_chat(about_user_tg.tg_id).login
                 about_user_tg.login = login
-
-            if about_user_tg.login is not None:
-                message_text += "Login: @%s\n" % about_user_tg.login
-
-            message_text += "\n"
+            data["about_user_tg"] = about_user_tg
         except KeyError:
-            pass
+            data["about_user_tg"] = None
 
-        message_text += "Всего запросов: %d\n" % data['total_requests']
-        if len(data['last_requests']) > 0:
-            message_text += "Последние запросы:\n"
-            for r in data['last_requests']:
-                message_text += "- " + r.text + "\n"
-        message_text += "\n"
+        message_text = env.get_template("user_info_text.tmpl").render(**data)
+        kb_text = env.get_template("user_info_keyboard.tmpl").render(**data)
+        kb = self.build_markup(kb_text)
 
         self.remove_old_menu(user)
         self._send_text_message(user, message_text, reply_markup=kb)
