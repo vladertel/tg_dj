@@ -1,8 +1,12 @@
 {% if superuser %}
     {% if current_song is not none %}
-        ⏹ Остановить | callback_data=admin:stop_playing || ▶️ Переключить | callback_data=admin:skip_song
+        ⏹ Остановить | callback_data=admin:stop_playing || ▶️ Переключить | callback_data=skip_song
     {% else %}
-        ▶️ Запустить | callback_data=admin:skip_song
+        ▶️ Запустить | callback_data=skip_song
+    {% endif %}
+{% else %}
+    {% if current_user == me %}
+        ⏩ Пропустить песню | callback_data=skip_song
     {% endif %}
 {% endif %}
 {% if queue_len %}

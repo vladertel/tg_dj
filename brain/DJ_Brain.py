@@ -245,8 +245,9 @@ class DjBrain:
 
     def switch_track(self, user_id):
         user = self.get_user(user_id)
+        current_song = self.backend.get_current_song()
 
-        if not user.superuser:
+        if not user.superuser and not (current_song is not None and user_id == current_song.user_id):
             raise PermissionDenied()
 
         self.play_next_track()
@@ -325,6 +326,7 @@ class DjBrain:
             "next_user": self.get_user(next_song.user_id) if next_song else None,
             "my_songs": {p: s for p, s in enumerate(self.scheduler.get_queue()) if s.user_id == user_id},
             "superuser": user.superuser,
+            "me": user,
         }
     # TODO: Limit my_songs length?
 

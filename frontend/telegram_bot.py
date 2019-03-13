@@ -218,7 +218,7 @@ class TgFrontend:
             self.core.vote_song(user.core_id, sign, song_id)
             self.send_menu_song(user, song_id)
 
-        elif path[0] == "admin" and path[1] == "skip_song":
+        elif path[0] == "skip_song":
             self.core.switch_track(user.core_id)
             self.send_menu_main(user)
 
