@@ -1,18 +1,21 @@
 (function(){
     var fft, amplitude, source;
-    var myMediaElement;
+    var audio_el;
     var song_start_el;
     var song_duration_el;
 
     var dots = [];
     var numDots = 250;
     var rotation = 0;
+    var rotation_speed = 0;
 
     var dot_x_min = 70;
     var dot_x_max = 400;
 
     var line_offset = 120;
     var line_length = 255;
+
+    var prev_volume = 0;
 
     var volume_cookie_name = "dj_volume";
     var global_volume = get_cookie(volume_cookie_name);
@@ -24,31 +27,41 @@
 
     function preload() {
         var audioCtx = getAudioContext();
-        myMediaElement = document.getElementById('stream');
-        source = audioCtx.createMediaElementSource(myMediaElement);
+        audio_el = document.getElementById('stream');
+        source = audioCtx.createMediaElementSource(audio_el);
         source.connect(p5.soundOut);
-        document.getElementById("logo").onclick = function(e){
-            myMediaElement.muted = false;
-            myMediaElement.volume = global_volume;
-        };
 
         song_start_el = document.getElementById("song_start");
         song_duration_el = document.getElementById("song_duration");
 
-        initial_lag = get_lag();
-        console.log("Initial lag: " + initial_lag);
+        audio_el.oncanplaythrough = function() {
+            audio_el.muted = true;
+            audio_el.play();
 
-        setInterval(
-            function (){
-                var lag = get_lag();
-                if (lag - initial_lag > 1) {
-                    myMediaElement.currentTime = myMediaElement.buffered.end(0)-1;
-                    console.log("Lag: " + (lag - initial_lag));
-                    console.log("Seeking forward...");
-                }
-            },
-            5000
-        );
+            var play_btn = document.getElementById("logo");
+
+            play_btn.onclick = function(e){
+                audio_el.muted = false;
+                audio_el.volume = global_volume;
+            };
+
+            play_btn.style.opacity = "1"
+
+            initial_lag = get_lag();
+            console.log("Initial lag: " + initial_lag);
+
+            setInterval(
+                function (){
+                    var lag = get_lag();
+                    if (lag - initial_lag > 1) {
+                        audio_el.currentTime = audio_el.buffered.end(0)-1;
+                        console.log("Lag: " + (lag - initial_lag));
+                        console.log("Seeking forward...");
+                    }
+                },
+                5000
+            );
+        }
     }
 
     function get_cookie(name) {
@@ -59,13 +72,13 @@
     }
 
     function get_lag() {
-        var buf_size = myMediaElement.buffered.end(0) - myMediaElement.buffered.start(0);
+        var buf_size = audio_el.buffered.end(0) - audio_el.buffered.start(0);
         var time_elapsed = ((new Date()).getTime() - start_time) / 1000;
         return time_elapsed - buf_size;
     }
 
     function set_volume(value) {
-        myMediaElement.volume = global_volume = value;
+        audio_el.volume = global_volume = value;
         document.cookie = (volume_cookie_name + "=" + global_volume + "; path=/");
     }
 
@@ -97,7 +110,7 @@
         var volume = amplitude.getLevel() / global_volume;
         var spectrum = fft.analyze(128);
 
-        background(volume > 0.4 ? 30 : 0);
+        background(volume - prev_volume > 0.2 ? 60 : volume - prev_volume > 0.1 ? 30 : 0);
 
         push();
 
@@ -126,7 +139,9 @@
             dots[i].draw(volume);
             dots[i].move(volume);
         }
-        rotation = rotation + volume/7;
+
+        rotation_speed = volume * volume / 2;
+        rotation = rotation + rotation_speed;
 
         pop();
 
@@ -136,6 +151,8 @@
         noFill();
         stroke(127,125,161,210)
         arc(width/2, height/2, line_offset * 2 - 15, line_offset * 2 - 15, - PI / 2, PI * 2 * song_progress - PI / 2);
+
+        prev_volume = volume;
     }
 
 

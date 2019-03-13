@@ -30,14 +30,14 @@
         <p><a href="https://inbicst.ru/">https://inbicst.ru/</a></p>
     </footer>
     <div id="playback">
-        <audio hidden muted autoplay id="stream">
+        <audio hidden muted preload id="stream">
             <source src="{{ stream_url }}">
         </audio>
         <input type="hidden" id="song_offset" value="{{ song_progress }}">
         <input type="hidden" id="song_start" value="0">
         <input type="hidden" id="song_duration" value="{{ song_info['duration'] }}">
     </div>
-    <img id="logo" src="static/logo_white.png">
+    <img id="logo" src="static/logo_white.png" style="opacity: 0.5">
     <script>init();</script>
 </body>
 </html>
