@@ -1,0 +1,9 @@
+Трек добавлен в очередь (позиция: {{ position }})
+{{ track.full_title() }}
+
+{% if tracks_list | length > 1 %}
+Теперь ваш плейлист выглядит так:
+{% for pos in tracks_list %}
+- {{ tracks_list[pos].full_title() }}
+{% endfor %}
+{% endif %}

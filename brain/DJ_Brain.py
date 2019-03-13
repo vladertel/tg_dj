@@ -2,8 +2,6 @@
 # -*- coding: UTF-8 -*-
 
 import peewee
-import json
-import os
 import asyncio
 
 import datetime
@@ -132,7 +130,7 @@ class DjBrain:
             return True
 
         self.logger.info("Song #%d (%s) has bad rating (haters: %d, active: %d)",
-                     song.id, song.full_title(), active_haters_cnt, active_users_cnt)
+                         song.id, song.full_title(), active_haters_cnt, active_users_cnt)
         return False
 
     def check_song_rating_values(self, all_users, voted_users):
@@ -177,8 +175,11 @@ class DjBrain:
         if not author.superuser and not self.check_requests_quota(author):
             raise UserRequestQuotaReached
 
-        song, position = self.scheduler.push_track(file_path, title, artist, duration, user_id)
+        song, position = self.scheduler.add_track(file_path, title, artist, duration, user_id)
         self.store_user_activity(user)
+
+        if not self.scheduler.is_in_queue(user_id):
+            self.scheduler.add_to_queue(user_id)
 
         if self.backend.now_playing is None:
             self.play_next_track()
@@ -214,7 +215,7 @@ class DjBrain:
 
         self.logger.debug("New track rating: %d" % len(track.haters))
 
-        next_track = self.scheduler.get_next_song()
+        next_track = self.scheduler.get_first_track()
 
         self.backend.switch_track(track)
 
@@ -256,11 +257,11 @@ class DjBrain:
         user = self.get_user(user_id)
 
         if not user.superuser:
-            song, _ = self.scheduler.get_song(song_id)
+            song, _ = self.scheduler.get_track(song_id)
             if user.id != song.user_id:
                 raise PermissionDenied()
 
-        position = self.scheduler.remove_from_queue(song_id)
+        position = self.scheduler.remove_track(song_id)
 
         return position
 
@@ -268,7 +269,7 @@ class DjBrain:
         user = self.get_user(user_id)
 
         if not user.superuser:
-            song, _ = self.scheduler.get_song(song_id)
+            song, _ = self.scheduler.get_track(song_id)
             if user.id != song.user_id:
                 raise PermissionDenied()
 
@@ -316,7 +317,7 @@ class DjBrain:
     def get_state(self, user_id):
         user = self.get_user(user_id)
         current_song = self.backend.get_current_song()
-        next_song = self.scheduler.get_next_song()
+        next_song = self.scheduler.get_first_track()
         return {
             "queue_len": self.scheduler.queue_length(),
             "current_song": current_song,
@@ -324,7 +325,7 @@ class DjBrain:
             "current_song_progress": self.backend.get_song_progress(),
             "next_song": next_song,
             "next_user": self.get_user(next_song.user_id) if next_song else None,
-            "my_songs": {p: s for p, s in enumerate(self.scheduler.get_queue()) if s.user_id == user_id},
+            "my_songs": {p: s for p, s in enumerate(self.scheduler.get_user_tracks(user_id))},
             "superuser": user.superuser,
             "me": user,
         }
@@ -332,14 +333,14 @@ class DjBrain:
 
     def get_queue(self, _user_id, offset=0, limit=0):
         return {
-            "list": self.scheduler.get_queue(offset, limit),
+            "list": self.scheduler.get_queue_tracks(offset, limit),
             "cnt": self.scheduler.get_queue_length(),
         }
 
     def get_song_info(self, user_id, song_id):
         user = self.get_user(user_id)
 
-        (song, position) = self.scheduler.get_song(song_id)
+        (song, position) = self.scheduler.get_track(song_id)
 
         # TODO: Return superuser extra info
 
@@ -349,6 +350,18 @@ class DjBrain:
             "position": position,
             "superuser": user.superuser
         }
+
+    def enqueue(self, user_id):
+        position = self.scheduler.add_to_queue(user_id)
+        if position is None:
+            self.frontend.notify_user(
+                user_id, "Прежде, чем вставать в очередь, нужно добавить в плейлист хотя бы один трек"
+            )
+        else:
+            self.frontend.notify_user(
+                user_id, "Ваша позиция в очереди: %d" % position
+            )
+        return position
 
     def vote_song(self, user_id, sign, song_id):
         user = self.get_user(user_id)
@@ -420,5 +433,13 @@ class DjBrain:
             "info": handled_user,
             "last_requests": [r for r in requests],
             "total_requests": counter,
-            "songs_in_queue": {p: s for p, s in enumerate(self.scheduler.get_queue()) if s.user_id == handled_user_id},
+            "songs_in_queue": {p: s for p, s in enumerate(self.scheduler.get_user_tracks(handled_user_id))},
+        }
+
+    def get_user_info_minimal(self, handled_user_id):
+        handled_user = User.get(id=handled_user_id)
+
+        return {
+            "info": handled_user,
+            "songs_in_queue": {p: s for p, s in enumerate(self.scheduler.get_user_tracks(handled_user_id))},
         }

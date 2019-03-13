@@ -192,14 +192,22 @@ class TgFrontend:
         if data.data[0:2] == "//":
             return
 
-        user.menu_message_id = data.message.message_id
-        user.menu_chat_id = data.message.chat.id
-        user.save()
-
         path = data.data.split(":")
         if len(path) == 0:
             self.logger.error("Bad menu path: " + str(path))
             return
+
+        if path[0] == "-":
+            path.pop(0)
+            self._update_text_message(
+                chat_id=data.message.chat.id,
+                message_id=data.message.message_id,
+                new_markup=telebot.types.InlineKeyboardMarkup()
+            )
+        else:
+            user.menu_message_id = data.message.message_id
+            user.menu_chat_id = data.message.chat.id
+            user.save()
 
         if path[0] == "main":
             self.send_menu_main(user)
@@ -304,9 +312,7 @@ class TgFrontend:
                 result={"downloader": downloader, "id": result_id},
                 progress_callback=progress_callback
             )
-            self._update_or_send_text_message(
-                user, reply, "Песня в очереди. Позиция: %d\n%s" % (position, song.full_title())
-            )
+            self._send_song_added_message(user, reply, position, song)
         except NotAccepted:
             self._send_error(user, "🚫 Внутренняя ошибка: ни один загрузчик не принял запрос")
         except DownloadFailed:
@@ -351,9 +357,7 @@ class TgFrontend:
 
         try:
             song, position = await self.core.download_action(user.id, text=text, progress_callback=progress_callback)
-            self._update_or_send_text_message(
-                user, reply, "Песня в очереди. Позиция: %d\n%s" % (position, song.full_title())
-            )
+            self._send_song_added_message(user, reply, position, song)
         except NotAccepted:
             self._suggest_search(user, reply, text)
         except DownloadFailed:
@@ -380,9 +384,7 @@ class TgFrontend:
 
         try:
             song, position = await self.core.download_action(user.id, file=file, progress_callback=progress_callback)
-            self._update_or_send_text_message(
-                user, reply, "Песня в очереди. Позиция: %d\n%s" % (position, song.full_title())
-            )
+            self._send_song_added_message(user, reply, position, song)
         except NotAccepted:
             self._send_error(user, "🚫 Внутренняя ошибка: ни один загрузчик не принял запрос")
         except DownloadFailed:
@@ -464,13 +466,11 @@ class TgFrontend:
         data["next_offset"] = offset + self.songs_per_page
         data["prev_offset"] = max(offset - self.songs_per_page, 0)
 
-        songs_cnt = data["cnt"]
-        if songs_cnt == 0:
-            message_text = "Очередь воспроизведения пуста"
-        else:
-            message_text = "Очередь воспроизведения\nПесен в очереди: %d" % songs_cnt
+        for track in data["list"]:
+            track.author = self.core.get_user_info_minimal(track.user_id)["info"]
 
-        kb_text = env.get_template("songs_list_keyboard.tmpl").render(**data)
+        message_text = env.get_template("queue_text.tmpl").render(**data)
+        kb_text = env.get_template("queue_keyboard.tmpl").render(**data)
         kb = self.build_markup(kb_text)
 
         self.remove_old_menu(user)
@@ -479,7 +479,8 @@ class TgFrontend:
     def send_menu_song(self, user, song_id):
         data = self.core.get_song_info(user.core_id, song_id)
         data["user"] = user
-        data["author"] = self.core.get_user_info(user, data["song"].user_id)["info"]
+        if data["song"] is not None:
+            data["author"] = self.core.get_user_info_minimal(data["song"].user_id)["info"]
         data["list_offset"] = ((data["position"] - 1) // self.songs_per_page) * self.songs_per_page
 
         message_text = env.get_template("song_info_text.tmpl").render(**data)
@@ -539,17 +540,26 @@ class TgFrontend:
         except telebot.apihelper.ApiException as e:
             self.logger.warning("Can't send message to user %d: %s", user.tg_id, str(e))
 
-    def _update_text_message(self, chat_id, message_id, new_text):
+    def _update_text_message(self, chat_id, message_id, new_text=None, new_markup=None):
         try:
-            return self.bot.edit_message_text(new_text, chat_id, message_id)
+            reply = None
+            if new_markup and not new_text:
+                reply = self.bot.edit_message_reply_markup(
+                    chat_id=chat_id, message_id=message_id, reply_markup=new_markup
+                )
+            elif new_text:
+                reply = self.bot.edit_message_text(
+                    new_text, chat_id=chat_id, message_id=message_id, reply_markup=new_markup
+                )
+            return reply
         except telebot.apihelper.ApiException as e:
             self.logger.warning("Can't edit message #%d in chat #%d: %s", message_id, chat_id, str(e))
 
-    def _update_or_send_text_message(self, user, reply, new_text):
+    def _update_or_send_text_message(self, user, reply, new_text, new_markup=None):
         if reply is None:
-            return self._send_text_message(user, new_text)
+            return self._send_text_message(user, new_text, new_markup)
         else:
-            self._update_text_message(reply.chat.id, reply.message_id, new_text)
+            self._update_text_message(reply.chat.id, reply.message_id, new_text, new_markup)
             return reply
 
     def _send_greeting_message(self, user):
@@ -557,6 +567,16 @@ class TgFrontend:
             self.bot.send_message(user.tg_id, help_message, disable_web_page_preview=True)
         except telebot.apihelper.ApiException as e:
             self.logger.warning("Can't send message to user %d: %s", user.tg_id, str(e))
+
+    def _send_song_added_message(self, user, reply, position, track):
+        data = {
+            "position": position,
+            "track": track,
+            "tracks_list": self.core.get_user_info_minimal(user.core_id)["songs_in_queue"],
+        }
+
+        message_text = env.get_template("song_added_msg_text.tmpl").render(**data)
+        self._update_or_send_text_message(user, reply, message_text)
 
     def _send_error(self, user, message):
         self._send_text_message(user, message)
@@ -594,7 +614,6 @@ class TgFrontend:
                 self.logger.warning(
                     "Can't edit message markup #%d in chat #%d: %s", reply.message_id, reply.chat.id, str(e)
                 )
-
 
 # COMMANDS HANDLERS #####
 

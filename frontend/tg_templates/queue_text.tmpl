@@ -1,0 +1,11 @@
+{% if songs_cnt == 0 %}
+Очередь воспроизведения пуста
+{% else %}
+Очередь воспроизведения
+Пользователей в очереди: {{ cnt }}
+
+{% for track in list %}
+{{ (track.author.name or "Студсовет") }}
+ — {{track.full_title()}}
+{% endfor %}
+{% endif %}

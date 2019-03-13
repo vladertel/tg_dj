@@ -24,15 +24,21 @@ class Scheduler:
         self.logger.setLevel(getattr(logging, self.config.get("scheduler", "verbosity", fallback="warning").upper()))
 
         self.is_media_playing = False
-        self.playlist = []
+        self.playlists = {}
+        self.queue = []
         self.backlog = []
         self.backlog_played = []
         self.backlog_played_media = []
         self.backlog_initial_size = 0
 
+        self.playlists[-1] = []  # For tracks managed by admins
+
+        # noinspection PyArgumentList
+        self.mon_queue_len = Gauge('dj_queue_length', 'Queue length')
+        self.mon_queue_len.set_function(lambda: len(self.queue))
         # noinspection PyArgumentList
         self.mon_playlist_len = Gauge('dj_playlist_length', 'Playlist length')
-        self.mon_playlist_len.set_function(lambda: len(self.playlist))
+        self.mon_playlist_len.set_function(lambda: sum(map(lambda x: len(x), self.playlists)))
         # noinspection PyArgumentList
         self.mon_backlog_len = Gauge('dj_backlog_length', 'Backlog length')
         self.mon_backlog_len.set_function(lambda: len(self.backlog))
@@ -45,17 +51,21 @@ class Scheduler:
         try:
             queue_file = self.config.get("scheduler", "queue_file", fallback="brain/queue.json")
             with open(queue_file) as f:
-                dicts = json.loads(f.read())
-                Song.counter = dicts["last_id"]
-                queue = []
-                if len(dicts) > 0:
-                    for d in dicts["songs"]:
-                        queue.append(Song.from_dict(d))
-                    self.playlist = queue
+                data = json.loads(f.read())
+                self.queue = data["queue"]
+                Song.counter = data["last_id"]
+
+                for pl in data["playlists"]:
+                    user_id = pl["user_id"]
+                    self.playlists[user_id] = []
+                    for d in pl["tracks"]:
+                        track = Song.from_dict(d)
+                        self.playlists[user_id].append(track)
+
                 try:
-                    self.backlog_played_media = dicts["backlog_played_media"]
+                    self.backlog_played_media = data["backlog_played_media"]
                 except KeyError:
-                    self.backlog_played_media = dicts["backlog_already_played"]
+                    self.backlog_played_media = data["backlog_already_played"]
         except (FileNotFoundError, ValueError) as _:
             pass
 
@@ -79,7 +89,11 @@ class Scheduler:
     def cleanup(self):
         out_dict = {
             "last_id": Song.counter,
-            "songs": [a.to_dict() for a in self.playlist],
+            "queue": self.queue,
+            "playlists": [{
+                "user_id": user_id,
+                "tracks": [a.to_dict() for a in tracks],
+            } for user_id, tracks in self.playlists.items()],
             "backlog_played_media": [a.media for a in self.backlog_played]
         }
         queue_file = self.config.get("scheduler", "queue_file", fallback="brain/queue.json")
@@ -87,105 +101,197 @@ class Scheduler:
             f.write(json.dumps(out_dict, ensure_ascii=False))
             self.logger.info("Queue has been saved to file \"%s\"" % queue_file)
 
-    def push_track(self, path, title, artist, duration, user_id):
-        self.lock.acquire()
-        song = Song(path, title, artist, duration, user_id)
-        self.playlist.append(song)
-        self.lock.release()
-        return song, len(self.playlist)
+    # Tracks manipulations
 
-    def play_next(self, song):
+    def add_track(self, path, title, artist, duration, user_id):
         self.lock.acquire()
-        self.playlist.insert(0, song)
+        track = Song(path, title, artist, duration, user_id)
+
+        if user_id not in self.playlists:
+            self.playlists[user_id] = []
+
+        self.playlists[user_id].append(track)
         self.lock.release()
-        return song, len(self.playlist)
+        return track, len(self.playlists[user_id])
+
+    def remove_track(self, tid):
+        self.lock.acquire()
+        track, position = self.get_track(tid)
+        if track is not None:
+            user_id = track.user_id
+            self.playlists[user_id].remove(track)
+            if len(self.playlists[user_id]) == 0:
+                self.queue.remove(user_id)
+            self.logger.info("Playing track from main queue: %s", track.title)
+        else:
+            self.logger.warning("Unable to remove track #%d from the playlist" % tid)
+        self.lock.release()
+        return position
+
+    def raise_track(self, tid):
+        self.lock.acquire()
+        track, position = self.get_track(tid)
+        user_id = track.user_id
+        if track is not None:
+            self.playlists[user_id].remove(track)
+            self.playlists[user_id].insert(0, track)
+        else:
+            self.logger.warning("Unable to raise track #%d")
+        self.lock.release()
+
+    def play_next(self, track):
+        self.lock.acquire()
+        user_id = track.user_id
+        if user_id is None:
+            user_id = -1
+
+        self.playlists[user_id].insert(0, track)
+
+        try:
+            self.queue.remove(user_id)
+        except ValueError:
+            pass
+        self.queue.insert(0, user_id)
+
+        self.lock.release()
+
+        return track, len(self.playlists[user_id])
+
+    def get_track(self, tid):
+        for uid in self.playlists:
+            k = 0
+            for track in self.playlists[uid]:
+                k += 1
+                if tid == track.id:
+                    return track, k
+        return None, None
+
+    def get_all_tracks(self):
+        res = []
+        for uid in self.playlists:
+            res += [track for track in self.playlists[uid]]
+        return res
+
+    def get_user_tracks(self, user_id):
+        if user_id not in self.playlists:
+            return []
+        return self.playlists[user_id]
+
+    # First track
 
     def pop_first_track(self):
         self.lock.acquire()
-        if len(self.playlist) > 0:
-            song = self.playlist.pop(0)
-            self.logger.info("Playing song from main playlist: %s", song.title)
-        else:
+
+        track = None
+        for uid in self.queue:
+            if len(self.playlists[uid]) > 0:
+                track = self.playlists[uid].pop(0)
+                self.queue.remove(uid)
+                if len(self.playlists[uid]) != 0:
+                    self.queue.append(uid)
+                self.logger.info("Playing track from main queue: %s", track.title)
+
+        if track is None:
             try:
-                song = self.backlog.pop(0)
-                self.logger.info("Playing song from fallback playlist: %s", song.title)
-                self.backlog_played.append(song)
+                track = self.backlog.pop(0)
+                self.logger.info("Playing track from fallback playlist: %s", track.title)
+                self.backlog_played.append(track)
 
                 if len(self.backlog) <= self.backlog_initial_size // 2:
                     i = random.randrange(len(self.backlog_played))
                     self.backlog.append(self.backlog_played.pop(i))
             except IndexError:
-                song = None
+                track = None
         self.lock.release()
-        return song
+        return track
 
-    def get_next_song(self):
-        if len(self.playlist) > 0:
-            return self.playlist[0]
-        else:
-            try:
-                return self.backlog[0]
-            except IndexError:
-                return None
+    def get_first_track(self):
+        for uid in self.queue:
+            if len(self.playlists[uid]) > 0:
+                return self.playlists[uid][0]
+        try:
+            return self.backlog[0]
+        except IndexError:
+            return None
 
-    def get_song(self, sid):
-        k = 0
-        for song in self.playlist:
-            k += 1
-            if sid == song.id:
-                return song, k
-        return None, None
+    # Queue manipulations
 
     def get_queue(self, offset=0, limit=0):
         if limit == 0:
-            return list(self.playlist)[offset:]
+            return list(self.queue)[offset:]
         else:
-            return list(self.playlist)[offset:offset + limit]
+            return list(self.queue)[offset:offset + limit]
+
+    def get_queue_tracks(self, offset=0, limit=0):
+        queue_tracks = [self.playlists[uid][0] for uid in self.queue]
+        if limit == 0:
+            return list(queue_tracks)[offset:]
+        else:
+            return list(queue_tracks)[offset:offset + limit]
 
     def get_queue_length(self):
-        return len(self.playlist)
+        return len(self.queue)
 
-    def remove_from_queue(self, sid):
+    def queue_length(self):
+        return len(self.queue)
+
+    def is_in_queue(self, user_id):
+        return user_id in self.queue
+
+    def add_to_queue(self, user_id):
         self.lock.acquire()
-        try:
-            song = next(s for s in self.playlist if s.id == sid)
-            position = self.playlist.index(song)
-            self.playlist.remove(song)
-        except (ValueError, StopIteration):
-            position = None
-            self.logger.warning("Unable to remove song #%d from the playlist")
+        if user_id in self.queue:
+            position = self.queue.index(user_id)
+        else:
+            if len(self.playlists[user_id]) > 0:
+                self.queue.append(user_id)
+                position = len(self.queue)
+            else:
+                position = None
+                self.logger.warning("User can't enter queue with empty playlist")
         self.lock.release()
         return position
 
-    def raise_track(self, sid):
+    def remove_from_queue(self, user_id):
         self.lock.acquire()
         try:
-            song = next(s for s in self.playlist if s.id == sid)
-            self.playlist.remove(song)
-            self.playlist.insert(0, song)
-        except (ValueError, StopIteration):
-            self.logger.warning("Unable to raise song #%d")
+            position = self.queue.index(user_id)
+            self.queue.remove(user_id)
+        except ValueError:
+            position = None
+            self.logger.warning("Unable to remove user #%d from the queue" % user_id)
+        self.lock.release()
+        return position
+
+    def raise_user_in_queue(self, user_id):
+        self.lock.acquire()
+        try:
+            self.queue.remove(user_id)
+            self.queue.insert(0, user_id)
+        except ValueError:
+            self.logger.warning("Unable to raise user #%d in the queue" % user_id)
         self.lock.release()
 
-    def queue_length(self):
-        return len(self.playlist)
+    # Voting
 
-    def vote_up(self, user_id, song_id):
+    def vote_up(self, user_id, track_id):
         self.lock.acquire()
+        tracks = self.get_all_tracks()
         try:
-            song = next(s for s in self.playlist if s.id == song_id)
-            if user_id in song.haters:
-                song.haters.remove(user_id)
+            track = next(t for t in tracks if t.id == track_id)
+            if user_id in track.haters:
+                track.haters.remove(user_id)
         except (ValueError, StopIteration):
-            self.logger.warning("Unable to find song #%d in the playlist")
+            self.logger.warning("Unable to find track #%d in the playlists" % track_id)
         self.lock.release()
 
-    def vote_down(self, user_id, song_id):
+    def vote_down(self, user_id, track_id):
         self.lock.acquire()
+        tracks = self.get_all_tracks()
         try:
-            song = next(s for s in self.playlist if s.id == song_id)
-            if user_id not in song.haters:
-                song.haters.append(user_id)
+            track = next(t for t in tracks if t.id == track_id)
+            if user_id not in track.haters:
+                track.haters.append(user_id)
         except (ValueError, StopIteration):
-            self.logger.warning("Unable to find song #%d in the playlist")
+            self.logger.warning("Unable to find track #%d in the playlists" % track_id)
         self.lock.release()
