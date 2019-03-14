@@ -1,43 +1,47 @@
 
-class UrlOrNetworkProblem(Exception):
+class DownloaderException(Exception):
     pass
 
 
-class UrlProblem(Exception):
+class UrlOrNetworkProblem(DownloaderException):
     pass
 
 
-class MediaIsTooLong(Exception):
+class UrlProblem(DownloaderException):
     pass
 
 
-class MediaIsTooBig(Exception):
+class MediaIsTooLong(DownloaderException):
     pass
 
 
-class MediaSizeUnspecified(Exception):
+class MediaIsTooBig(DownloaderException):
     pass
 
 
-class BadReturnStatus(Exception):
+class MediaSizeUnspecified(DownloaderException):
     pass
 
 
-class NothingFound(Exception):
+class BadReturnStatus(DownloaderException):
     pass
 
 
-class UnappropriateArgument(Exception):
+class NothingFound(DownloaderException):
     pass
 
 
-class MultipleChoice(Exception):
+class UnappropriateArgument(DownloaderException):
     pass
 
 
-class ApiError(Exception):
+class MultipleChoice(DownloaderException):
     pass
 
 
-class NotAccepted(Exception):
+class ApiError(DownloaderException):
+    pass
+
+
+class NotAccepted(DownloaderException):
     pass
