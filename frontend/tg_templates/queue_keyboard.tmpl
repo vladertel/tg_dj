@@ -1,9 +1,17 @@
-{% for track in list %}
+{% for track in list[:users_cnt] %}
+    {% if user.core_id == track.user_id %}👤 {% endif %}{{ track.full_title() }} | callback_data=song:{{ track.id }}
+{% endfor %}
+
+{% if users_cnt > offset and not is_own_tracks %}
+✅ Ваш первый трек будет здесь | callback_data=//
+{% endif %}
+
+{% for track in list[users_cnt:] %}
     {{ track.full_title() }} | callback_data=song:{{ track.id }}
 {% endfor %}
 
-{% if prev_offset >= 0 or next_offset < cnt %}
-    {% if offset == 0 %} . | callback_data=// {% else %} ⬅️ | callback_data=queue:{{ prev_offset }} {% endif %} || Стр. {{ page }} | callback_data=// || {% if next_offset >= cnt %} . | callback_data=// {% else %} ➡️ | callback_data=queue:{{ next_offset }} {% endif %}
+{% if prev_offset >= 0 or next_offset < tracks_cnt %}
+    {% if offset == 0 %} . | callback_data=// {% else %} ⬅️ | callback_data=queue:{{ prev_offset }} {% endif %} || Стр. {{ page }} | callback_data=// || {% if next_offset >= tracks_cnt %} . | callback_data=// {% else %} ➡️ | callback_data=queue:{{ next_offset }} {% endif %}
 {% endif %}
 
 {{ STR_BACK }} | callback_data=main || {{ STR_REFRESH }} | callback_data=queue:{{ offset }}

@@ -466,6 +466,7 @@ class TgFrontend:
         data["page"] = math.ceil(offset / self.songs_per_page) + 1
         data["next_offset"] = offset + self.songs_per_page
         data["prev_offset"] = max(offset - self.songs_per_page, 0)
+        data["user"] = user
 
         for track in data["list"]:
             track.author = self.core.get_user_info_minimal(track.user_id)["info"]

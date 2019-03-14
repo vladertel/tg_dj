@@ -188,10 +188,34 @@ class Scheduler:
             res += [track for track in self.playlists[uid]]
         return res
 
+    def get_tracks_queue_length(self):
+        return sum(len(p) for p in (self.playlists[uid] for uid in self.queue if uid in self.playlists))
+
     def get_user_tracks(self, user_id):
         if user_id not in self.playlists:
             return []
         return self.playlists[user_id]
+
+    def get_queue_tracks(self, offset=0, limit=0):
+        tracks = []
+        queue = [uid for uid in self.queue if uid in self.playlists.keys()]
+
+        i = 0
+        while True:
+            end = True
+            for uid in queue:
+                if len(self.playlists[uid]) <= i:
+                    continue
+                tracks.append(self.playlists[uid][i])
+                end = False
+            i += 1
+            if end:
+                break
+
+        if limit == 0:
+            return tracks[offset:]
+        else:
+            return tracks[offset:offset + limit]
 
     # First track
 
@@ -241,17 +265,7 @@ class Scheduler:
         else:
             return list(self.queue)[offset:offset + limit]
 
-    def get_queue_tracks(self, offset=0, limit=0):
-        queue_tracks = [self.playlists[uid][0] for uid in self.queue]
-        if limit == 0:
-            return list(queue_tracks)[offset:]
-        else:
-            return list(queue_tracks)[offset:offset + limit]
-
-    def get_queue_length(self):
-        return len(self.queue)
-
-    def queue_length(self):
+    def get_users_queue_length(self):
         return len(self.queue)
 
     def is_in_queue(self, user_id):

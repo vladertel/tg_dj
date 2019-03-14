@@ -74,7 +74,9 @@ class DjBrain:
     def cleanup(self):
         self.logger.debug("Cleaning up...")
         self.queue_rating_check_task.cancel()
-        self.scheduler.play_next(self.backend.get_current_song())
+        current_track = self.backend.get_current_song()
+        if current_track is not None:
+            self.scheduler.play_next(current_track)
         self.scheduler.cleanup()
 
     def user_init_action(self):
@@ -183,9 +185,6 @@ class DjBrain:
 
         local_position, global_position = self.scheduler.get_track_position(track)
 
-        if self.backend.now_playing is None:
-            self.play_next_track()
-
         return track, local_position, global_position
 
     async def search_action(self, user_id, query, message_callback=None):
@@ -241,9 +240,10 @@ class DjBrain:
         return track, next_track
 
     def track_end_event(self):
+        # noinspection PyBroadException
         try:
             self.play_next_track()
-        except:
+        except Exception:
             traceback.print_exc()
 
     def switch_track(self, user_id):
@@ -325,7 +325,7 @@ class DjBrain:
         next_song = self.scheduler.get_first_track()
         user_tracks = self.scheduler.get_user_tracks(user_id)
         return {
-            "queue_len": self.scheduler.queue_length(),
+            "queue_len": self.scheduler.get_users_queue_length(),
             "current_song": current_song,
             "current_user": self.get_user(current_song.user_id) if current_song else None,
             "current_song_progress": self.backend.get_song_progress(),
@@ -335,12 +335,16 @@ class DjBrain:
             "superuser": user.superuser,
             "me": user,
         }
-    # TODO: Limit my_songs length?
 
-    def get_queue(self, _user_id, offset=0, limit=0):
+    def get_queue(self, user_id, offset=0, limit=0):
+        users_cnt = self.scheduler.get_users_queue_length()
+        tracks = self.scheduler.get_queue_tracks(offset, limit)
         return {
-            "list": self.scheduler.get_queue_tracks(offset, limit),
-            "cnt": self.scheduler.get_queue_length(),
+            "first_tracks": self.scheduler.get_queue_tracks(0, users_cnt),
+            "list": tracks,
+            "users_cnt": users_cnt,
+            "tracks_cnt": self.scheduler.get_tracks_queue_length(),
+            "is_own_tracks": any(track.user_id == user_id for track in tracks)
         }
 
     def get_song_info(self, user_id, song_id):
@@ -349,7 +353,7 @@ class DjBrain:
         track = self.scheduler.get_track(song_id)
         local_position, global_position = self.scheduler.get_track_position(track)
 
-        # TODO: Return superuser extra info
+        # TODO: Return extra info for superuser
 
         return {
             "song": track,

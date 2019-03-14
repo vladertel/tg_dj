@@ -2,10 +2,12 @@
 Очередь воспроизведения пуста
 {% else %}
 Очередь воспроизведения
-Пользователей в очереди: {{ cnt }}
+Пользователей в очереди: {{ users_cnt }}
 
-{% for track in list %}
-{{ (track.author.name or "Студсовет") }}
- — {{track.full_title()}}
+{% for track in first_tracks %}
+🎶 {{track.full_title()}}
+⏱ {{ track.duration | format_duration }}    👤 {{ track.author.name if track.author else "Студсовет" }}
+
 {% endfor %}
 {% endif %}
+... и ещё {{ tracks_cnt - users_cnt }} треков
