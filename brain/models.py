@@ -51,16 +51,27 @@ class Song:
     def __str__(self):
         return "Song(title: %s, artist: %s, id: %d)".format(self.title, self.artist, self.id)
 
-    def to_dict(self):
-        return {
-            "id": self.id,
-            "title": self.title,
-            "artist": self.artist,
-            "duration": self.duration,
-            "user_id": self.user_id,
-            "media": self.media,
-            "haters": self.haters,
-        }
+    def to_dict(self=None):
+        if self:
+            return {
+                "id": self.id,
+                "title": self.title,
+                "artist": self.artist,
+                "duration": self.duration,
+                "user_id": self.user_id,
+                "media": self.media,
+                "haters": self.haters,
+            }
+        else:
+            return {
+                "id": 0,
+                "title": "",
+                "artist": "",
+                "duration": 1,
+                "user_id": 0,
+                "media": "",
+                "haters": [],
+            }
 
     def full_title(self):
         if self.artist is not None and len(self.artist) > 0 and self.title is not None and len(self.title) > 0:

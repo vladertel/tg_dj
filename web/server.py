@@ -7,6 +7,8 @@ import asyncio
 import logging
 from prometheus_client import Gauge
 
+from brain.models import Song
+
 
 # noinspection PyAbstractClass,PyAttributeOutsideInit
 class WebSocketHandler(tornado.websocket.WebSocketHandler):
@@ -96,9 +98,11 @@ class StatusWebServer:
         self.core.add_state_update_callback(self.update_state)
 
     def get_current_state(self):
-        song = self.core.backend.get_current_song().to_dict()
+        track = self.core.backend.get_current_song()
+        track_dict = Song.to_dict(track)
+
         progress = self.core.backend.get_song_progress()
-        return song, progress
+        return track_dict, progress
 
     def update_state(self, track):
         self.broadcast_update(track.to_dict())

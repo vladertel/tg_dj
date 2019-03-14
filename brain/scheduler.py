@@ -200,12 +200,15 @@ class Scheduler:
 
         track = None
         for uid in self.queue:
-            if len(self.playlists[uid]) > 0:
-                track = self.playlists[uid].pop(0)
-                self.queue.remove(uid)
-                if len(self.playlists[uid]) != 0:
-                    self.queue.append(uid)
-                self.logger.info("Playing track from main queue: %s", track.title)
+            if len(self.playlists[uid]) == 0:
+                continue
+
+            track = self.playlists[uid].pop(0)
+            self.queue.remove(uid)
+            if len(self.playlists[uid]) != 0:
+                self.queue.append(uid)
+            self.logger.info("Playing track from main queue: %s", track.title)
+            break
 
         if track is None:
             try:
