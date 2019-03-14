@@ -109,6 +109,8 @@ class MasterDownloader:
                          "Попробуйте повторить позже")
             except NothingFound:
                 callback("Ничего не нашел по этому запросу :(")
+            except DownloaderException as e:
+                callback(str(e.args[0]))
             except Exception as e:
                 self.logger.error(str(e))
                 raise e
