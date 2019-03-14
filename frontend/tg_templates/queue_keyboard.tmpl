@@ -7,7 +7,7 @@
 {% endif %}
 
 {% for track in list[users_cnt:] %}
-    {{ track.full_title() }} | callback_data=song:{{ track.id }}
+    {% if user.core_id == track.user_id %}👤 {% endif %}{{ track.full_title() }} | callback_data=song:{{ track.id }}
 {% endfor %}
 
 {% if prev_offset >= 0 or next_offset < tracks_cnt %}
