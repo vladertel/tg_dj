@@ -112,11 +112,13 @@ class Scheduler:
 
         self.playlists[user_id].append(track)
         self.lock.release()
-        return track, len(self.playlists[user_id])
+
+        return track
 
     def remove_track(self, tid):
         self.lock.acquire()
-        track, position = self.get_track(tid)
+        track = self.get_track(tid)
+        local_pos, global_pos = self.get_track_position(track)
         if track is not None:
             user_id = track.user_id
             self.playlists[user_id].remove(track)
@@ -126,11 +128,11 @@ class Scheduler:
         else:
             self.logger.warning("Unable to remove track #%d from the playlist" % tid)
         self.lock.release()
-        return position
+        return global_pos
 
     def raise_track(self, tid):
         self.lock.acquire()
-        track, position = self.get_track(tid)
+        track = self.get_track(tid)
         user_id = track.user_id
         if track is not None:
             self.playlists[user_id].remove(track)
@@ -158,13 +160,27 @@ class Scheduler:
         return track, len(self.playlists[user_id])
 
     def get_track(self, tid):
-        for uid in self.playlists:
-            k = 0
-            for track in self.playlists[uid]:
-                k += 1
-                if tid == track.id:
-                    return track, k
-        return None, None
+        user_ids = (uid for uid in self.queue if uid in self.playlists.keys())
+        for uid in user_ids:
+            for t in self.playlists[uid]:
+                if t.id == tid:
+                    return t
+        return None
+
+    def get_track_position(self, track):
+        if track is None:
+            return None, None
+
+        user_ids = (uid for uid in self.queue if uid in self.playlists.keys())
+
+        user_position = self.queue.index(track.user_id)
+        user_ids_ahead = self.queue[:user_position + 1]
+
+        loc = self.playlists[track.user_id].index(track) + 1
+        glob = sum(map(lambda uid: min(len(self.playlists[uid]), loc - 1), user_ids)) + \
+            sum(1 for uid in user_ids_ahead if len(self.playlists[uid]) >= loc)
+
+        return loc, glob
 
     def get_all_tracks(self):
         res = []

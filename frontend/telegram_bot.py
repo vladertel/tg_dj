@@ -307,12 +307,12 @@ class TgFrontend:
             self._update_or_send_text_message(user, reply, progress_msg)
 
         try:
-            song, position = await self.core.download_action(
+            song, lp, gp = await self.core.download_action(
                 user.id,
                 result={"downloader": downloader, "id": result_id},
                 progress_callback=progress_callback
             )
-            self._send_song_added_message(user, reply, position, song)
+            self._send_song_added_message(user, reply, gp, song)
         except NotAccepted:
             self._send_error(user, "🚫 Внутренняя ошибка: ни один загрузчик не принял запрос")
         except DownloadFailed:
@@ -356,8 +356,8 @@ class TgFrontend:
             self._update_or_send_text_message(user, reply, progress_msg)
 
         try:
-            song, position = await self.core.download_action(user.id, text=text, progress_callback=progress_callback)
-            self._send_song_added_message(user, reply, position, song)
+            song, lp, gp = await self.core.download_action(user.id, text=text, progress_callback=progress_callback)
+            self._send_song_added_message(user, reply, gp, song)
         except NotAccepted:
             self._suggest_search(user, reply, text)
         except DownloadFailed:
@@ -383,8 +383,8 @@ class TgFrontend:
         }
 
         try:
-            song, position = await self.core.download_action(user.id, file=file, progress_callback=progress_callback)
-            self._send_song_added_message(user, reply, position, song)
+            song, lp, gp = await self.core.download_action(user.id, file=file, progress_callback=progress_callback)
+            self._send_song_added_message(user, reply, gp, song)
         except NotAccepted:
             self._send_error(user, "🚫 Внутренняя ошибка: ни один загрузчик не принял запрос")
         except DownloadFailed:
@@ -481,7 +481,9 @@ class TgFrontend:
         data["user"] = user
         if data["song"] is not None:
             data["author"] = self.core.get_user_info_minimal(data["song"].user_id)["info"]
-        data["list_offset"] = ((data["position"] - 1) // self.songs_per_page) * self.songs_per_page
+            data["list_offset"] = ((data["global_position"] - 1) // self.songs_per_page) * self.songs_per_page
+        else:
+            data["list_offset"] = 0
 
         message_text = env.get_template("song_info_text.tmpl").render(**data)
         kb_text = env.get_template("song_info_keyboard.tmpl").render(**data)

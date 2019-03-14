@@ -175,16 +175,18 @@ class DjBrain:
         if not author.superuser and not self.check_requests_quota(author):
             raise UserRequestQuotaReached
 
-        song, position = self.scheduler.add_track(file_path, title, artist, duration, user_id)
+        track = self.scheduler.add_track(file_path, title, artist, duration, user_id)
         self.store_user_activity(user)
 
         if not self.scheduler.is_in_queue(user_id):
             self.scheduler.add_to_queue(user_id)
 
+        local_position, global_position = self.scheduler.get_track_position(track)
+
         if self.backend.now_playing is None:
             self.play_next_track()
 
-        return song, position
+        return track, local_position, global_position
 
     async def search_action(self, user_id, query, message_callback=None):
         user = self.get_user(user_id)
@@ -257,7 +259,7 @@ class DjBrain:
         user = self.get_user(user_id)
 
         if not user.superuser:
-            song, _ = self.scheduler.get_track(song_id)
+            song = self.scheduler.get_track(song_id)
             if user.id != song.user_id:
                 raise PermissionDenied()
 
@@ -265,15 +267,18 @@ class DjBrain:
 
         return position
 
-    def raise_track(self, user_id, song_id):
+    def raise_track(self, user_id, track_id):
         user = self.get_user(user_id)
 
         if not user.superuser:
-            song, _ = self.scheduler.get_track(song_id)
+            song = self.scheduler.get_track(track_id)
             if user.id != song.user_id:
                 raise PermissionDenied()
 
-        self.scheduler.raise_track(song_id)
+        self.scheduler.raise_track(track_id)
+
+        track = self.scheduler.get_track(track_id)
+        self.scheduler.raise_user_in_queue(track.user_id)
 
     def stop_playback(self, user_id):
         user = self.get_user(user_id)
@@ -318,6 +323,7 @@ class DjBrain:
         user = self.get_user(user_id)
         current_song = self.backend.get_current_song()
         next_song = self.scheduler.get_first_track()
+        user_tracks = self.scheduler.get_user_tracks(user_id)
         return {
             "queue_len": self.scheduler.queue_length(),
             "current_song": current_song,
@@ -325,7 +331,7 @@ class DjBrain:
             "current_song_progress": self.backend.get_song_progress(),
             "next_song": next_song,
             "next_user": self.get_user(next_song.user_id) if next_song else None,
-            "my_songs": {p: s for p, s in enumerate(self.scheduler.get_user_tracks(user_id))},
+            "my_songs": {self.scheduler.get_track_position(t)[1]: t for t in user_tracks},
             "superuser": user.superuser,
             "me": user,
         }
@@ -340,14 +346,16 @@ class DjBrain:
     def get_song_info(self, user_id, song_id):
         user = self.get_user(user_id)
 
-        (song, position) = self.scheduler.get_track(song_id)
+        track = self.scheduler.get_track(song_id)
+        local_position, global_position = self.scheduler.get_track_position(track)
 
         # TODO: Return superuser extra info
 
         return {
-            "song": song,
-            "hated": user_id in song.haters if song else False,
-            "position": position,
+            "song": track,
+            "hated": user_id in track.haters if track else False,
+            "local_position": local_position,
+            "global_position": global_position,
             "superuser": user.superuser
         }
 
@@ -428,18 +436,20 @@ class DjBrain:
         handled_user = User.get(id=handled_user_id)
         requests = Request.select().filter(Request.user == handled_user).order_by(-Request.time).limit(10)
         counter = Request.select().filter(Request.user == handled_user).count()
+        tracks = self.scheduler.get_user_tracks(handled_user_id)
 
         return {
             "info": handled_user,
             "last_requests": [r for r in requests],
             "total_requests": counter,
-            "songs_in_queue": {p: s for p, s in enumerate(self.scheduler.get_user_tracks(handled_user_id))},
+            "songs_in_queue": {self.scheduler.get_track_position(t)[1]: t for t in tracks},
         }
 
     def get_user_info_minimal(self, handled_user_id):
         handled_user = User.get(id=handled_user_id)
+        tracks = self.scheduler.get_user_tracks(handled_user_id)
 
         return {
             "info": handled_user,
-            "songs_in_queue": {p: s for p, s in enumerate(self.scheduler.get_user_tracks(handled_user_id))},
+            "songs_in_queue": {self.scheduler.get_track_position(t)[1]: t for t in tracks},
         }
