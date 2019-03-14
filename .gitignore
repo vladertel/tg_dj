@@ -5,6 +5,7 @@ media/*
 private_config.py
 users
 brain/backlog
+brain/queue.json
 logs
 config.ini
 db
