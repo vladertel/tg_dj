@@ -98,7 +98,7 @@ class HtmlDownloader(AbstractDownloader):
             song = self.songs_cache[result_id]
         except KeyError:
             self.logger.error("No search cache entry for id " + result_id)
-            raise Exception("Внутренняя ошибка (запрошенная песня отсутствует в кэше поиска)")
+            raise DownloaderException("Внутренняя ошибка (запрошенная песня отсутствует в кэше поиска)")
 
         if song["duration"] > self.config.getint("downloader", "max_duration", fallback=self._default_max_duration):
             raise MediaIsTooLong(song["duration"])
