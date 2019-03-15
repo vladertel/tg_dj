@@ -1,0 +1,5 @@
+{% for pos in songs_in_queue %}
+    #{{ pos }}: {{ songs_in_queue[pos].full_title() }} | callback_data=song:{{ songs_in_queue[pos].id }}
+{% endfor %}
+
+{{ STR_BACK }} | callback_data=main || {{ STR_REFRESH }} | callback_data=my_tracks
