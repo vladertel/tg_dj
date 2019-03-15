@@ -1,6 +1,7 @@
 {% for pos in songs_in_queue %}
     #{{ pos + 1 }}: {{ songs_in_queue[pos].full_title() }} | callback_data=song:{{ songs_in_queue[pos].id }}
 {% endfor %}
+⬆️ Поместить в начало очереди ⬆️ | callback_data=admin:raise_user:{{ info.id }}
 {% if info.banned %}
     Разбанить | admin:unban_user:{{ info.id }}
 {% else %}

@@ -271,14 +271,19 @@ class DjBrain:
         user = self.get_user(user_id)
 
         if not user.superuser:
-            song = self.scheduler.get_track(track_id)
-            if user.id != song.user_id:
+            track = self.scheduler.get_track(track_id)
+            if user.id != track.user_id:
                 raise PermissionDenied()
 
         self.scheduler.raise_track(track_id)
 
-        track = self.scheduler.get_track(track_id)
-        self.scheduler.raise_user_in_queue(track.user_id)
+    def raise_user(self, user_id, handled_user_id):
+        user = self.get_user(user_id)
+
+        if not user.superuser:
+            raise PermissionDenied()
+
+        self.scheduler.raise_user_in_queue(handled_user_id)
 
     def stop_playback(self, user_id):
         user = self.get_user(user_id)

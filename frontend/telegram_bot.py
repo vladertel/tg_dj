@@ -230,6 +230,11 @@ class TgFrontend:
             self.core.vote_song(user.core_id, sign, song_id)
             self.send_menu_song(user, song_id)
 
+        elif path[0] == "raise_track":
+            song_id = int(path[1])
+            self.core.raise_track(user.core_id, song_id)
+            self.send_menu_song(user, song_id)
+
         elif path[0] == "skip_song":
             self.core.switch_track(user.core_id)
             self.send_menu_main(user)
@@ -244,10 +249,10 @@ class TgFrontend:
             offset = ((position - 1) // self.songs_per_page) * self.songs_per_page
             self.send_menu_queue(user, offset)
 
-        elif path[0] == "admin" and path[1] == "raise":
-            song_id = int(path[2])
-            self.core.raise_track(user.core_id, song_id)
-            self.send_menu_main(user)
+        elif path[0] == "admin" and path[1] == "raise_user":
+            handled_user_id = int(path[2])
+            self.core.raise_user(user.core_id, handled_user_id)
+            self.send_menu_admin_user(user, handled_user_id)
 
         elif path[0] == "admin" and path[1] == "list_users":
             offset = int(path[2]) if len(path) >= 2 else 0
