@@ -38,7 +38,7 @@ class Scheduler:
         self.mon_queue_len.set_function(lambda: len(self.queue))
         # noinspection PyArgumentList
         self.mon_playlist_len = Gauge('dj_playlist_length', 'Playlist length')
-        self.mon_playlist_len.set_function(lambda: sum(map(lambda x: len(x), self.playlists)))
+        self.mon_playlist_len.set_function(lambda: sum(len(self.playlists[i]) for i in self.playlists))
         # noinspection PyArgumentList
         self.mon_backlog_len = Gauge('dj_backlog_length', 'Backlog length')
         self.mon_backlog_len.set_function(lambda: len(self.backlog))
