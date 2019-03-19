@@ -232,12 +232,23 @@ class Scheduler:
             self.queue.remove(uid)
             if len(self.playlists[uid]) != 0:
                 self.queue.append(uid)
+
+            if not os.path.isfile(track.media):
+                self.logger.warning("Media does not exist for track: %s", track.title)
+                track = None
+                continue
+
             self.logger.info("Playing track from main queue: %s", track.title)
             break
 
-        if track is None:
+        while track is None:
             try:
                 track = self.backlog.pop(0)
+                if not os.path.isfile(track.media):
+                    self.logger.warning("Media does not exist for fallback track: %s", track.title)
+                    track = None
+                    continue
+
                 self.logger.info("Playing track from fallback playlist: %s", track.title)
                 self.backlog_played.append(track)
 
@@ -246,6 +257,7 @@ class Scheduler:
                     self.backlog.append(self.backlog_played.pop(i))
             except IndexError:
                 track = None
+                break
         self.lock.release()
         return track
 

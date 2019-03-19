@@ -201,6 +201,7 @@ class DjBrain:
         while True:
             track = self.scheduler.pop_first_track()
             if track is None:
+                self.backend.stop()
                 return
 
             active_haters_cnt = active_users.filter(User.id << track.haters).count()
