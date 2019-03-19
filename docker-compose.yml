@@ -1,0 +1,11 @@
+version: '2'
+services:
+  tg_dj:
+    build: .
+    ports:
+      - 1233:1233
+      - 8910:8910
+      - 8080:8080
+    volumes:
+      - ./config.ini:/config.ini:ro
+      - ./data:/data
