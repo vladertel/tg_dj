@@ -1,0 +1,10 @@
+Трек добавлен в очередь (позиция: {{ position }})
+{{ track.full_title() }}
+
+{% if tracks_list | length > 1 %}
+Список ваших треков:
+{% for pos in tracks_list %}
+#{{ pos }}: {{ tracks_list[pos].full_title() }}
+{% endfor %}
+
+{% endif %}
