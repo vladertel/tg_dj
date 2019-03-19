@@ -49,7 +49,7 @@ class Scheduler:
 
     def load_init(self):
         try:
-            queue_file = self.config.get("scheduler", "queue_file", fallback="brain/queue.json")
+            queue_file = self.config.get("scheduler", "queue_file", fallback="queue.json")
             with open(queue_file) as f:
                 data = json.loads(f.read())
                 self.queue = data["queue"]
@@ -97,7 +97,7 @@ class Scheduler:
             } for user_id, tracks in self.playlists.items()],
             "backlog_played_media": [a.media for a in self.backlog_played]
         }
-        queue_file = self.config.get("scheduler", "queue_file", fallback="brain/queue.json")
+        queue_file = self.config.get("scheduler", "queue_file", fallback="queue.json")
         with open(queue_file, "w") as f:
             f.write(json.dumps(out_dict, ensure_ascii=False))
             self.logger.info("Queue has been saved to file \"%s\"" % queue_file)

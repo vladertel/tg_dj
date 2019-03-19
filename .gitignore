@@ -5,7 +5,7 @@ media/*
 media_fallback/*
 private_config.py
 users
-brain/queue.json
+queue.json
 logs
 config.ini
 db
