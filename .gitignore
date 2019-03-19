@@ -2,9 +2,9 @@
 **/__pycache__/
 *.pyc
 media/*
+media_fallback/*
 private_config.py
 users
-brain/backlog
 brain/queue.json
 logs
 config.ini

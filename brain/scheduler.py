@@ -70,15 +70,16 @@ class Scheduler:
             pass
 
     def populate_backlog(self):
-        files = get_files_in_dir(os.path.join(os.getcwd(), "brain", "backlog"))
+        path = os.path.abspath(self.config.get("scheduler", "fallback_media_dir", fallback="media_fallback"))
+        files = get_files_in_dir(path)
         add_to_end = []
         for file in files:
-            path = os.path.join(os.getcwd(), "brain", "backlog", file)
-            title, artist, duration = get_mp3_info(path)
-            if path in self.backlog_played_media:
-                add_to_end.append(Song(path, title, artist, duration, None))
+            file_path = os.path.join(path, file)
+            title, artist, duration = get_mp3_info(file_path)
+            if file_path in self.backlog_played_media:
+                add_to_end.append(Song(file_path, title, artist, duration, None))
             else:
-                self.backlog.append(Song(path, title, artist, duration, None))
+                self.backlog.append(Song(file_path, title, artist, duration, None))
 
         random.shuffle(self.backlog)
         random.shuffle(add_to_end)
