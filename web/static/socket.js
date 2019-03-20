@@ -1,6 +1,10 @@
 window.init = function(){
     "use strict";
 
+    if (ws_addr === "auto") {
+        ws_addr = "ws://" + window.location.host + window.location.pathname + "ws"
+    }
+
     var wson = WSON(ws_addr);
     let last_keep_alive = Date.now();
 

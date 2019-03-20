@@ -56,7 +56,7 @@ class MainHandler(tornado.web.RequestHandler):
 
     def get(self):
         song, progress = self.server.get_current_state()
-        self.render("index.html", song_info=song, song_progress=progress,
+        self.render(os.path.join(os.path.dirname(__file__), "index.html"), song_info=song, song_progress=progress,
                     stream_url=self.server.stream_url, ws_url=self.server.ws_url)
 
 
@@ -91,7 +91,7 @@ class StatusWebServer:
         self.mon_web_ws_clients.set_function(lambda: len(self.ws_clients))
 
         self.stream_url = self.config.get("web_server", "stream_url")
-        self.ws_url = self.config.get("web_server", "ws_url", fallback="ws://localhost:8080/ws")
+        self.ws_url = self.config.get("web_server", "ws_url", fallback="auto")
 
     def bind_core(self, core):
         self.core = core
