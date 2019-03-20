@@ -51,6 +51,8 @@ signal.signal(signal.SIGHUP, hup_handler)
 
 # Setup logging
 logging.basicConfig(format='%(asctime)s %(levelname)s [%(name)s - %(funcName)s]: %(message)s')
+logger = logging.getLogger('tg_dj')
+logger.setLevel(getattr(logging, config.get(config.default_section, "verbosity", fallback="warning").upper()))
 
 # Start modules
 modules = [TgFrontend(config), MasterDownloader(config), VLCStreamer(config)]
@@ -67,8 +69,8 @@ try:
     loop.run_forever()
 except (KeyboardInterrupt, SystemExit):
     pass
-logging.info("Main event loop has ended")
-logging.debug("Cleaning...")
+logger.info("Main event loop has ended")
+logger.debug("Cleaning...")
 for module in modules:
     try:
         module.cleanup()
@@ -79,8 +81,8 @@ try:
 except AttributeError:
     traceback.print_exc()
 
-logging.info("Closing loop...")
+logger.info("Closing loop...")
 loop.run_until_complete(asyncio.sleep(1))
 loop.stop()
 loop.close()
-logging.debug("Exit")
+logger.debug("Exit")
