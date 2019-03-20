@@ -294,6 +294,10 @@ class TgFrontend:
                 pass
 
         results = await self.core.search_action(user.id, query=query, message_callback=message_callback)
+        if results is None:
+            self.logger.warning("Search have returned None instead of results")
+            return
+
         self.logger.debug("Response from core: %d results" % len(results))
 
         results_articles = []
