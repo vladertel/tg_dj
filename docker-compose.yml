@@ -2,10 +2,12 @@ version: '2'
 services:
   tg_dj:
     build: .
-    ports:
-      - 1233:1233
-      - 8910:8910
-      - 8080:8080
     volumes:
       - ./config.ini:/config.ini:ro
       - ./data:/data
+  nginx:
+    image: nginx
+    ports:
+      - 8080:80
+    volumes:
+      - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
