@@ -56,7 +56,7 @@ class MainHandler(tornado.web.RequestHandler):
 
     def get(self):
         song, progress = self.server.get_current_state()
-        self.render("index.html", song_info=song, song_progress=progress,
+        self.render(os.path.join(os.path.dirname(__file__), "index.html"), song_info=song, song_progress=progress,
                     stream_url=self.server.stream_url, ws_url=self.server.ws_url)
 
 
