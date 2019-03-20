@@ -29,7 +29,7 @@ for name in os.environ:
     name = name[3:]
 
     section = None
-    for s in config.sections():
+    for s in config.sections() + [config.default_section]:
         if s == name[:len(s)]:
             section = s
     if section is None:
