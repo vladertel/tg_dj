@@ -5,6 +5,7 @@ import configparser
 import logging
 import signal
 import prometheus_client
+import os
 
 from brain.DJ_Brain import DjBrain
 from streamer.VLCStreamer import VLCStreamer
@@ -19,6 +20,24 @@ args = parser.parse_args()
 
 config = configparser.ConfigParser()
 config.read(args.config_file)
+
+for name in os.environ:
+    if name[:3] != "DJ_":
+        continue
+
+    value = os.environ[name]
+    name = name[3:]
+
+    section = None
+    for s in config.sections():
+        if s == name[:len(s)]:
+            section = s
+    if section is None:
+        continue
+
+    key = name[len(section) + 1:]
+
+    config.set(section, key, value)
 
 
 # Reload config on sighup signal
