@@ -15,6 +15,7 @@ COPY downloader /usr/local/tg_dj/downloader
 COPY frontend   /usr/local/tg_dj/frontend
 COPY streamer   /usr/local/tg_dj/streamer
 COPY web        /usr/local/tg_dj/web
+COPY config-docker.ini /config.ini
 
 WORKDIR /data
 EXPOSE 8910 1233 8080

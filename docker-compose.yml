@@ -3,7 +3,6 @@ services:
   tg_dj:
     build: .
     volumes:
-      - ./config.ini:/config.ini:ro
       - ./data:/data
   nginx:
     image: nginx
