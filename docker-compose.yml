@@ -4,6 +4,7 @@ services:
     build: .
     volumes:
       - ./data:/data
+    stop_grace_period: 30s
   nginx:
     image: nginx
     ports:

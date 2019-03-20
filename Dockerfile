@@ -20,5 +20,6 @@ COPY enterypoint.sh /enterypoint.sh
 
 WORKDIR /data
 EXPOSE 8910 1233 8080
+STOPSIGNAL SIGINT
 
 ENTRYPOINT ["/bin/bash", "/entrypoint.sh"]
