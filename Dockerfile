@@ -16,7 +16,7 @@ COPY frontend   /usr/local/tg_dj/frontend
 COPY streamer   /usr/local/tg_dj/streamer
 COPY web        /usr/local/tg_dj/web
 COPY config-docker.ini /config.ini
-COPY enterypoint.sh /enterypoint.sh
+COPY entrypoint.sh /entrypoint.sh
 
 WORKDIR /data
 EXPOSE 8910 1233 8080
