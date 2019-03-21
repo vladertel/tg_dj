@@ -17,14 +17,6 @@
 
     var prev_volume = 0;
 
-    var volume_cookie_name = "dj_volume";
-    var global_volume = get_cookie(volume_cookie_name);
-    if (typeof global_volume === "undefined")
-        global_volume = 0.05
-
-    var start_time = (new Date()).getTime();
-    var initial_lag = null;
-
     function preload() {
         var audioCtx = getAudioContext();
         audio_el = document.getElementById('stream');
@@ -33,53 +25,6 @@
 
         song_start_el = document.getElementById("song_start");
         song_duration_el = document.getElementById("song_duration");
-
-        audio_el.oncanplaythrough = function() {
-            audio_el.muted = true;
-            audio_el.play();
-
-            var play_btn = document.getElementById("logo");
-
-            play_btn.onclick = function(e){
-                audio_el.muted = false;
-                audio_el.volume = global_volume;
-            };
-
-            play_btn.style.opacity = "1"
-
-            initial_lag = get_lag();
-            console.log("Initial lag: " + initial_lag);
-
-            setInterval(
-                function (){
-                    var lag = get_lag();
-                    if (lag - initial_lag > 1) {
-                        audio_el.currentTime = audio_el.buffered.end(0)-1;
-                        console.log("Lag: " + (lag - initial_lag));
-                        console.log("Seeking forward...");
-                    }
-                },
-                5000
-            );
-        }
-    }
-
-    function get_cookie(name) {
-        var matches = document.cookie.match(new RegExp(
-            "(?:^|; )" + name.replace(/([\.$?*|{}\(\)\[\]\\\/\+^])/g, '\\$1') + "=([^;]*)"
-        ));
-        return matches ? decodeURIComponent(matches[1]) : undefined;
-    }
-
-    function get_lag() {
-        var buf_size = audio_el.buffered.end(0) - audio_el.buffered.start(0);
-        var time_elapsed = ((new Date()).getTime() - start_time) / 1000;
-        return time_elapsed - buf_size;
-    }
-
-    function set_volume(value) {
-        audio_el.volume = global_volume = value;
-        document.cookie = (volume_cookie_name + "=" + global_volume + "; path=/");
     }
 
     function setup() {
@@ -107,7 +52,7 @@
 
     function draw() {
 
-        var volume = amplitude.getLevel() / global_volume;
+        var volume = amplitude.getLevel() / parseFloat(audio_el.volume);
         var spectrum = fft.analyze(128);
 
         background(volume - prev_volume > 0.2 ? 60 : volume - prev_volume > 0.1 ? 30 : 0);
@@ -198,6 +143,5 @@
     window.preload = preload;
     window.setup = setup;
     window.draw = draw;
-    window.set_volume = set_volume;
     window.windowResized = windowResized;
 })();
