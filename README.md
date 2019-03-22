@@ -28,6 +28,9 @@ services:
   tg_dj:
     environment:
       DJ_telegram_token: 123456789:abcdefghijklemopqrstuvwxyz123456789
+  nginx:
+    ports:
+      - 8080:80
 ```
 
 ## Запуск
