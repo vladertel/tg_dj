@@ -54,7 +54,10 @@ window.init = function(){
 
     audio_el.oncanplaythrough = function() {
         audio_el.muted = true;
-        audio_el.play();
+        audio_el.play().catch(() => {
+            alert("Браузер заблокировал воспроизведение аудио. Страница будет перезагружена.");
+            window.location.reload(true);
+        });
 
         play_btn.onclick = function(e){
             audio_el.muted = false;
