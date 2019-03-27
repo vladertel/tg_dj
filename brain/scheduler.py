@@ -29,7 +29,6 @@ class Scheduler:
         self.backlog = []
         self.backlog_played = []
         self.backlog_played_media = []
-        self.backlog_initial_size = 0
 
         self.playlists[-1] = []  # For tracks managed by admins
 
@@ -252,7 +251,7 @@ class Scheduler:
                 self.logger.info("Playing track from fallback playlist: %s", track.title)
                 self.backlog_played.append(track)
 
-                if len(self.backlog) <= self.backlog_initial_size // 2:
+                if len(self.backlog) <= len(self.backlog_played):
                     i = random.randrange(len(self.backlog_played))
                     self.backlog.append(self.backlog_played.pop(i))
             except IndexError:
