@@ -1,6 +1,6 @@
 version: '2'
 services:
-  tg_dj:
+  app:
     build: .
     volumes:
       - ./data:/data

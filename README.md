@@ -25,7 +25,7 @@
 ```yaml
 version: '2'
 services:
-  tg_dj:
+  app:
     environment:
       DJ_telegram_token: 123456789:abcdefghijklemopqrstuvwxyz123456789
   nginx:
