@@ -217,6 +217,10 @@ class TgFrontend:
             offset = int(path[1]) if len(path) >= 2 else 0
             self.send_menu_queue(user, offset)
 
+        elif path[0] == "lyrics":
+            self.send_lyrics(user)
+            self.send_menu_main(user)
+
         elif path[0] == "my_tracks":
             self.send_menu_my_tracks(user)
 
@@ -489,6 +493,11 @@ class TgFrontend:
 
         self.remove_old_menu(user)
         self._send_text_message(user, message_text, reply_markup=kb)
+
+    def send_lyrics(self, user):
+        state = self.core.get_state(user.core_id)
+        message_text = env.get_template("track_lyrics_text.tmpl").render(**state)
+        self._send_text_message(user, message_text)
 
     def send_menu_my_tracks(self, user):
         data = self.core.get_user_info_minimal(user.core_id)

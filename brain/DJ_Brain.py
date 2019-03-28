@@ -238,6 +238,8 @@ class DjBrain:
         for fn in self.state_update_callbacks:
             fn(track)
 
+        track.fetch_lyrics()
+
         return track, next_track
 
     def track_end_event(self):

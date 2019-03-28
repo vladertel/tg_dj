@@ -1,6 +1,8 @@
 import peewee
 import datetime
 import os
+import requests
+import lxml.html
 
 db = peewee.SqliteDatabase("db/dj_brain.db")
 
@@ -42,6 +44,8 @@ class Song:
         self.duration = duration
         self.user_id = user_id
         self.media = media_path
+
+        self.lyrics = None
 
         self.haters = []
 
@@ -98,3 +102,26 @@ class Song:
         if "haters" in song_dict:
             obj.haters = song_dict["haters"]
         return obj
+
+    def fetch_lyrics(self):
+        print("Loading lyrics...")
+        url = "http://lyrics.wikia.com/wiki/{0}:{1}".format(self.artist, self.title)
+        lyrics_request = requests.get(url)
+        if lyrics_request.status_code != 200:
+            self.lyrics = ""
+            return
+
+        try:
+            tree = lxml.html.fromstring(lyrics_request.text.replace("<br />", "\n"))
+            lyrics = "\n".join(tree.xpath('//div[@class="lyricbox"]/text()'))
+            self.lyrics = lyrics
+        except Exception as e:
+            self.lyrics = "[Ошибка разбора страницы: %s]" % e
+
+    def has_lyrics(self):
+        return self.lyrics is not None and self.lyrics != ""
+
+    def get_lyrics(self):
+        if self.lyrics is None:
+            self.fetch_lyrics()
+        return self.lyrics

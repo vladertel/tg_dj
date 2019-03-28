@@ -1,3 +1,6 @@
+{% if current_song is not none and current_song.has_lyrics() %}
+    📄 Текст песни | callback_data=lyrics
+{% endif %}
 {% if superuser %}
     {% if current_song is not none %}
         ⏹ Остановить | callback_data=admin:stop_playing || ▶️ Переключить | callback_data=skip_song

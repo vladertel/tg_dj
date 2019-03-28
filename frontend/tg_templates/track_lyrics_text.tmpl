@@ -1,0 +1,11 @@
+{% if current_song %}
+{% if current_song.has_lyrics() %}
+📄 Текст песни {{ current_song.full_title() }}
+
+{{ current_song.get_lyrics() }}
+{% else %}
+Текст песни {{ current_song.full_title() }} недоступен
+{% endif %}
+{% else %}
+🔇 Сейчас ничего не играет
+{% endif %}
