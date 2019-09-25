@@ -1,7 +1,7 @@
-FROM python:3
+FROM python:3.7-buster
 
 RUN apt-get update && \
-    apt-get install -y vlc-nox && \
+    apt-get install -y vlc-bin vlc-plugin-base && \
     rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt ./
