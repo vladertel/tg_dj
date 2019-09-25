@@ -68,9 +68,13 @@ class YoutubeDownloader(AbstractDownloader):
             traceback.print_exc()
             raise ApiError()
         video_id = video.video_id
-        video_title = video.title
+        video_details = video.player_config_args.get('player_response', {}).get('videoDetails', {})
         if video_id is None:
             raise UrlProblem()
+        try:
+            video_title = video.title
+        except KeyError:
+            video_title = video_details.get('title', 'Unknown YT video')
 
         file_size = int(stream.filesize)
         if file_size > 1000000 * self.config.getint("downloader", "max_file_size", fallback=self._default_max_size):
@@ -79,21 +83,11 @@ class YoutubeDownloader(AbstractDownloader):
         file_dir = media_dir
         file_name = sanitize_file_name("youtube-" + str(video_id))
 
-        search_url = "https://www.googleapis.com/youtube/v3/videos?id=" + video_id + \
-            "&key=" + api_key + "&part=contentDetails"
-        try:
-            response = urllib.request.urlopen(search_url).read()
-        except Exception:
+        seconds = video_details.get('lengthSeconds')
+        if not seconds:
             raise UrlOrNetworkProblem("google")
+        seconds = int(seconds)
 
-        data = json.loads(response.decode('utf-8'))
-        duration = data['items'][0]['contentDetails']['duration']
-        m = re.findall(r"\d+", duration)[::-1]
-        multiplier = 1
-        seconds = 0
-        for match in m:
-            seconds += (int(match) * multiplier)
-            multiplier *= 60
         if seconds > self.config.getint("downloader", "max_duration", fallback=self._default_max_duration):
             raise MediaIsTooLong()
 
