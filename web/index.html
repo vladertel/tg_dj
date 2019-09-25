@@ -33,9 +33,9 @@
         <audio hidden muted preload id="stream">
             <source src="{{ stream_url }}">
         </audio>
-        <input type="hidden" id="song_offset" value="{{ song_progress }}">
-        <input type="hidden" id="song_start" value="0">
-        <input type="hidden" id="song_duration" value="{{ song_info['duration'] }}">
+        <input type="hidden" id="song_offset" autocomplete="off" value="{{ song_progress }}">
+        <input type="hidden" id="song_start" autocomplete="off" value="0">
+        <input type="hidden" id="song_duration" autocomplete="off" value="{{ song_info['duration'] }}">
     </div>
     <img id="logo" src="static/logo_white.png" style="opacity: 0.5">
     <script>init();</script>
