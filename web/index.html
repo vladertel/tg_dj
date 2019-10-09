@@ -30,8 +30,8 @@
         <p><a href="https://inbicst.ru/">https://inbicst.ru/</a></p>
     </footer>
     <div id="playback">
-        <audio hidden muted preload id="stream">
-            <source src="{{ stream_url }}">
+        <audio hidden preload id="stream">
+            <source id="stream_source" src="{{ stream_url }}">
         </audio>
         <input type="hidden" id="song_offset" autocomplete="off" value="{{ song_progress }}">
         <input type="hidden" id="song_start" autocomplete="off" value="0">

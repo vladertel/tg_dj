@@ -24,8 +24,15 @@ window.init = function(){
             song_duration_el.value = data.duration;
             song_offset_el.value = 0;
             song_start_el.value = Date.now();
-        }, 3000)
+        }, 3000);
 
+        if (audio_el.paused || audio_el.buffered.length === 0) {
+            start_time = (new Date()).getTime();
+            source_el.src = source_url + "?ts=" + Date.now();
+            audio_el.load();
+            audio_el.play();
+            console.log(source_el.src);
+        }
         check_lag();
     }
 
@@ -50,25 +57,32 @@ window.init = function(){
     var start_time = (new Date()).getTime();
     var initial_lag = null;
     var audio_el = document.getElementById('stream');
+    var source_el = document.getElementById('stream_source');
     var play_btn = document.getElementById("logo");
+    var source_url = source_el.src.split("?")[0];
 
     audio_el.oncanplaythrough = function() {
-        audio_el.muted = true;
         audio_el.play().catch(() => {
-            alert("Браузер заблокировал воспроизведение аудио. Страница будет перезагружена.");
-            window.location.reload(true);
+            alert("Браузер заблокировал воспроизведение аудио");
+            //window.location.reload(true);
+            audio_el.pause();
+            audio_el.muted = true;
+            audio_el.load();
+
+            play_btn.onclick = function(e){
+                audio_el.play();
+                audio_el.muted = false;
+                audio_el.volume = audio_volume;
+            };
         });
 
-        play_btn.onclick = function(e){
-            audio_el.muted = false;
-            audio_el.volume = audio_volume;
-        };
-
-        play_btn.style.opacity = "1"
+        play_btn.style.opacity = "1";
 
         initial_lag = get_lag();
         console.log("Initial lag: " + initial_lag);
-    }
+
+        audio_el.volume = audio_volume;
+    };
 
     function check_lag() {
         if (initial_lag === null) return;
@@ -82,6 +96,7 @@ window.init = function(){
     }
 
     function get_lag() {
+        if (audio_el.buffered.length === 0) return 0;
         var buf_size = audio_el.buffered.end(0) - audio_el.buffered.start(0);
         var time_elapsed = ((new Date()).getTime() - start_time) / 1000;
         return time_elapsed - buf_size;
