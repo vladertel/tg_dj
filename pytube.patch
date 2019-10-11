@@ -1,0 +1,111 @@
+diff --git a/pytube/__main__.py b/pytube/__main__.py
+index 4cb0d96..67a03d9 100644
+--- a/pytube/__main__.py
++++ b/pytube/__main__.py
+@@ -117,6 +117,20 @@ def init(self):
+                 self.watch_html,
+             )['args']
+
++            # Fix for KeyError: 'title' issue #434
++            if 'title' not in self.player_config_args:
++            	try:
++            		from bs4 import BeautifulSoup
++            		soup = BeautifulSoup(self.watch_html, 'lxml')
++            		title = soup.title.get_text().strip()
++            	except ModuleNotFoundError:
++            		i_start = self.watch_html.lower().index('<title>') + len('<title>')
++            		i_end = self.watch_html.lower().index('</title>')
++            		title = self.watch_html[i_start:i_end].strip()
++            	index = title.lower().rfind(' - youtube')
++            	title = title[:index] if index > 0 else title
++            	self.player_config_args['title'] = title
++
+         self.vid_descr = extract.get_vid_descr(self.watch_html)
+         # https://github.com/nficano/pytube/issues/165
+         stream_maps = ['url_encoded_fmt_stream_map']
+diff --git a/pytube/cipher.py b/pytube/cipher.py
+index 7316431..755feb8 100644
+--- a/pytube/cipher.py
++++ b/pytube/cipher.py
+@@ -35,14 +35,22 @@ def get_initial_function_name(js):
+
+     """
+     # c&&d.set("signature", EE(c));
++
++    #403 Forbidden fix.
+     pattern = [
+-        r'yt\.akamaized\.net/\)\s*\|\|\s*'
+-        r'.*?\s*c\s*&&\s*d\.set\([^,]+\s*,\s*(?:encodeURIComponent'
+-        r'\s*\()?(?P<sig>[a-zA-Z0-9$]+)\(',
++        r'\b[cs]\s*&&\s*[adf]\.set\([^,]+\s*,\s*encodeURIComponent\s*\(\s*(?P<sig>[a-zA-Z0-9$]+)\(',
++        r'\b[a-zA-Z0-9]+\s*&&\s*[a-zA-Z0-9]+\.set\([^,]+\s*,\s*encodeURIComponent\s*\(\s*(?P<sig>[a-zA-Z0-9$]+)\(',
++        r'(?P<sig>[a-zA-Z0-9$]+)\s*=\s*function\(\s*a\s*\)\s*{\s*a\s*=\s*a\.split\(\s*""\s*\)',
++        r'(["\'])signature\1\s*,\s*(?P<sig>[a-zA-Z0-9$]+)\(',
+         r'\.sig\|\|(?P<sig>[a-zA-Z0-9$]+)\(',
+-        r'\bc\s*&&\s*d\.set\([^,]+\s*,\s*(?:encodeURIComponent'
+-        r'\s*\()?(?P<sig>[a-zA-Z0-9$]+)\(',
++        r'yt\.akamaized\.net/\)\s*\|\|\s*.*?\s*[cs]\s*&&\s*[adf]\.set\([^,]+\s*,\s*(?:encodeURIComponent\s*\()?\s*(?P<si$',
++        r'\b[cs]\s*&&\s*[adf]\.set\([^,]+\s*,\s*(?P<sig>[a-zA-Z0-9$]+)\(',
++        r'\b[a-zA-Z0-9]+\s*&&\s*[a-zA-Z0-9]+\.set\([^,]+\s*,\s*(?P<sig>[a-zA-Z0-9$]+)\(',
++        r'\bc\s*&&\s*a\.set\([^,]+\s*,\s*\([^)]*\)\s*\(\s*(?P<sig>[a-zA-Z0-9$]+)\(',
++        r'\bc\s*&&\s*[a-zA-Z0-9]+\.set\([^,]+\s*,\s*\([^)]*\)\s*\(\s*(?P<sig>[a-zA-Z0-9$]+)\(',
++        r'\bc\s*&&\s*[a-zA-Z0-9]+\.set\([^,]+\s*,\s*\([^)]*\)\s*\(\s*(?P<sig>[a-zA-Z0-9$]+)\('
+     ]
++
+     logger.debug('finding initial function name')
+     return regex_search(pattern, js, group=1)
+
+diff --git a/pytube/mixins.py b/pytube/mixins.py
+index c4deb87..fa51f31 100644
+--- a/pytube/mixins.py
++++ b/pytube/mixins.py
+@@ -37,8 +37,10 @@ def apply_signature(config_args, fmt, js):
+             url = stream['url']
+         elif live_stream:
+             raise LiveStreamError('Video is currently being streamed live')
+-
+-        if any([x in url for x in ['signature=', 'sig=']]):
++        #403 Forbidden fix.
++        if('signature' in url or
++            ('s' not in stream and
++            ('&sig=' in url or '&lsig=' in url))):
+             # For certain videos, YouTube will just provide them pre-signed, in
+             # which case there's no real magic to download them and we can skip
+             # the whole signature descrambling entirely.
+@@ -61,7 +63,8 @@ def apply_signature(config_args, fmt, js):
+                 }, indent=2,
+             ),
+         )
+-        stream_manifest[i]['url'] = url + '&signature=' + signature
++        #403 forbidden fix
++        stream_manifest[i]['url'] = url + '&sig=' + signature
+
+
+ def apply_descrambler(stream_data, key):
+diff --git a/pytube/request.py b/pytube/request.py
+index 4732585..f4602a2 100644
+--- a/pytube/request.py
++++ b/pytube/request.py
+@@ -2,6 +2,8 @@
+ """Implements a simple wrapper around urlopen."""
+ from pytube.compat import urlopen
+
++#403 forbidden fix
++import urllib.request
+
+ def get(
+     url=None, headers=False,
+@@ -18,7 +20,12 @@ def get(
+     :param int chunk_size:
+         The size in bytes of each chunk.
+     """
+-    response = urlopen(url)
++
++    #403 forbidden fix
++    req = urllib.request.Request(url, headers = {"User-Agent": "Mozilla/5.0"})
++    #response = urlopen(url)
++    response = urlopen(req)
++
+     if streaming:
+         return stream_response(response, chunk_size)
+     elif headers:
