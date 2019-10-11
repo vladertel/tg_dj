@@ -36,6 +36,13 @@ window.init = function(){
         check_lag();
     }
 
+    function on_progress(data) {
+        setTimeout(function(){
+            song_offset_el.value = data;
+            song_start_el.value = new Date(Date.now() - data * 1000).getTime();
+        }, 3000);
+    }
+
     function on_stop(data) {
         setTimeout(function(){
             document.getElementById("title").innerText = "💤💤💤";
@@ -59,6 +66,7 @@ window.init = function(){
     }, 60000);
 
     wson.on("update", on_update);
+    wson.on("progress", on_progress);
     wson.on("stop_playback", on_stop);
     wson.on("keep_alive", on_keep_alive);
 

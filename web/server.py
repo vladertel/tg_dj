@@ -27,6 +27,10 @@ class WebSocketHandler(tornado.websocket.WebSocketHandler):
         self.server.logger.info('Websocket connected: %s', str(self.request.connection.context.address))
         self.server.ws_clients.append(self)
 
+        track_dict, progress = self.server.get_current_state()
+        self.send("update", track_dict)
+        self.send("progress", progress)
+
     def on_close(self):
         self.server.logger.info('Websocket disconnected: %s', str(self.request.connection.context.address))
         self.active = False
