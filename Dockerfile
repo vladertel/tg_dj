@@ -21,7 +21,7 @@ COPY entrypoint.sh /entrypoint.sh
 # Workaround for pytube issue 472
 WORKDIR /usr/local/lib/python3.7/site-packages/pytube
 COPY pytube.patch ./pytube.patch
-RUN ls -lA && patch -p2 <pytube.patch && cat __main__.py
+RUN patch -p2 <pytube.patch
 
 WORKDIR /data
 EXPOSE 8910 1233 8080
