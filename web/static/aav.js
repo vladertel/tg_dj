@@ -60,7 +60,6 @@
         push();
 
         translate(width/2, height/2);
-        rotate(rotation);
 
         strokeWeight(10);
         volume > 0.4 ? stroke(127,125,161,170) : stroke(6,173,227,170);
@@ -79,6 +78,7 @@
             );
         }
 
+        rotate(rotation);
         for (var i = 0; i < dots.length; ++i) {
             rotate(radians(360/numDots));
             dots[i].draw(volume);
