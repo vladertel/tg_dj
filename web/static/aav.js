@@ -90,8 +90,9 @@
 
         pop();
 
+        var song_progress;
         var duration = parseInt(song_duration_el.value);
-        if (duration == 0) {
+        if (duration === 0) {
             song_progress = 0;
         } else {
             song_progress = (Date.now() - parseInt(song_start_el.value)) / parseInt(duration) / 1000;
@@ -99,7 +100,7 @@
         if (song_progress > 1) song_progress = 1;
         strokeWeight(10);
         noFill();
-        stroke(127,125,161,210)
+        stroke(127,125,161,210);
         arc(width/2, height/2, line_offset * 2 - 15, line_offset * 2 - 15, - PI / 2, PI * 2 * song_progress - PI / 2);
 
         prev_volume = volume;
