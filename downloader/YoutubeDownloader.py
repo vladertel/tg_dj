@@ -5,6 +5,7 @@ import os
 import time
 import traceback
 import logging
+from urllib.error import HTTPError
 
 from pytube import YouTube
 
@@ -76,7 +77,11 @@ class YoutubeDownloader(AbstractDownloader):
         except KeyError:
             video_title = video_details.get('title', 'Unknown YT video')
 
-        file_size = int(stream.filesize)
+        try:
+            file_size = int(stream.filesize)
+        except HTTPError as e:
+            traceback.print_exc()
+            raise BadReturnStatus(e.code)
         if file_size > 1000000 * self.config.getint("downloader", "max_file_size", fallback=self._default_max_size):
             raise MediaIsTooBig()
 
@@ -112,7 +117,11 @@ class YoutubeDownloader(AbstractDownloader):
         self.logger.info("Downloading audio from video: " + video_id)
         user_message("Скачиваем...\n%s" % video_title)
 
-        stream.download(output_path=file_dir, filename=file_name)
+        try:
+            stream.download(output_path=file_dir, filename=file_name)
+        except HTTPError as e:
+            traceback.print_exc()
+            raise BadReturnStatus(e.code)
         self.touch_without_creation(file_path)
 
         self.logger.debug("File stored in path: " + file_path)
