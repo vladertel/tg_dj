@@ -106,8 +106,15 @@ class StatusWebServer:
         return track_dict, progress
 
     def update_state(self, track):
-        self.broadcast_update(track.to_dict())
+        if track is not None:
+            self.broadcast_update(track.to_dict())
+        else:
+            self.broadcast_stop()
 
     def broadcast_update(self, data):
         for c in self.ws_clients:
             c.send("update", data)
+
+    def broadcast_stop(self):
+        for c in self.ws_clients:
+            c.send("stop_playback", {})

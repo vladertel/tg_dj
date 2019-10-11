@@ -297,6 +297,9 @@ class DjBrain:
         self.scheduler.play_next(self.backend.get_current_song())
         self.backend.stop()
 
+        for fn in self.state_update_callbacks:
+            fn(None)
+
     def ban_user(self, user_id, handled_user_id):
         user = self.get_user(user_id)
 

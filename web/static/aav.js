@@ -90,7 +90,12 @@
 
         pop();
 
-        song_progress = (Date.now() - parseInt(song_start_el.value)) / parseInt(song_duration_el.value) / 1000;
+        var duration = parseInt(song_duration_el.value);
+        if (duration == 0) {
+            song_progress = 0;
+        } else {
+            song_progress = (Date.now() - parseInt(song_start_el.value)) / parseInt(duration) / 1000;
+        }
         if (song_progress > 1) song_progress = 1;
         strokeWeight(10);
         noFill();

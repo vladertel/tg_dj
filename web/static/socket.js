@@ -36,6 +36,15 @@ window.init = function(){
         check_lag();
     }
 
+    function on_stop(data) {
+        setTimeout(function(){
+            document.getElementById("title").innerText = "💤💤💤";
+            song_duration_el.value = 0;
+            song_offset_el.value = 0;
+            song_start_el.value = Date.now();
+        }, 3000);
+    }
+
     function on_keep_alive() {
         last_keep_alive = Date.now();
     }
@@ -50,6 +59,7 @@ window.init = function(){
     }, 60000);
 
     wson.on("update", on_update);
+    wson.on("stop_playback", on_stop);
     wson.on("keep_alive", on_keep_alive);
 
     ////////////
