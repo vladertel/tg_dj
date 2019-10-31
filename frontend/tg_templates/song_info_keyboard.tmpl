@@ -7,8 +7,8 @@
         {{ "✅" if hated else "👎" }} Плохая музыка | callback_data=vote:down:{{ song.id }}
     {% endif %}
     {% if superuser %}
-        {% if author is none %}
-            - 👨‍🎓 - | callback_data=//
+        {% if author.id < 0 %}
+            ⚙️ {{ author.name }} | callback_data=//
         {% else %}
             👤 {{ author.name }} | callback_data=admin:user_info:{{ author.id }}
         {% endif %}

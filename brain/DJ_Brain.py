@@ -71,6 +71,8 @@ class DjBrain:
         self.mon_active_users = Gauge('dj_active_users', 'Active users')
         self.mon_active_users.set_function(self.get_active_users_cnt)
 
+        self.stud_board_user = User(id=-1, name="Студствет")
+
     def cleanup(self):
         self.logger.debug("Cleaning up...")
         self.queue_rating_check_task.cancel()
@@ -90,8 +92,9 @@ class DjBrain:
         u.name = name
         u.save()
 
-    @staticmethod
-    def get_user(uid):
+    def get_user(self, uid):
+        if uid == -1:
+            return self.stud_board_user
         try:
             u = User.get(id=uid)
         except peewee.DoesNotExist:
@@ -448,9 +451,15 @@ class DjBrain:
         if not user.superuser:
             raise PermissionDenied()
 
-        handled_user = User.get(id=handled_user_id)
-        requests = Request.select().filter(Request.user == handled_user).order_by(-Request.time).limit(10)
-        counter = Request.select().filter(Request.user == handled_user).count()
+        if handled_user_id == -1:
+            handled_user = self.stud_board_user
+            requests = []
+            counter = 0
+        else:
+            handled_user = User.get(id=handled_user_id)
+            requests = Request.select().filter(Request.user == handled_user).order_by(-Request.time).limit(10)
+            counter = Request.select().filter(Request.user == handled_user).count()
+
         tracks = self.scheduler.get_user_tracks(handled_user_id)
 
         return {
@@ -461,7 +470,11 @@ class DjBrain:
         }
 
     def get_user_info_minimal(self, handled_user_id):
-        handled_user = User.get(id=handled_user_id)
+        if handled_user_id == -1:
+            handled_user = self.stud_board_user
+        else:
+            handled_user = User.get(id=handled_user_id)
+
         tracks = self.scheduler.get_user_tracks(handled_user_id)
 
         return {

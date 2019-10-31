@@ -76,9 +76,9 @@ class Scheduler:
             file_path = os.path.join(path, file)
             title, artist, duration = get_mp3_info(file_path)
             if file_path in self.backlog_played_media:
-                add_to_end.append(Song(file_path, title, artist, duration, None))
+                add_to_end.append(Song(file_path, title, artist, duration, -1))
             else:
-                self.backlog.append(Song(file_path, title, artist, duration, None))
+                self.backlog.append(Song(file_path, title, artist, duration, -1))
 
         random.shuffle(self.backlog)
         random.shuffle(add_to_end)

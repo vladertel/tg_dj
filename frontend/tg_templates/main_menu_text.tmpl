@@ -1,5 +1,5 @@
 {% if current_song %}
-🔊 [{{ current_song_progress | format_duration }} / {{ current_song.duration | format_duration }}]    👤 {{ current_user.name if current_user else "Студсовет" }}
+🔊 [{{ current_song_progress | format_duration }} / {{ current_song.duration | format_duration }}]    👤 {{ current_user.name }}
 {{ current_song.full_title() }}
 {% else %}
 🔇 Сейчас ничего не играет
@@ -7,6 +7,6 @@
 
 {% if superuser and next_song %}
 Следующий трек:
-⏱ {{ next_song.duration | format_duration }}    👤 {{ next_user.name if next_user else "Студсовет" }}
+⏱ {{ next_song.duration | format_duration }}    👤 {{ next_user.name }}
 {{ next_song.full_title() }}
 {% endif %}

@@ -6,7 +6,7 @@
 
 {% for track in first_tracks %}
 🎶 {{track.full_title()}}
-⏱ {{ track.duration | format_duration }}    👤 {{ track.author.name if track.author else "Студсовет" }}
+⏱ {{ track.duration | format_duration }}    👤 {{ track.author.name }}
 
 {% endfor %}
 {% endif %}
