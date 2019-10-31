@@ -50,10 +50,10 @@ class Song:
         self.haters = []
 
     def __repr__(self):
-        return "Song(title: %s, artist: %s, id: %d)".format(self.title, self.artist, self.id)
+        return "Song(title: {}, artist: {}, id: {})".format(self.title, self.artist, self.id)
 
     def __str__(self):
-        return "Song(title: %s, artist: %s, id: %d)".format(self.title, self.artist, self.id)
+        return "Song(title: {}, artist: {}, id: {})".format(self.title, self.artist, self.id)
 
     def to_dict(self=None):
         if self:
