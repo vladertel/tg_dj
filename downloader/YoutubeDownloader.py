@@ -5,6 +5,7 @@ import os
 import time
 import traceback
 import logging
+import html
 from urllib.error import HTTPError
 
 from pytube import YouTube
@@ -73,9 +74,11 @@ class YoutubeDownloader(AbstractDownloader):
         if video_id is None:
             raise UrlProblem()
         try:
-            video_title = video.title
+            video_title = html.unescape(video.title)
+            self.logger.debug("Video title [using primary method]: " + video_title)
         except KeyError:
-            video_title = video_details.get('title', 'Unknown YT video')
+            video_title = html.unescape(video_details.get('title', 'Unknown YT video'))
+            self.logger.debug("Video title [using fallback method]: " + video_title)
 
         try:
             file_size = int(stream.filesize)
