@@ -1,12 +1,12 @@
-{% for track in list[:users_cnt] %}
+{% for track in list[:(users_cnt-offset)] %}
     {% if user.core_id == track.user_id %}👤 {% endif %}{{ track.full_title() }} | callback_data=song:{{ track.id }}
 {% endfor %}
 
-{% if users_cnt > offset and not is_own_tracks %}
+{% if users_cnt >= offset and users_cnt <= next_offset and not is_own_tracks %}
 ✅ Ваш первый трек будет здесь | callback_data=//
 {% endif %}
 
-{% for track in list[users_cnt:] %}
+{% for track in list[(users_cnt-offset):] %}
     {% if user.core_id == track.user_id %}👤 {% endif %}{{ track.full_title() }} | callback_data=song:{{ track.id }}
 {% endfor %}
 
