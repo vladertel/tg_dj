@@ -195,6 +195,8 @@ class TgFrontend:
             self.logger.error("Bad menu path: " + str(path))
             return
 
+        self.logger.debug("Menu path: " + str(path))
+
         if path[0] == "-":
             path.pop(0)
             self._update_text_message(
@@ -482,7 +484,10 @@ class TgFrontend:
         data["user"] = user
 
         for track in data["list"]:
-            track.author = self.core.get_user_info_minimal(track.user_id)["info"]
+            if track.user_id is None:
+                track.author = None
+            else:
+                track.author = self.core.get_user_info_minimal(track.user_id)["info"]
 
         message_text = env.get_template("queue_text.tmpl").render(**data)
         kb_text = env.get_template("queue_keyboard.tmpl").render(**data)
