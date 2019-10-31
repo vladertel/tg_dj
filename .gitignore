@@ -9,3 +9,5 @@ queue.json
 logs
 config.ini
 db
+/docker-compose.override.yml
+/data/
