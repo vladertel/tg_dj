@@ -17,6 +17,12 @@
 
     var prev_volume = 0;
 
+    var waveform_buffer = [];
+    var waveform_buffer_len = 1024;
+    for (var i = 0; i < waveform_buffer_len; i ++) {
+        waveform_buffer.push(0);
+    }
+
     function preload() {
         var audioCtx = getAudioContext();
         audio_el = document.getElementById('stream');
@@ -89,6 +95,25 @@
         rotation = rotation + rotation_speed;
 
         pop();
+
+        strokeWeight(5);
+        var wave_len = 1024;
+        var wave_parts_num = 1024;
+        var waveform = fft.waveform(wave_len).slice(0,wave_len);
+        for (var j = 0; j < wave_parts_num; j ++) {
+            var waveform_part = waveform.slice(wave_len * j / wave_parts_num, wave_len * (j + 1) / wave_parts_num);
+            var waveform_part_avg = waveform_part.reduce((a,b) => a + b, 0) / waveform_part.length
+            waveform_buffer.shift();
+            waveform_buffer.push(waveform_part_avg);
+        }
+        for (var i = 0; i < waveform_buffer_len - 1; i ++) {
+            var x1 = map(i, 0, waveform_buffer_len, 0, width);
+            var x2 = map(i + 1, 0, waveform_buffer_len, 0, width);
+            line(
+                x1, 300 - waveform_buffer[i] * 100 / parseFloat(audio_el.volume),
+                x2, 300 - waveform_buffer[i + 1] * 100 / parseFloat(audio_el.volume)
+            );
+        }
 
         var song_progress;
         var duration = parseInt(song_duration_el.value);
