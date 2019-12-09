@@ -11,6 +11,7 @@
 
     var dot_x_min = 70;
     var dot_x_max = 400;
+    var dot_ttl = 100;
 
     var line_offset = 120;
     var line_length = 255;
@@ -49,7 +50,7 @@
         fft.setInput(source);
 
         for (var i = 0; i < numDots; i++) {
-            var x_start = random(dot_x_min,dot_x_max);
+            var x_start = random(0,windowWidth);
             var v_start = random(1.4, 1.5) * (random(-1,1) > 0 ? 1 : -1);
             dots[i] = new Dot(x_start, v_start);
         }
@@ -83,14 +84,19 @@
 //        }
 
         for (var i = 0; i < dots.length; ++i) {
-            rotate(radians(360/numDots));
-            dots[i].draw(volume);
-            dots[i].move(volume);
+            if (dots[i].move(volume)) {
+                dots[i].draw(volume);
+            } else {
+                delete dots[i];
+                var x_start = random(0,windowWidth);
+                var v_start = volume * 80 * random(0.5, 1.5) * (random(-1,1) > 0 ? 1 : -1);
+                dots[i] = new Dot(x_start, v_start);
+                dots[i].draw(volume);
+            }
         }
 
         pop();
 
-        strokeWeight(5);
         var wave_len = 1024;
         var wave_parts_num = 1024;
         var waveform = fft.waveform(wave_len).slice(0,wave_len);
@@ -100,6 +106,10 @@
             waveform_buffer.shift();
             waveform_buffer.push(waveform_part_avg);
         }
+
+        push();
+        strokeWeight(5);
+        volume > 0.4 ? stroke(6,173,227,210) : stroke(127,125,161,210);
         for (var i = 0; i < waveform_buffer_len - 1; i ++) {
             var x1 = map(i, 0, waveform_buffer_len, 0, width);
             var x2 = map(i + 1, 0, waveform_buffer_len, 0, width);
@@ -108,6 +118,7 @@
                 x2, 300 - waveform_buffer[i + 1] * 100 / parseFloat(audio_el.volume)
             );
         }
+        pop();
 
         var song_progress;
         var duration = parseInt(song_duration_el.value);
@@ -117,22 +128,25 @@
             song_progress = (Date.now() - parseInt(song_start_el.value)) / parseInt(duration) / 1000;
         }
         if (song_progress > 1) song_progress = 1;
+
+        push();
         strokeWeight(10);
         noFill();
         stroke(127,125,161,210);
-        arc(width/2, height/2, line_offset * 2 - 15, line_offset * 2 - 15, - PI / 2, PI * 2 * song_progress - PI / 2);
+        line(0, 5, map(song_progress, 0, 1, 0, windowWidth), 5);
+        pop();
 
         prev_volume = volume;
     }
 
 
 
-    function Dot(x, speedX) {
+    function Dot(x, speedY) {
         this.x = x;
-        this.speedX = speedX;
+        this.y = 300;
+        this.speedY = speedY;
+        this.ttl = dot_ttl;
 
-        this.color1 = color(127,125,161, random(200,255));
-        this.color2 = color(6,173,227, random(200,255));
         this.size = random(1,7);
     }
 
@@ -144,18 +158,22 @@
             size = volume * multiplier;
         }
 
+        this.color1 = color(127,125,161, map(this.ttl, 0, dot_ttl, 0, 255));
+        this.color2 = color(6,173,227, map(this.ttl, 0, dot_ttl, 0, 255));
+
         noStroke();
         volume > 0.4 ? fill(this.color2) : fill(this.color1);
-        ellipse(this.x, 0, size, size);
+        ellipse(this.x, this.y, size, size);
     };
 
-    Dot.prototype.move = function(volume) {
-        this.x += this.speedX * volume * 10;
+    Dot.prototype.move = function() {
+        this.ttl -= 1;
+        this.y += this.speedY;
 
-        if ( this.x > dot_x_max ) {
-            this.speedX = -Math.abs(this.speedX);
-        } else if ( this.x < dot_x_min ) {
-            this.speedX = Math.abs(this.speedX);
+        if ( this.y > windowHeight || this.y < 0 || this.ttl < 0 ) {
+            return false
+        } else {
+            return true
         }
     };
 
