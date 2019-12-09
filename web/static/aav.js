@@ -65,34 +65,28 @@
 
         push();
 
-        translate(width/2, height/2);
+//        strokeWeight(10);
+//        volume > 0.4 ? stroke(127,125,161,170) : stroke(6,173,227,170);
+//
+//        var len = 128;
+//        var dir_num = 160;
+//
+//        for (var i = 0; i < len; i++) {
+//            var angle = map(i % dir_num, 0, dir_num, 0, 34 * PI);
+//            var line_end = line_offset + spectrum[i] * line_length / 255;
+//            line(
+//                line_offset * sin(angle),
+//                line_offset * cos(angle),
+//                line_end * sin(angle),
+//                line_end * cos(angle)
+//            );
+//        }
 
-        strokeWeight(10);
-        volume > 0.4 ? stroke(127,125,161,170) : stroke(6,173,227,170);
-
-        var len = 128;
-        var dir_num = 160;
-
-        for (var i = 0; i < len; i++) {
-            var angle = map(i % dir_num, 0, dir_num, 0, 34 * PI);
-            var line_end = line_offset + spectrum[i] * line_length / 255;
-            line(
-                line_offset * sin(angle),
-                line_offset * cos(angle),
-                line_end * sin(angle),
-                line_end * cos(angle)
-            );
-        }
-
-        rotate(rotation);
         for (var i = 0; i < dots.length; ++i) {
             rotate(radians(360/numDots));
             dots[i].draw(volume);
             dots[i].move(volume);
         }
-
-        rotation_speed = volume * volume / 2;
-        rotation = rotation + rotation_speed;
 
         pop();
 
