@@ -24,6 +24,15 @@
         waveform_buffer.push(0);
     }
 
+    var wavelog_buffer = [];
+    var wavelog_buffer_len = 512;
+    for (var i = 0; i < wavelog_buffer_len; i ++) {
+        wavelog_buffer.push(0);
+    }
+
+    var baseline_first = 600;
+    var baseline_second = 350;
+
     function preload() {
         var audioCtx = getAudioContext();
         audio_el = document.getElementById('stream');
@@ -114,10 +123,33 @@
             var x1 = map(i, 0, waveform_buffer_len, 0, width);
             var x2 = map(i + 1, 0, waveform_buffer_len, 0, width);
             line(
-                x1, 300 - waveform_buffer[i] * 100 / parseFloat(audio_el.volume),
-                x2, 300 - waveform_buffer[i + 1] * 100 / parseFloat(audio_el.volume)
+                x1, baseline_first - waveform_buffer[i] * 100 / parseFloat(audio_el.volume),
+                x2, baseline_first - waveform_buffer[i + 1] * 100 / parseFloat(audio_el.volume)
             );
         }
+        pop();
+
+        if (volume > 0) {
+            wavelog_buffer.shift();
+            wavelog_buffer.push(volume);
+        }
+
+        push();
+        noStroke();
+        volume > 0.4 ? fill(6,173,227,80) : fill(127,125,161,80);
+        beginShape();
+        vertex(0, baseline_second);
+        for (var i = 0; i < wavelog_buffer_len; i ++) {
+            var x1 = map(i, 0, wavelog_buffer_len, 0, width);
+            vertex(x1, baseline_second - wavelog_buffer[i] * 200);
+        }
+        vertex(width, baseline_second);
+        for (var i = wavelog_buffer_len - 1; i >= 0 ; i --) {
+            var x1 = map(i, 0, wavelog_buffer_len, 0, width);
+            vertex(x1, baseline_second + wavelog_buffer[i] * 200);
+        }
+        vertex(0, baseline_second);
+        endShape();
         pop();
 
         var song_progress;
@@ -143,7 +175,7 @@
 
     function Dot(x, speedY) {
         this.x = x;
-        this.y = 300;
+        this.y = baseline_first;
         this.speedY = speedY;
         this.ttl = dot_ttl;
 
