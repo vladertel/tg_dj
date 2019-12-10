@@ -45,7 +45,7 @@
         baseline_first = 0.625 * windowHeight;
         baseline_second = 0.365 * windowHeight;
         waveform_height = 0.1 * windowHeight;
-        wavelog_height = 0.21 * windowHeight;
+        wavelog_height = 0.16 * windowHeight;
 
         amplitude = new p5.Amplitude();
         amplitude.setInput(source);
@@ -195,7 +195,7 @@
         baseline_first = 0.625 * windowHeight;
         baseline_second = 0.365 * windowHeight;
         waveform_height = 0.1 * windowHeight;
-        wavelog_height = 0.21 * windowHeight;
+        wavelog_height = 0.16 * windowHeight;
     }
 
     window.preload = preload;
