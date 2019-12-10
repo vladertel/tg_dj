@@ -117,16 +117,19 @@
         }
 
         push();
+        noFill();
         strokeWeight(5);
         volume > 0.4 ? stroke(6,173,227,210) : stroke(127,125,161,210);
-        for (var i = 0; i < waveform_buffer_len - 1; i ++) {
-            var x1 = map(i, 0, waveform_buffer_len, 0, width);
-            var x2 = map(i + 1, 0, waveform_buffer_len, 0, width);
-            line(
-                x1, baseline_first - waveform_buffer[i] * 100 / parseFloat(audio_el.volume),
-                x2, baseline_first - waveform_buffer[i + 1] * 100 / parseFloat(audio_el.volume)
+        beginShape();
+        vertex(0, baseline_first);
+        for (var i = 0; i < waveform_buffer_len; i ++) {
+            vertex(
+                map(i, 0, waveform_buffer_len, 0, width),
+                baseline_first - waveform_buffer[i] * 100 / parseFloat(audio_el.volume)
             );
         }
+        vertex(width, baseline_first);
+        endShape();
         pop();
 
         if (volume > 0) {
