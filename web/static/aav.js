@@ -139,17 +139,21 @@
 
         push();
         noStroke();
-        volume > 0.4 ? fill(6,173,227,80) : fill(127,125,161,80);
+        fill(127,125,161,80);
         beginShape();
         vertex(0, baseline_second);
         for (var i = 0; i < wavelog_buffer_len; i ++) {
-            var x1 = map(i, 0, wavelog_buffer_len, 0, width);
-            vertex(x1, baseline_second - wavelog_buffer[i] * 200);
+            vertex(
+                map(i, 0, wavelog_buffer_len, 0, width),
+                baseline_second - wavelog_buffer[i] * 200
+            );
         }
         vertex(width, baseline_second);
         for (var i = wavelog_buffer_len - 1; i >= 0 ; i --) {
-            var x1 = map(i, 0, wavelog_buffer_len, 0, width);
-            vertex(x1, baseline_second + wavelog_buffer[i] * 200);
+            vertex(
+                map(i, 0, wavelog_buffer_len, 0, width),
+                baseline_second + wavelog_buffer[i] * 200
+            );
         }
         vertex(0, baseline_second);
         endShape();
