@@ -3,6 +3,7 @@ import logging
 
 from .AbstractDownloader import AbstractDownloader
 from .exceptions import *
+from utils import remove_links
 
 
 class FileDownloader(AbstractDownloader):
@@ -26,8 +27,8 @@ class FileDownloader(AbstractDownloader):
 
         self.logger.debug("Downloading song #" + str(file_id))
 
-        artist = query["artist"].strip()
-        title = query["title"].strip()
+        artist = remove_links(query["artist"]).strip()
+        title = remove_links(query["title"]).strip()
 
         self.logger.debug("Title for song #" + str(file_id) + ": " + title)
 

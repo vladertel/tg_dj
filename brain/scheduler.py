@@ -5,7 +5,7 @@ import random
 import logging
 from prometheus_client import Gauge
 
-from utils import get_mp3_info
+from utils import get_mp3_info, remove_links
 from .models import Song
 
 
@@ -75,6 +75,8 @@ class Scheduler:
         for file in files:
             file_path = os.path.join(path, file)
             title, artist, duration = get_mp3_info(file_path)
+            title = remove_links(title)
+            artist = remove_links(artist)
             if file_path in self.backlog_played_media:
                 add_to_end.append(Song(file_path, title, artist, duration, -1))
             else:

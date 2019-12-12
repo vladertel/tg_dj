@@ -8,7 +8,7 @@ from user_agent import generate_user_agent
 
 from .AbstractDownloader import AbstractDownloader
 from .exceptions import *
-from utils import sanitize_file_name
+from utils import sanitize_file_name, remove_links
 
 
 class CaptchaNeeded(ApiError):
@@ -105,8 +105,8 @@ class VkDownloader(AbstractDownloader):
             self.logger.error("No search cache entry for id " + result_id)
             raise Exception("Внутренняя ошибка (запрошенная песня отсутствует в кэше поиска)")
 
-        title = song["title"]
-        artist = song["artist"]
+        title = remove_links(song["title"]).strip()
+        artist = remove_links(song["artist"]).strip()
         file_name = sanitize_file_name("vk-" + str(result_id) + '.mp3')
         file_path = os.path.join(os.getcwd(), media_dir, file_name)
 

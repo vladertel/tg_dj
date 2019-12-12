@@ -1,5 +1,3 @@
-import urllib.request
-import json
 import re
 import os
 import time
@@ -12,7 +10,7 @@ from pytube import YouTube
 
 from .AbstractDownloader import AbstractDownloader
 from .exceptions import *
-from utils import sanitize_file_name
+from utils import sanitize_file_name, remove_links
 
 
 class YoutubeDownloader(AbstractDownloader):
@@ -79,6 +77,8 @@ class YoutubeDownloader(AbstractDownloader):
         except KeyError:
             video_title = html.unescape(video_details.get('title', 'Unknown YT video'))
             self.logger.debug("Video title [using fallback method]: " + video_title)
+
+        video_title = remove_links(video_title)
 
         try:
             file_size = int(stream.filesize)

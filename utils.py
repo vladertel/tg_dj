@@ -1,6 +1,7 @@
 import os
 from mutagen.mp3 import MP3
 from unidecode import unidecode
+from urlextract import URLExtract
 
 
 def make_endless_unfailable(func):
@@ -11,6 +12,17 @@ def make_endless_unfailable(func):
             except Exception as e:
                 print(e)
     return wrapper
+
+
+def remove_links(text):
+    if text is None:
+        return None
+    extractor = URLExtract()
+    text = str(text)
+    urls = extractor.find_urls(text)
+    for url in urls:
+        text = text.replace(url, "")
+    return text
 
 
 def get_mp3_info(path):

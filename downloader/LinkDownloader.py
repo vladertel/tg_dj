@@ -7,7 +7,7 @@ from urllib import parse
 
 from .AbstractDownloader import AbstractDownloader
 from .exceptions import *
-from utils import get_mp3_info, sanitize_file_name
+from utils import get_mp3_info, sanitize_file_name, remove_links
 
 
 class LinkDownloader(AbstractDownloader):
@@ -57,6 +57,8 @@ class LinkDownloader(AbstractDownloader):
 
         if os.path.exists(file_path) and os.path.getsize(file_path) > 0:
             title, artist, duration = get_mp3_info(file_path)
+            title = remove_links(title)
+            artist = remove_links(artist)
             return file_path, title, artist, duration
 
         user_message("Скачиваем...")
@@ -84,6 +86,8 @@ class LinkDownloader(AbstractDownloader):
         )
 
         title, artist, duration = get_mp3_info(file_path)
+        title = remove_links(title)
+        artist = remove_links(artist)
         if duration > self.config.getint("downloader", "max_duration", fallback=self._default_max_duration):
             os.unlink(file_path)
             raise MediaIsTooLong()

@@ -1,3 +1,4 @@
+urlextract
 requests
 lxml
 prometheus_client
