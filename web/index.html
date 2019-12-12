@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html>
+<html lang="ru">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -23,11 +23,19 @@
         <div id="title">{{ song_info["title"] }} - {{ song_info["artist"] }}</div>
     </section>
     <footer>
-        <div id="links">
-            <a href="https://t.me/inbicst_dj_bot" target="_blank">@inbicst_dj_bot</a>
+        <div id="code-box">
+            <img alt="qrcode" src="static/inbicst_dj_bot_qrcode.png">
         </div>
-        <p>ИНБИКСТ МФТИ</p>
-        <p><a href="https://inbicst.ru/">https://inbicst.ru/</a></p>
+        <div id="links-box">
+            <div id="links">
+                <a href="https://t.me/inbicst_dj_bot" target="_blank">@inbicst_dj_bot</a>
+            </div>
+            <p>ИНБИКСТ МФТИ</p>
+            <p><a href="https://inbicst.ru/">https://inbicst.ru/</a></p>
+        </div>
+        <div id="logo-box">
+            <img alt="logo" id="logo" src="static/squares_h_white.png" style="opacity: 0.5">
+        </div>
     </footer>
     <div id="playback">
         <audio hidden preload id="stream">
@@ -37,7 +45,6 @@
         <input type="hidden" id="song_start" autocomplete="off" value="0">
         <input type="hidden" id="song_duration" autocomplete="off" value="{{ song_info['duration'] }}">
     </div>
-    <img id="logo" src="static/logo_white.png" style="opacity: 0.5">
     <script>init();</script>
 </body>
 </html>

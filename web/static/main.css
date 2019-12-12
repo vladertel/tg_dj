@@ -19,22 +19,12 @@ canvas{
     right: 0;
 }
 
-img#logo{
-    position: fixed;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
-    width: 200px;
-    height: 200px;
-    cursor: pointer;
-}
-
 a{
     color: white;
     text-decoration: none;
 }
 
-header, section, footer{
+header, section{
     text-align: center;
     margin: 2em;
 }
@@ -50,6 +40,35 @@ h1{
     font-weight: 700;
 }
 
+footer{
+    text-align: left;
+    margin-top: 5em;
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    width: 100%;
+    display: grid;
+    grid-template-columns: 100px 1fr 500px;
+    grid-gap: 24px;
+    box-sizing: border-box;
+    padding: 2em;
+}
+
+footer #code-box img{
+    height: 100px;
+    width: 100px;
+}
+
+footer #logo-box{
+    text-align: right;
+}
+
+footer #logo-box img#logo{
+    width: 438px;
+    height: 100px;
+    cursor: pointer;
+}
+
 @media only screen and (max-width: 900px){
     #now-playing #title{
         font-size: 2em;
@@ -60,12 +79,22 @@ h1{
         font-size: 1.5em;
         margin: 1em 0;
     }
-}
 
-footer{
-    text-align: left;
-    margin-top: 5em;
-    position: absolute;
-    bottom: 0;
-    left: 0;
+    footer{
+        grid-template-columns: 1fr 1fr;
+    }
+
+    footer #code-box{
+       text-align: right;
+    }
+
+    footer #logo-box{
+        text-align: center;
+        grid-column-start: 1;
+        grid-column-end: 3;
+    }
+    footer #logo-box img#logo{
+        width: 219px;
+        height: 50px;
+    }
 }
