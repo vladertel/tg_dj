@@ -29,7 +29,7 @@ def get_mp3_info(path):
     audio = MP3(path)
 
     if audio.tags is None:
-        return os.path.splitext(os.path.basename(path))[0], int(audio.info.length)
+        return os.path.splitext(os.path.basename(path))[0], None, int(audio.info.length)
 
     try:
         artist = str(audio.tags.getall("TPE1")[0][0])
