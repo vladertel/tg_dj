@@ -483,9 +483,6 @@ class TgFrontend:
         data["prev_offset"] = max(offset - self.songs_per_page, 0)
         data["user"] = user
 
-        for track in data["list"]:
-            track.author = self.core.get_user_info_minimal(track.user_id)["info"]
-
         message_text = env.get_template("queue_text.tmpl").render(**data)
         kb_text = env.get_template("queue_keyboard.tmpl").render(**data)
         kb = self.build_markup(kb_text)

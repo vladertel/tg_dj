@@ -9,6 +9,8 @@ import platform
 import traceback
 import logging
 
+from itertools import chain
+
 from prometheus_client import Gauge
 
 from .scheduler import Scheduler
@@ -352,9 +354,14 @@ class DjBrain:
 
     def get_queue(self, user_id, offset=0, limit=0):
         users_cnt = self.scheduler.get_users_queue_length()
+
         tracks = self.scheduler.get_queue_tracks(offset, limit)
+        first_tracks = self.scheduler.get_queue_tracks(0, users_cnt)
+        for track in chain(tracks, first_tracks):
+            track.author = self.get_user_info_minimal(track.user_id)["info"]
+
         return {
-            "first_tracks": self.scheduler.get_queue_tracks(0, users_cnt),
+            "first_tracks": first_tracks,
             "list": tracks,
             "users_cnt": users_cnt,
             "tracks_cnt": self.scheduler.get_tracks_queue_length(),
