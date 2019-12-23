@@ -543,7 +543,7 @@ class TgFrontend:
         try:
             about_user_tg = User.get(User.core_id == handled_user_id)
             if about_user_tg.login is None:
-                login = self.bot.get_chat(about_user_tg.tg_id).login
+                login = self.bot.get_chat(about_user_tg.tg_id).username
                 about_user_tg.login = login
             data["about_user_tg"] = about_user_tg
         except KeyError:
