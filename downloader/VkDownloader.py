@@ -14,7 +14,7 @@ from utils import sanitize_file_name, remove_links
 class CaptchaNeeded(ApiError):
     pass
 
-
+# obsolete. Not used for now
 class VkDownloader(AbstractDownloader):
     name = "vk downloader"
 

@@ -11,3 +11,5 @@ config.ini
 db
 /docker-compose.override.yml
 /data/
+/.env
+/config_local.ini
