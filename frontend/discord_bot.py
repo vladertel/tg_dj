@@ -8,6 +8,48 @@ import logging
 import traceback
 
 import peewee
+from discord import Permissions
+
+db = peewee.SqliteDatabase("db/discord_bot.db")
+
+
+class BaseModel(peewee.Model):
+    class Meta:
+        database = db
+
+
+class GuildChannel(BaseModel):
+    guild_id = peewee.IntegerField(unique=True)
+    channel_id = peewee.IntegerField(null=True)
+
+
+class User(BaseModel):
+    discord_id = peewee.IntegerField(unique=True)
+    username = peewee.CharField()
+    core_id = peewee.IntegerField()
+    member_of = peewee.ForeignKeyField(GuildChannel)
+
+    # menu_message_id = peewee.IntegerField(null=True)
+    # menu_chat_id = peewee.IntegerField(null=True)
+    #
+    # def full_name(self):
+    #     if self.last_name is None:
+    #         return self.first_name
+    #     else:
+    #         return str(self.first_name) + " " + str(self.last_name)
+
+
+db.connect()
+
+help_message = """Этот бот позволяет тебе управлять музыкой, которая играет на этом сервере: добавлять в плейлист любимые треки и голосовать против нелюбимых.
+
+Есть несколько способов добавить свою музыку в очередь:
+— Отправь '{}search <твой запрос>' и выбери из списка
+— Отправь ссылку на видео на ютубе (например '!link youtube.com/watch?v=dQw4w9WgXcQ')
+— Отправь сам файл с музыкой или ссылку на него (!link <file>) 
+
+Если встроенный поиск не находит то, что нужно, то, возможно, эти треки были удалены по требованию правообладателя. Попробуй поискать на YouTube.
+"""
 
 class DiscordFrontend:
     def __init__(self, config):
@@ -23,8 +65,18 @@ class DiscordFrontend:
         self.songs_per_page = 7
         self.users_per_page = 7
 
+        self.command_prefix = self.config.get("discord", "command_prefix", fallback="!")
+
+        self.commands = {
+            "search": self.search_command,
+            "help": self.help_command,
+            "set_text_channel": self.set_text_channel_command
+        }
+
         self.thread_pool = concurrent.futures.ThreadPoolExecutor()
         self.discord_starting_task = None
+
+        self.help_message = help_message.format(self.command_prefix)
 
         # noinspection PyArgumentList
         # self.mon_tg_updates = Counter('dj_tg_updates', 'Telegram updates counter')
@@ -53,12 +105,95 @@ class DiscordFrontend:
 
     async def on_ready(self):
         self.logger.info(f'{self.bot.user} has connected to Discord!')
+        # for guild in client.guilds:
+        #     for channel in guild.channels:
+        #         yield channel
 
     async def on_disconnect(self):
         self.logger.error(f'{self.bot.user} has been disconnected from Discord!')
 
     async def on_message(self, message):
-        self.logger.info(f'New message: "{message}"')
+        if message.author.id == self.bot.user.id:
+            return
+        if message.guild is None:
+            await message.channel.send(f'Я работаю только с серверами, прямые сообщения недоступны!')
+            return
+        try:
+            guildChannel = GuildChannel.get(guild_id=message.guild.id)
+        except peewee.DoesNotExist as e:
+            guildChannel = None
+
+        if guildChannel is None and not message.content.startswith(self.command_prefix + "set_text_channel"):
+            await message.channel.send(f'Мой канал не выбран! Вызовите "{self.command_prefix}set_text_channel" в нужном канале')
+            return
+
+        user = self.init_user(message.author)
+
+        if guildChannel is not None and message.channel.id != guildChannel.channel_id and guildChannel.channel_id is not None:
+            return
+
+        if message.content.startswith(self.command_prefix):
+            command = message.content.split(" ")[0][1:]
+            if command in self.commands:
+                self.core.loop.create_task(self.commands[command](message, user))
+            else:
+                await message.channel.send(f'No such command! Do you need "{self.command_prefix}help"?')
+            return
+
+    async def help_command(self, messsage, user):
+        await messsage.channel.send(self.help_message)
+
+    async def search_command(self, message, user):
+        # todo
+        return
+
+    async def set_text_channel_command(self, message, user):
+        if message.channel.permissions_for(message.author).is_superset(Permissions.manage_channels()):
+            try:
+                guild_channel = GuildChannel.get(guild_id=message.guild.id)
+                if guild_channel.channel_id != message.channel.id:
+                    guild_channel.channel_id = message.channel.id
+                    guild_channel.save()
+                    self.logger.info(f'guild {message.guild.name} updated text channel: {message.channel.name}')
+            except peewee.DoesNotExist:
+                guild_channel = GuildChannel.create(guild_id=message.guild.id, channel_id=message.channel.id)
+                guild_channel.save()
+                self.logger.info(f'guild {message.guild.name} updated text channel: {message.channel.name}')
+
+            await message.channel.send(f'Теперь я работаю в этом канале. Ура')
+            return guild_channel
+        else:
+            await message.channel.send(f'You have no power here! He-he')
+            return None
+
+    async def search(self, data, user):
+        query = data.query.lstrip()
+
+        def message_callback(text):
+            pass
+            # try:
+            #     self._send_text_message(user, text)
+            # except telebot.apihelper.ApiException:
+            #     pass
+
+        results = await self.core.search_action(user.id, query=query, message_callback=message_callback)
+        if results is None:
+            self.logger.warning("Search have returned None instead of results")
+            return
+
+        self.logger.debug("Response from core: %d results" % len(results))
+
+        results_articles = []
+        # for song in results:
+        #     results_articles.append(telebot.types.InlineQueryResultArticle(
+        #         id=song['downloader'] + " " + song['id'],
+        #         title=song['artist'],
+        #         description=song['title'] + " {:d}:{:02d}".format(*list(divmod(song["duration"], 60))),
+        #         input_message_content=telebot.types.InputTextMessageContent(
+        #             "// " + song['artist'] + " - " + song['title']
+        #         ),
+        #     ))
+        self.bot.answer_inline_query(data.id, results_articles)
 
     # when someone is typing right now
     # todo: do i need this?
@@ -66,10 +201,10 @@ class DiscordFrontend:
         pass
 
     # todo: use reactions for votes?
-    #discord.on_reaction_add(reaction, user)
-    #on_reaction_remove(reaction, user)¶
-    #on_reaction_clear_emoji(
-    #https://discordpy.readthedocs.io/en/latest/api.html?highlight=on_ready#discord.on_voice_state_update
+    # discord.on_reaction_add(reaction, user)
+    # on_reaction_remove(reaction, user)¶
+    # on_reaction_clear_emoji(
+    # https://discordpy.readthedocs.io/en/latest/api.html?highlight=on_ready#discord.on_voice_state_update
 
     async def start_bot(self, token):
         while True:
@@ -90,17 +225,37 @@ class DiscordFrontend:
         self.thread_pool.shutdown()
         self.logger.info("Polling have been stopped")
 
-    # todo
     def notify_user(self, uid, message):
         self.logger.debug("Trying to notify user#%d" % uid)
-        self.logger.debug("notify_user is not implemented" % uid)
         try:
-            pass
-            # user = User.get(User.core_id == uid)
+            user = User.get(User.core_id == uid)
+            channel = self.bot.get_channel(user.member_of.channel_id)
+            discord_user = self.bot.get_user(user.discord_id)
+            channel.send(f'{discord_user.mention}, {message}')
         except peewee.DoesNotExist:
             self.logger.warning("Trying to notify nonexistent user#%d" % uid)
             return
-        # self._send_text_message(user, message)
+
+    def init_user(self, user_info):
+        try:
+            user = User.get(User.discord_id == user_info.id)
+            if user.username != user_info.name:
+                user.username = user_info.name
+                user.save()
+                self.core.set_user_name(user.core_id, user.username)
+                self.logger.info("User name updated: " + user.username)
+            return user
+        except peewee.DoesNotExist:
+            core_id = self.core.user_init_action()
+            guild = GuildChannel.get_or_create(guild_id=user_info.guild.id)[0]
+            user = User.create(
+                discord_id=user_info.id,
+                core_id=core_id,
+                username=user_info.name,
+                member_of=guild
+            )
+            self.core.set_user_name(core_id, user.username)
+            return user
 
     #
     # async def message_handler(self, message):
