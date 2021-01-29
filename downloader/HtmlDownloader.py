@@ -33,7 +33,7 @@ class HtmlDownloader(AbstractDownloader):
             "Pragma": "no-cache",
         }
 
-    def search(self, query, user_message=lambda text: True):
+    def search(self, query, user_message=lambda text: True, limit=1000):
         self.logger.debug("Search query: " + query)
 
         if len(query.strip()) == 0:
@@ -66,6 +66,9 @@ class HtmlDownloader(AbstractDownloader):
             for part in time_parts:
                 t = t * 60 + int(part)
             s["duration"] = t
+            s["rating"] = s["rating"].replace(",", "")
+            if s["rating"].endswith("K"):
+                s["rating"] = s["rating"].rstrip("K") + "000"
 
         songs.sort(key=lambda song: -int(song["rating"]))
 
@@ -84,6 +87,10 @@ class HtmlDownloader(AbstractDownloader):
                 "title": s["title"],
                 "duration": s["duration"],
             })
+
+            if len(ret) >= limit:
+                break
+
         return ret
 
     def download(self, query, user_message=lambda text: True):

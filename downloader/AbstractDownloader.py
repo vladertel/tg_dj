@@ -33,7 +33,7 @@ class AbstractDownloader():
         except OSError:
             self.logger.warning("Touched unexistent path")
 
-    def search(self, task, user_message=lambda text: True):
+    def search(self, task, user_message=lambda text: True, limit=1000):
         raise ShouldNotBeCalled(
             "this method should not be called from abstract class")
 

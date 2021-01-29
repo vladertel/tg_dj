@@ -119,7 +119,7 @@ class MasterDownloader:
             raise NotAccepted()
 
     @mon_searches_in_progress.track_inprogress()
-    def thread_search(self, query, callback):
+    def thread_search(self, query, callback, limit):
         results_limit = self.config.getint("downloader", "search_max_results", fallback=10)
 
         for dwnld_name in self.handlers:
@@ -131,6 +131,7 @@ class MasterDownloader:
                 search_results = downloader.search(
                     query,
                     user_message=callback,
+                    limit=limit
                 )
                 start_time = time.time()
                 search_results = search_results[0:min(results_limit, len(search_results))]
@@ -158,6 +159,6 @@ class MasterDownloader:
         self.logger.info("Download action")
         return await self.core.loop.run_in_executor(self.thread_pool, self.thread_download, kind, query, callback)
 
-    async def search(self, query, callback):
+    async def search(self, query, callback, limit):
         self.logger.info("Search action")
-        return await self.core.loop.run_in_executor(self.thread_pool, self.thread_search, query, callback)
+        return await self.core.loop.run_in_executor(self.thread_pool, self.thread_search, query, callback, limit)
