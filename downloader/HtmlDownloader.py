@@ -11,6 +11,21 @@ from .AbstractDownloader import AbstractDownloader
 from .exceptions import *
 from utils import sanitize_file_name
 
+# #DEBUG requests
+# try:
+#     import http.client as http_client
+# except ImportError:
+#     # Python 2
+#     import httplib as http_client
+# http_client.HTTPConnection.debuglevel = 1
+#
+# # You must initialize logging, otherwise you'll not see debug output.
+# logging.basicConfig()
+# logging.getLogger().setLevel(logging.DEBUG)
+# requests_log = logging.getLogger("requests.packages.urllib3")
+# requests_log.setLevel(logging.DEBUG)
+# requests_log.propagate = True
+
 
 class HtmlDownloader(AbstractDownloader):
     name = "html downloader"
@@ -22,15 +37,33 @@ class HtmlDownloader(AbstractDownloader):
             getattr(logging, self.config.get("downloader_html", "verbosity", fallback="warning").upper())
         )
         self.songs_cache = {}
+        self.skip_head = self.config.get("downloader_html", "skip_head", fallback=True)
 
     def is_acceptable(self, kind, query):
         return kind == "search" or kind == "search_result"
 
     @staticmethod
     def get_headers():
+        ua = generate_user_agent()
         return {
-            "User-Agent": generate_user_agent(),
+            "User-Agent": ua,
+            "Pragma": "no-cache"
+        }
+
+    @staticmethod
+    def get_headers_extended(referer: str):
+        ua = generate_user_agent()
+        return {
+            "User-Agent": ua,
             "Pragma": "no-cache",
+            'referer': referer,
+            # ':method': 'GET',
+            'user-Agent': ua,
+            'sec-ch-ua': '"Google Chrome";v = "87", " Not;A Brand";v = "99", "Chromium";v = "87"',
+            'sec-ch-ua-mobile': '?0',
+            'sec-fetch-dest': 'document',
+            'sec-fetch-mode': 'navigate',
+            'sec-fetch-site': 'same-site'
         }
 
     def search(self, query, user_message=lambda text: True, limit=1000):
@@ -115,7 +148,10 @@ class HtmlDownloader(AbstractDownloader):
         if search_request.status_code != 200:
             raise BadReturnStatus(search_request.status_code)
         tree = lxml.html.fromstring(search_request.text)
-        download_uri = base_uri + tree.xpath(download_xpath)[0]
+        right_part: str = tree.xpath(download_xpath)[0]
+        # if right_part.startswith("//"):
+        #     right_part = right_part[1:]
+        download_uri = base_uri + right_part
 
         file_name = sanitize_file_name("html-" + str(result_id) + '.mp3')
         file_path = os.path.join(os.getcwd(), media_dir, file_name)
@@ -131,22 +167,26 @@ class HtmlDownloader(AbstractDownloader):
         self.logger.info("Downloading song #" + result_id)
         user_message("Скачиваем...\n%s — %s" % (song["artist"], song["title"]))
 
-        response_head = requests.head(
-            download_uri, headers=self.get_headers(),
-            allow_redirects=True,
-            stream=True,
-        )
-        if response_head.status_code != 200:
-            raise BadReturnStatus(response_head.status_code)
-        try:
-            file_size = int(response_head.headers['content-length'])
-        except KeyError as e:
-            self.logger.error("No header \"content-length\". More information below\n" + str(e))
-            raise ApiError
-        if file_size > 1000000 * self.config.getint("downloader", "max_file_size", fallback=self._default_max_size):
-            raise MediaIsTooBig(file_size)
+        file_size = None
 
-        sleep(1)
+        if not self.skip_head:
+            response_head = requests.head(
+                download_uri,
+                headers=self.get_headers(),
+                allow_redirects=True,
+                stream=True,
+            )
+            if response_head.status_code != 200:
+                raise BadReturnStatus(response_head.status_code)
+            try:
+                file_size = int(response_head.headers['content-length'])
+            except KeyError as e:
+                self.logger.error("No header \"content-length\". More information below\n" + str(e))
+                raise ApiError
+            if file_size > 1000000 * self.config.getint("downloader", "max_file_size", fallback=self._default_max_size):
+                raise MediaIsTooBig(file_size)
+
+            sleep(1)
 
         self.get_file(
             url=download_uri,
@@ -154,6 +194,7 @@ class HtmlDownloader(AbstractDownloader):
             file_size=file_size,
             percent_callback=lambda p: user_message("Скачиваем [%d%%]...\n%s — %s"
                                                     % (int(p), song["artist"], song["title"])),
+            headers=self.get_headers(),
         )
 
         self.logger.debug("Download completed #" + str(result_id))

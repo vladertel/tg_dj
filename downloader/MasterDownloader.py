@@ -5,7 +5,6 @@ import time
 import logging
 from prometheus_client import Gauge, Summary
 
-
 from .YoutubeDownloader import YoutubeDownloader
 from .HtmlDownloader import HtmlDownloader
 from .FileDownloader import FileDownloader
