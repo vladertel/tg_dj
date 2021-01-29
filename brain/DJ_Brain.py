@@ -192,12 +192,12 @@ class DjBrain:
 
         return track, local_position, global_position
 
-    async def search_action(self, user_id, query, message_callback=None):
+    async def search_action(self, user_id, query, message_callback=None, limit=1000):
         user = self.get_user(user_id)
         message_callback = message_callback or (lambda _state: None)
 
         self.logger.debug("New search query \"%s\" from user#%d (%s)" % (query, user.id, user.name))
-        return await self.downloader.search(query, message_callback)
+        return await self.downloader.search(query, message_callback, limit)
 
     def play_next_track(self):
         active_users = User.filter(User.last_activity > datetime.datetime.now() - datetime.timedelta(minutes=60))
@@ -227,7 +227,12 @@ class DjBrain:
         self.backend.switch_track(track)
 
         user_curr_id = track.user_id
+        if user_curr_id == -1:
+            user_curr_id = None
+
         user_next_id = None if next_track is None else next_track.user_id
+        if user_next_id == -1:
+            user_next_id = None
 
         if user_curr_id is not None and user_next_id is not None and user_curr_id == user_next_id:
             self.frontend.notify_user(
