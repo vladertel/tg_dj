@@ -4,10 +4,17 @@ import argparse
 import configparser
 import logging
 import signal
+from collections import OrderedDict
+
+import discord
 import prometheus_client
 import os
 
 from brain.DJ_Brain import DjBrain
+from downloader.FileDownloader import FileDownloader
+from downloader.HtmlDownloader import HtmlDownloader
+from downloader.LinkDownloader import LinkDownloader
+from downloader.YoutubeDownloader import YoutubeDownloader
 from frontend.MasterFrontend import MasterFrontend
 from streamer.VLCStreamer import VLCStreamer
 from downloader.MasterDownloader import MasterDownloader
@@ -57,9 +64,21 @@ logger = logging.getLogger('tg_dj')
 logger.setLevel(getattr(logging, config.get(config.default_section, "verbosity", fallback="warning").upper()))
 
 # Start modules
-frontend = MasterFrontend(config, DiscordFrontend(config), TgFrontend(config))
-modules = [frontend, MasterDownloader(config), VLCStreamer(config)]
-brain = DjBrain(config, *modules)
+
+main_loop = asyncio.get_event_loop()
+
+discord_client = discord.Client(loop=main_loop)
+
+frontend = MasterFrontend(config, DiscordFrontend(config, discord_client), TgFrontend(config))
+
+downloader = MasterDownloader(config, OrderedDict([
+            ("yt", YoutubeDownloader(config)),
+            ("file", FileDownloader(config)),
+            ("html", HtmlDownloader(config)),
+            ("link", LinkDownloader(config)),
+        ]))
+modules = [frontend, downloader, VLCStreamer(config)]
+brain = DjBrain(config, *modules, loop=main_loop)
 web = StatusWebServer(config)
 web.bind_core(brain)
 
@@ -67,9 +86,8 @@ web.bind_core(brain)
 prometheus_client.start_http_server(8910)
 
 # Run event loop
-loop = asyncio.get_event_loop()
 try:
-    loop.run_forever()
+    main_loop.run_forever()
 except (KeyboardInterrupt, SystemExit):
     pass
 logger.info("Main event loop has ended")
@@ -85,7 +103,7 @@ except AttributeError:
     traceback.print_exc()
 
 logger.info("Closing loop...")
-loop.run_until_complete(asyncio.sleep(1))
-loop.stop()
-loop.close()
+main_loop.run_until_complete(asyncio.sleep(1))
+main_loop.stop()
+main_loop.close()
 logger.debug("Exit")

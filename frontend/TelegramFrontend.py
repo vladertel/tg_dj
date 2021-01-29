@@ -8,6 +8,7 @@ import math
 import traceback
 import logging
 
+from .AbstractFrontend import AbstractFrontend
 from .jinja_env import env
 import asyncio
 from prometheus_client import Counter
@@ -58,8 +59,8 @@ class User(BaseModel):
 db.connect()
 
 
-class TgFrontend:
-
+# noinspection PyMissingConstructor
+class TgFrontend(AbstractFrontend):
     def __init__(self, config):
         self.config = config
         self.logger = logging.getLogger('tg_dj.bot')
@@ -555,6 +556,15 @@ class TgFrontend:
 
         self.remove_old_menu(user)
         self._send_text_message(user, message_text, reply_markup=kb)
+
+    def accept_user(self, core_user_id: int) -> bool:
+        try:
+            user = User.get(User.core_id == core_user_id)
+            if user is not None:
+                return True
+        except peewee.DoesNotExist:
+            return False
+        return True
 
     def notify_user(self, uid, message):
         self.logger.debug("Trying to notify user#%d" % uid)

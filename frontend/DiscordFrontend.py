@@ -10,6 +10,8 @@ import logging
 import traceback
 
 import peewee
+
+from .AbstractFrontend import AbstractFrontend
 from .jinja_env import env
 
 from brain.DJ_Brain import UserBanned, UserRequestQuotaReached, DownloadFailed, PermissionDenied, DjBrain
@@ -72,8 +74,9 @@ def remove_prefix(text, prefix):
 choice_emoji = ["1️⃣", "2️⃣", "3️⃣", "4️⃣", "5️⃣", "6️⃣", "7️⃣", "8️⃣", "9️⃣", "🔟"]
 
 
-class DiscordFrontend:
-    def __init__(self, config):
+# noinspection PyMissingConstructor
+class DiscordFrontend(AbstractFrontend):
+    def __init__(self, config, discord_client: discord.Client):
         """
         :param configparser.ConfigParser config:
         """
@@ -82,7 +85,7 @@ class DiscordFrontend:
         self.logger.setLevel(getattr(logging, self.config.get("discord", "verbosity", fallback="warning").upper()))
 
         self.core: Optional[DjBrain] = None
-        self.bot: Optional[discord.Client] = None
+        self.bot: discord.Client = discord_client
 
         self.interval = 0.1
 
@@ -120,8 +123,6 @@ class DiscordFrontend:
         # discord.opus.load_opus()
         # if not discord.opus.is_loaded():
         #     raise RunTimeError('Opus failed to load')
-
-        self.bot = discord.Client(loop=self.core.loop)
 
         self.bot.event(self.on_ready)
         self.bot.event(self.on_disconnect)
@@ -329,6 +330,15 @@ class DiscordFrontend:
             self.discord_starting_task.cancel()
         self.thread_pool.shutdown()
         self.logger.info("Polling have been stopped")
+
+    def accept_user(self, core_user_id: int) -> bool:
+        try:
+            user = DiscordUser.get(core_id=core_user_id)
+            if user is not None:
+                return True
+        except peewee.DoesNotExist:
+            return False
+        return True
 
     def notify_user(self, core_user_id: int, message: str):
         if self.bot.is_ready():

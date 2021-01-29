@@ -18,8 +18,8 @@ class AbstractFrontend():
     def notify_user(self, core_user_id: int, text: str):
         raise ShouldNotBeCalled()
 
-    def accept_user(self, core_user_id: int):
+    def accept_user(self, core_user_id: int) -> bool:
         raise ShouldNotBeCalled()
 
-    def bind_core(self, core: DjBrain) -> bool:
+    def bind_core(self, core: DjBrain):
         raise ShouldNotBeCalled()

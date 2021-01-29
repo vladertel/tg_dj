@@ -1,14 +1,12 @@
 import concurrent.futures
-from collections import OrderedDict
+import logging
 import os
 import time
-import logging
+from collections import OrderedDict
+from typing import Dict
 from prometheus_client import Gauge, Summary
 
-from .YoutubeDownloader import YoutubeDownloader
-from .HtmlDownloader import HtmlDownloader
-from .FileDownloader import FileDownloader
-from .LinkDownloader import LinkDownloader
+from .AbstractDownloader import AbstractDownloader
 from .exceptions import *
 
 # noinspection PyArgumentList
@@ -20,7 +18,7 @@ mon_search_duration = Summary('dj_search_duration', 'Time spent in search', ['ha
 
 
 class MasterDownloader:
-    def __init__(self, config):
+    def __init__(self, config, downloaders: Dict[str, AbstractDownloader]):
         """
         :param configparser.ConfigParser config:
         """
@@ -30,12 +28,7 @@ class MasterDownloader:
             getattr(logging, self.config.get("downloader", "verbosity", fallback="warning").upper())
         )
 
-        self.handlers = OrderedDict([
-            ("yt", YoutubeDownloader(config)),
-            ("file", FileDownloader(config)),
-            ("html", HtmlDownloader(config)),
-            ("link", LinkDownloader(config)),
-        ])
+        self.handlers = downloaders
 
         self.thread_pool = concurrent.futures.ThreadPoolExecutor()
         self.core = None

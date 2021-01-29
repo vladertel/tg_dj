@@ -39,7 +39,7 @@ class DownloadFailed(Exception):
 
 class DjBrain:
 
-    def __init__(self, config, frontend, downloader, backend):
+    def __init__(self, config, frontend, downloader, backend, loop=asyncio.get_event_loop()):
         """
         :param configparser.ConfigParser config:
         :param frontend:
@@ -59,7 +59,7 @@ class DjBrain:
 
         self.scheduler = Scheduler(config)
 
-        self.loop = asyncio.get_event_loop()
+        self.loop = loop
 
         self.frontend.bind_core(self)
         self.downloader.bind_core(self)
