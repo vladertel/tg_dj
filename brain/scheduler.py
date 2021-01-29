@@ -3,6 +3,8 @@ import json
 import os
 import random
 import logging
+
+from mutagen.mp3 import HeaderNotFoundError
 from prometheus_client import Gauge
 
 from utils import get_mp3_info, remove_links
@@ -74,7 +76,11 @@ class Scheduler:
         add_to_end = []
         for file in files:
             file_path = os.path.join(path, file)
-            title, artist, duration = get_mp3_info(file_path)
+            try:
+                title, artist, duration = get_mp3_info(file_path)
+            except HeaderNotFoundError as e:
+                self.logger.warning(f"Not loading {file} because it does not look like mp3")
+                continue
             title = remove_links(title)
             artist = remove_links(artist)
             if file_path in self.backlog_played_media:
