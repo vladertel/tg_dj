@@ -73,7 +73,7 @@ class DjBrain:
         self.mon_active_users = Gauge('dj_active_users', 'Active users')
         self.mon_active_users.set_function(self.get_active_users_cnt)
 
-        self.stud_board_user = User(id=-1, name="Студствет")
+        self.stud_board_user = User(id=-1, name=config.get("core", "fallback_user_name", fallback="Студсовет"))
 
     def cleanup(self):
         self.logger.debug("Cleaning up...")
