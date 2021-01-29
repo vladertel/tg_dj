@@ -3,14 +3,17 @@ import asyncio
 
 import concurrent.futures
 from concurrent.futures import CancelledError
+from typing import Optional
+
 import discord
 import logging
 import traceback
 
 import peewee
-from discord import Permissions
 from .jinja_env import env
-from functools import reduce
+
+from brain.DJ_Brain import UserBanned, UserRequestQuotaReached, DownloadFailed, PermissionDenied, DjBrain
+from downloader.exceptions import NotAccepted
 
 db = peewee.SqliteDatabase("db/discord_bot.db")
 
@@ -25,11 +28,14 @@ class GuildChannel(BaseModel):
     channel_id = peewee.IntegerField(null=True)
 
 
-class User(BaseModel):
+class DiscordUser(BaseModel):
     discord_id = peewee.IntegerField(unique=True)
     username = peewee.CharField()
-    core_id = peewee.IntegerField()
+    core_id = peewee.IntegerField(unique=True)
     member_of = peewee.ForeignKeyField(GuildChannel)
+
+    def mention(self):
+        return f"<@{self.discord_id}>"
 
     # menu_message_id = peewee.IntegerField(null=True)
     # menu_chat_id = peewee.IntegerField(null=True)
@@ -59,17 +65,21 @@ def remove_prefix(text, prefix):
         return text[len(prefix):]
     return text  # or whatever
 
-choice_emoji = ["1️⃣","2️⃣","3️⃣","4️⃣","5️⃣","6️⃣","7️⃣","8️⃣","9️⃣","🔟"]
+
+choice_emoji = ["1️⃣", "2️⃣", "3️⃣", "4️⃣", "5️⃣", "6️⃣", "7️⃣", "8️⃣", "9️⃣", "🔟"]
 
 
 class DiscordFrontend:
     def __init__(self, config):
+        """
+        :param configparser.ConfigParser config:
+        """
         self.config = config
         self.logger = logging.getLogger('discord.bot')
         self.logger.setLevel(getattr(logging, self.config.get("discord", "verbosity", fallback="warning").upper()))
 
-        self.core = None
-        self.bot = None
+        self.core: Optional[DjBrain] = None
+        self.bot: Optional[discord.Client] = None
 
         self.interval = 0.1
 
@@ -88,7 +98,8 @@ class DiscordFrontend:
         self.discord_starting_task = None
 
         self.help_message = help_message.format(self.command_prefix)
-        self.choice_emoji = []
+
+        self.startup_notifications = {}
 
         # noinspection PyArgumentList
         # self.mon_tg_updates = Counter('dj_tg_updates', 'Telegram updates counter')
@@ -96,7 +107,7 @@ class DiscordFrontend:
         # noinspection PyArgumentList
         # self.mon_tg_api_errors = Counter('dj_tg_api_errors', 'Telegram API errors')
 
-    def bind_core(self, core):
+    def bind_core(self, core: DjBrain):
         self.core = core
         self.bot_init()
 
@@ -112,63 +123,85 @@ class DiscordFrontend:
         self.bot.event(self.on_message)
 
         self.logger.info("Starting bot...")
-        # self.bot.run(self.config.get("discord", "token"))
         self.discord_starting_task = self.core.loop.create_task(self.start_bot(self.config.get("discord", "token")))
 
-    async def on_ready(self):
-        # choice_emoji = ["1️⃣","2️⃣","3️⃣","4️⃣","5️⃣","6️⃣","7️⃣","8️⃣","9️⃣","🔟"]
-        # real_choice_emoji = []
-        # for emoji in choice_emoji:
-        #     real_emoji = self.bot.get_emoji(emoji)
-        #     real_choice_emoji.append(real_emoji)
-        #
+    def get_user(self, user: DiscordUser):
+        # noinspection PyTypeChecker
+        return self.bot.get_user(user.discord_id)
 
+    async def on_ready(self):
         self.logger.info(f'{self.bot.user} has connected to Discord!')
-        # for guild in client.guilds:
-        #     for channel in guild.channels:
-        #         yield channel
+        self.core.loop.create_task(self.greet_guilds())
+
+    async def greet_guilds(self):
+        for guild in self.bot.guilds:
+            try:
+                guild_channel = GuildChannel.get(guild_id=guild.id)
+            except peewee.DoesNotExist:
+                continue
+            else:
+                channel = self.bot.get_channel(guild_channel.channel_id)
+                if channel is not None:
+                    await channel.send("Я онлайн и готов прнимать заказы!")
+        for user in self.startup_notifications:
+            self._notify_user(user, self.startup_notifications[user])
+
+        self.startup_notifications = {}
 
     async def on_disconnect(self):
         self.logger.error(f'{self.bot.user} has been disconnected from Discord!')
 
-    async def on_message(self, message):
+    async def on_message(self, message: discord.Message):
         if message.author.id == self.bot.user.id:
             return
         if message.guild is None:
+            # todo: think about it
             await message.channel.send(f'Я работаю только с серверами, прямые сообщения недоступны!')
             return
         try:
-            guildChannel = GuildChannel.get(guild_id=message.guild.id)
+            guild_channel = GuildChannel.get(guild_id=message.guild.id)
         except peewee.DoesNotExist as e:
-            guildChannel = None
+            guild_channel = None
 
-        if guildChannel is None and not message.content.startswith(self.command_prefix + "set_text_channel"):
-            await message.channel.send(f'Мой канал не выбран! Вызовите "{self.command_prefix}set_text_channel" в нужном канале')
+        if guild_channel is None and not message.content.startswith(self.command_prefix + "set_text_channel"):
+            await message.channel.send(
+                f'Мой канал не выбран! Вызовите "{self.command_prefix}set_text_channel" в нужном канале')
             return
 
         user = self.init_user(message.author)
 
-        if guildChannel is not None and message.channel.id != guildChannel.channel_id and guildChannel.channel_id is not None:
+        if guild_channel is not None and message.channel.id != guild_channel.channel_id and guild_channel.channel_id is not None:
             return
 
         if message.content.startswith(self.command_prefix):
             command = message.content.split(" ")[0][1:]
             if command in self.commands:
-                self.core.loop.create_task(self.commands[command](message, user))
+                # noinspection PyArgumentList
+                self.core.loop.create_task(command, message, user)
             else:
                 await message.channel.send(f'No such command! Do you need "{self.command_prefix}help"?')
             return
 
-    async def help_command(self, messsage, user):
-        await messsage.channel.send(self.help_message)
+    async def handle_task(self, command: str, message: discord.Message, user: DiscordUser):
+        handler = self.commands[command]
+        try:
+            # noinspection PyArgumentList
+            await handler(message, user)
+        except UserBanned:
+            await message.channel.send(f"{user.mention()}, похоже вас заблокировало :(")
+        except PermissionDenied:
+            await message.channel.send(f"{user.mention()}, похоже у вас нет доступа :(")
 
-    async def search_command(self, message, user):
+    async def help_command(self, message: discord.Message, user: DiscordUser):
+        await message.channel.send(self.help_message)
+
+    async def search_command(self, message: discord.Message, user: DiscordUser):
         query = remove_prefix(message.content.lstrip(), f"{self.command_prefix}search ")
 
         def message_callback(text):
             asyncio.run_coroutine_threadsafe(message.channel.send(f'{message.author.mention}! {text}'), self.core.loop)
 
-        results = await self.core.search_action(user.id, query=query, message_callback=message_callback, limit=10)
+        results = await self.core.search_action(user.core_id, query=query, message_callback=message_callback, limit=10)
         if results is None:
             self.logger.warning("Search have returned None instead of results")
             return
@@ -179,56 +212,37 @@ class DiscordFrontend:
             await message.channel.send("Ничего не найдено :(")
             return
 
-        for i in range(len(results)):
-            results[i]['emoji'] = choice_emoji[i]
+        elif len(results) > 1:
+            for i in range(len(results)):
+                results[i]['emoji'] = choice_emoji[i]
 
-        rendered_template = env.get_template("search_msg.tmpl").render({"results":results})
+            rendered_template = env.get_template("search_msg.tmpl").render({"results": results})
 
-        my_message = await message.channel.send(rendered_template)
+            my_message = await message.channel.send(rendered_template)
 
-        for i in range(len(results)):
-            self.core.loop.create_task(my_message.add_reaction(results[i]['emoji']))
+            for i in range(len(results)):
+                self.core.loop.create_task(my_message.add_reaction(results[i]['emoji']))
 
-        self.core.loop.create_task(self.wait_for_search_reaction(my_message, results, message.author))
+            self.core.loop.create_task(self.wait_for_search_reaction(my_message, results, user))
 
+        else:
+            self.core.loop.create_task(self._download_result(results[0], user, message.channel))
 
-        # results_articles.append(telebot.types.InlineQueryResultArticle(
-        #     id=song['downloader'] + " " + song['id'],
-        #     title=song['artist'],
-        #     description=song['title'] + " {:d}:{:02d}".format(*list(divmod(song["duration"], 60))),
-        #     input_message_content=telebot.types.InputTextMessageContent(
-        #         "// " + song['artist'] + " - " + song['title']
-        #     ),
-        # ))
-
-        # await channel.send('Send me that 👍 reaction, mate')
-        #
-        # def check(reaction, user):
-        #     return user == message.author and str(reaction.emoji) == '👍'
-        #
-        # try:
-        #     reaction, user = await client.wait_for('reaction_add', timeout=60.0, check=check)
-        # except asyncio.TimeoutError:
-        #     await channel.send('👎')
-        # else:
-        #     await channel.send('👍')
-
-    async def wait_for_search_reaction(self, message_to_react, results, user_who_ordered_search):
-        def check(reaction, user):
-            if user != user_who_ordered_search or message_to_react != reaction.message:
+    async def wait_for_search_reaction(self, message_to_react: discord.Message, results, user_who_ordered: DiscordUser):
+        def check(reaction: discord.Reaction, user: discord.User):
+            if user_who_ordered.discord_id != user.id or message_to_react != reaction.message:
                 return False
             for result in results:
                 if (result['emoji']) == str(reaction.emoji):
                     return True
             return False
 
-
         try:
-            await asyncio.sleep(self.interval)
-            reaction, user = await self.bot.wait_for('reaction_add', timeout=600.0, check=check)
+            reaction, _ = await self.bot.wait_for('reaction_add', timeout=600.0, check=check)
             index = choice_emoji.index(str(reaction.emoji))
             desired_song = results[index]
-            await message_to_react.channel.send(f"Choice: {desired_song}")
+            self.core.loop.create_task(
+                self._download_result(desired_song, user_who_ordered, message_to_react.channel))
         except asyncio.TimeoutError:
             await message_to_react.channel.send('Опоздал, дальше я игнорю твой ответ.')
         except CancelledError:
@@ -238,8 +252,30 @@ class DiscordFrontend:
             self.logger.error("Polling exception: %s", str(e))
             traceback.print_exc()
 
-    async def set_text_channel_command(self, message, user):
-        if message.channel.permissions_for(message.author).is_superset(Permissions.manage_channels()):
+    async def _download_result(self, desired_song, discord_user: DiscordUser, channel: discord.TextChannel):
+        progress_message = await channel.send("Запрос обрабатывается...")
+
+        def progress_callback(new_progress_msg_text):
+            asyncio.run_coroutine_threadsafe(progress_message.edit(content=new_progress_msg_text), self.core.loop)
+
+        try:
+            song, local_position, global_position = await self.core.download_action(
+                discord_user.core_id,
+                result=desired_song,
+                progress_callback=progress_callback
+            )
+            await channel.send(f"Песня добавлена в очередь: {global_position}")
+        except NotAccepted:
+            await channel.send("🚫 Внутренняя ошибка: ни один загрузчик не принял запрос")
+        except DownloadFailed:
+            await channel.send("🚫 Не удалось загрузить песню")
+        except UserRequestQuotaReached:
+            await channel.send("🚫 Твоя квота закончилась :(")
+            # await channel.send(self._show_quota_reached_msg(user))
+
+    async def set_text_channel_command(self, message: discord.Message, user: DiscordUser):
+        permission = message.channel.permissions_for(message.author)
+        if permission.administrator:
             try:
                 guild_channel = GuildChannel.get(guild_id=message.guild.id)
                 if guild_channel.channel_id != message.channel.id:
@@ -257,19 +293,13 @@ class DiscordFrontend:
             await message.channel.send(f'You have no power here! He-he')
             return None
 
-
-    # when someone is typing right now
-    # todo: do i need this?
-    async def on_typing(self, channel, user, when):
-        pass
-
     # todo: use reactions for votes?
     # discord.on_reaction_add(reaction, user)
     # on_reaction_remove(reaction, user)¶
     # on_reaction_clear_emoji(
     # https://discordpy.readthedocs.io/en/latest/api.html?highlight=on_ready#discord.on_voice_state_update
 
-    async def start_bot(self, token):
+    async def start_bot(self, token: str):
         while True:
             # noinspection PyBroadException
             try:
@@ -288,20 +318,33 @@ class DiscordFrontend:
         self.thread_pool.shutdown()
         self.logger.info("Polling have been stopped")
 
-    def notify_user(self, uid, message):
-        self.logger.debug("Trying to notify user#%d" % uid)
+    def notify_user(self, core_user_id: int, message: str):
+        if self.bot.is_ready():
+            self._notify_user(core_user_id, message)
+        else:
+            self.startup_notifications[core_user_id] = message
+
+    def _notify_user(self, core_user_id: int, message: str):
+        self.logger.debug("Trying to notify user#%d" % core_user_id)
         try:
-            user = User.get(User.core_id == uid)
-            channel = self.bot.get_channel(user.member_of.channel_id)
-            discord_user = self.bot.get_user(user.discord_id)
-            channel.send(f'{discord_user.mention}, {message}')
+            user: DiscordUser = DiscordUser.get(core_id=core_user_id)
+            guild: discord.Guild = self.bot.get_guild(user.member_of.guild_id)
+            channel: discord.TextChannel = guild.get_channel(user.member_of.channel_id)
+            # channel: discord.TextChannel = self.bot.get_channel(user.member_of.channel_id)
+            # noinspection PyTypeChecker
+            # discord_user = guild.get_member(user.discord_id)
+            # members: List[discord.Member] = channel.members
+            # for member in members:
+            #     if member.
+            # discord_user = self.bot.get_user(user.discord_id)
+            asyncio.run_coroutine_threadsafe(channel.send(f'{user.mention()}, {message}'), self.core.loop)
         except peewee.DoesNotExist:
-            self.logger.warning("Trying to notify nonexistent user#%d" % uid)
+            self.logger.warning("Trying to notify nonexistent user#%d" % core_user_id)
             return
 
-    def init_user(self, user_info):
+    def init_user(self, user_info: discord.Member) -> DiscordUser:
         try:
-            user = User.get(User.discord_id == user_info.id)
+            user = DiscordUser.get(discord_id=user_info.id)
             if user.username != user_info.name:
                 user.username = user_info.name
                 user.save()
@@ -311,7 +354,7 @@ class DiscordFrontend:
         except peewee.DoesNotExist:
             core_id = self.core.user_init_action()
             guild = GuildChannel.get_or_create(guild_id=user_info.guild.id)[0]
-            user = User.create(
+            user = DiscordUser.create(
                 discord_id=user_info.id,
                 core_id=core_id,
                 username=user_info.name,
