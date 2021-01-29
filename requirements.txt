@@ -13,4 +13,5 @@ unidecode
 python-vlc
 discord.py
 discord.py[voice]
+tornado-proxy-handlers
 python-dotenv
