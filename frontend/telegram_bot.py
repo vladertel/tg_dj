@@ -296,7 +296,7 @@ class TgFrontend:
             except telebot.apihelper.ApiException:
                 pass
 
-        results = await self.core.search_action(user.id, query=query, message_callback=message_callback)
+        results = await self.core.search_action(user.core_id, query=query, message_callback=message_callback)
         if results is None:
             self.logger.warning("Search have returned None instead of results")
             return
@@ -324,7 +324,7 @@ class TgFrontend:
 
         try:
             song, lp, gp = await self.core.download_action(
-                user.id,
+                user.core_id,
                 result={"downloader": downloader, "id": result_id},
                 progress_callback=progress_callback
             )
@@ -372,7 +372,7 @@ class TgFrontend:
             self._update_or_send_text_message(user, reply, progress_msg)
 
         try:
-            song, lp, gp = await self.core.download_action(user.id, text=text, progress_callback=progress_callback)
+            song, lp, gp = await self.core.download_action(user.core_id, text=text, progress_callback=progress_callback)
             self._send_song_added_message(user, reply, gp, song)
         except NotAccepted:
             self._suggest_search(user, reply, text)
@@ -399,7 +399,7 @@ class TgFrontend:
         }
 
         try:
-            song, lp, gp = await self.core.download_action(user.id, file=file, progress_callback=progress_callback)
+            song, lp, gp = await self.core.download_action(user.core_id, file=file, progress_callback=progress_callback)
             self._send_song_added_message(user, reply, gp, song)
         except NotAccepted:
             self._send_error(user, "🚫 Внутренняя ошибка: ни один загрузчик не принял запрос")

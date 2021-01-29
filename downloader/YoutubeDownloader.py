@@ -59,7 +59,7 @@ class YoutubeDownloader(AbstractDownloader):
         user_message("Загружаем информацию о видео...")
 
         media_dir = self.config.get("downloader", "media_dir", fallback="media")
-        api_key = self.config.get("downloader_youtube", "api_key")
+        # api_key = self.config.get("downloader_youtube", "api_key")
 
         try:
             video = YouTube(url, on_progress_callback=self.video_download_progress)
@@ -91,10 +91,7 @@ class YoutubeDownloader(AbstractDownloader):
         file_dir = media_dir
         file_name = sanitize_file_name("youtube-" + str(video_id))
 
-        seconds = video_details.get('lengthSeconds')
-        if not seconds:
-            raise UrlOrNetworkProblem("google")
-        seconds = int(seconds)
+        seconds = video.length
 
         if seconds > self.config.getint("downloader", "max_duration", fallback=self._default_max_duration):
             raise MediaIsTooLong()
