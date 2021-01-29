@@ -9,6 +9,8 @@ import traceback
 
 import peewee
 from discord import Permissions
+from .jinja_env import env
+from functools import reduce
 
 db = peewee.SqliteDatabase("db/discord_bot.db")
 
@@ -51,6 +53,15 @@ help_message = """Этот бот позволяет тебе управлять
 Если встроенный поиск не находит то, что нужно, то, возможно, эти треки были удалены по требованию правообладателя. Попробуй поискать на YouTube.
 """
 
+
+def remove_prefix(text, prefix):
+    if text.startswith(prefix):
+        return text[len(prefix):]
+    return text  # or whatever
+
+choice_emoji = ["1️⃣","2️⃣","3️⃣","4️⃣","5️⃣","6️⃣","7️⃣","8️⃣","9️⃣","🔟"]
+
+
 class DiscordFrontend:
     def __init__(self, config):
         self.config = config
@@ -77,6 +88,7 @@ class DiscordFrontend:
         self.discord_starting_task = None
 
         self.help_message = help_message.format(self.command_prefix)
+        self.choice_emoji = []
 
         # noinspection PyArgumentList
         # self.mon_tg_updates = Counter('dj_tg_updates', 'Telegram updates counter')
@@ -104,6 +116,13 @@ class DiscordFrontend:
         self.discord_starting_task = self.core.loop.create_task(self.start_bot(self.config.get("discord", "token")))
 
     async def on_ready(self):
+        # choice_emoji = ["1️⃣","2️⃣","3️⃣","4️⃣","5️⃣","6️⃣","7️⃣","8️⃣","9️⃣","🔟"]
+        # real_choice_emoji = []
+        # for emoji in choice_emoji:
+        #     real_emoji = self.bot.get_emoji(emoji)
+        #     real_choice_emoji.append(real_emoji)
+        #
+
         self.logger.info(f'{self.bot.user} has connected to Discord!')
         # for guild in client.guilds:
         #     for channel in guild.channels:
@@ -144,8 +163,80 @@ class DiscordFrontend:
         await messsage.channel.send(self.help_message)
 
     async def search_command(self, message, user):
-        # todo
-        return
+        query = remove_prefix(message.content.lstrip(), f"{self.command_prefix}search ")
+
+        def message_callback(text):
+            asyncio.run_coroutine_threadsafe(message.channel.send(f'{message.author.mention}! {text}'), self.core.loop)
+
+        results = await self.core.search_action(user.id, query=query, message_callback=message_callback, limit=10)
+        if results is None:
+            self.logger.warning("Search have returned None instead of results")
+            return
+
+        self.logger.debug("Response from core: %d results" % len(results))
+
+        if len(results) == 0:
+            await message.channel.send("Ничего не найдено :(")
+            return
+
+        for i in range(len(results)):
+            results[i]['emoji'] = choice_emoji[i]
+
+        rendered_template = env.get_template("search_msg.tmpl").render({"results":results})
+
+        my_message = await message.channel.send(rendered_template)
+
+        for i in range(len(results)):
+            self.core.loop.create_task(my_message.add_reaction(results[i]['emoji']))
+
+        self.core.loop.create_task(self.wait_for_search_reaction(my_message, results, message.author))
+
+
+        # results_articles.append(telebot.types.InlineQueryResultArticle(
+        #     id=song['downloader'] + " " + song['id'],
+        #     title=song['artist'],
+        #     description=song['title'] + " {:d}:{:02d}".format(*list(divmod(song["duration"], 60))),
+        #     input_message_content=telebot.types.InputTextMessageContent(
+        #         "// " + song['artist'] + " - " + song['title']
+        #     ),
+        # ))
+
+        # await channel.send('Send me that 👍 reaction, mate')
+        #
+        # def check(reaction, user):
+        #     return user == message.author and str(reaction.emoji) == '👍'
+        #
+        # try:
+        #     reaction, user = await client.wait_for('reaction_add', timeout=60.0, check=check)
+        # except asyncio.TimeoutError:
+        #     await channel.send('👎')
+        # else:
+        #     await channel.send('👍')
+
+    async def wait_for_search_reaction(self, message_to_react, results, user_who_ordered_search):
+        def check(reaction, user):
+            if user != user_who_ordered_search or message_to_react != reaction.message:
+                return False
+            for result in results:
+                if (result['emoji']) == str(reaction.emoji):
+                    return True
+            return False
+
+
+        try:
+            await asyncio.sleep(self.interval)
+            reaction, user = await self.bot.wait_for('reaction_add', timeout=600.0, check=check)
+            index = choice_emoji.index(str(reaction.emoji))
+            desired_song = results[index]
+            await message_to_react.channel.send(f"Choice: {desired_song}")
+        except asyncio.TimeoutError:
+            await message_to_react.channel.send('Опоздал, дальше я игнорю твой ответ.')
+        except CancelledError:
+            self.logger.info("Polling task have been canceled")
+
+        except Exception as e:
+            self.logger.error("Polling exception: %s", str(e))
+            traceback.print_exc()
 
     async def set_text_channel_command(self, message, user):
         if message.channel.permissions_for(message.author).is_superset(Permissions.manage_channels()):
@@ -166,34 +257,6 @@ class DiscordFrontend:
             await message.channel.send(f'You have no power here! He-he')
             return None
 
-    async def search(self, data, user):
-        query = data.query.lstrip()
-
-        def message_callback(text):
-            pass
-            # try:
-            #     self._send_text_message(user, text)
-            # except telebot.apihelper.ApiException:
-            #     pass
-
-        results = await self.core.search_action(user.id, query=query, message_callback=message_callback)
-        if results is None:
-            self.logger.warning("Search have returned None instead of results")
-            return
-
-        self.logger.debug("Response from core: %d results" % len(results))
-
-        results_articles = []
-        # for song in results:
-        #     results_articles.append(telebot.types.InlineQueryResultArticle(
-        #         id=song['downloader'] + " " + song['id'],
-        #         title=song['artist'],
-        #         description=song['title'] + " {:d}:{:02d}".format(*list(divmod(song["duration"], 60))),
-        #         input_message_content=telebot.types.InputTextMessageContent(
-        #             "// " + song['artist'] + " - " + song['title']
-        #         ),
-        #     ))
-        self.bot.answer_inline_query(data.id, results_articles)
 
     # when someone is typing right now
     # todo: do i need this?
