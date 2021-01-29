@@ -8,10 +8,11 @@ import prometheus_client
 import os
 
 from brain.DJ_Brain import DjBrain
+from frontend.MasterFrontend import MasterFrontend
 from streamer.VLCStreamer import VLCStreamer
 from downloader.MasterDownloader import MasterDownloader
-from frontend.telegram_bot import TgFrontend
-from frontend.discord_bot import DiscordFrontend
+from frontend.TelegramFrontend import TgFrontend
+from frontend.DiscordFrontend import DiscordFrontend
 from web.server import StatusWebServer
 
 # Parse arguments
@@ -56,7 +57,8 @@ logger = logging.getLogger('tg_dj')
 logger.setLevel(getattr(logging, config.get(config.default_section, "verbosity", fallback="warning").upper()))
 
 # Start modules
-modules = [DiscordFrontend(config), MasterDownloader(config), VLCStreamer(config)]
+frontend = MasterFrontend(config, DiscordFrontend(config), TgFrontend(config))
+modules = [frontend, MasterDownloader(config), VLCStreamer(config)]
 brain = DjBrain(config, *modules)
 web = StatusWebServer(config)
 web.bind_core(brain)

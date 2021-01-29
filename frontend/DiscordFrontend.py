@@ -94,6 +94,7 @@ class DiscordFrontend:
         self.commands = {
             "help": self.help_command,
             "link": self.link_command,
+            "skip": self.skip_command,
             "search": self.search_command,
             "set_text_channel": self.set_text_channel_command
         }
@@ -217,6 +218,8 @@ class DiscordFrontend:
         song, lp, global_position = await self.core.download_action(user.core_id, text=text, progress_callback=progress_callback)
         await self._send_song_added_message(message.channel, user, global_position)
 
+    async def skip_command(self, message: discord.Message, user: DiscordUser):
+        self.core.switch_track(user.core_id)
 
     async def search_command(self, message: discord.Message, user: DiscordUser):
         query = remove_prefix(message.content.lstrip(), f"{self.command_prefix}search ")
