@@ -11,7 +11,7 @@ import traceback
 
 import peewee
 
-from .AbstractFrontend import AbstractFrontend
+from .AbstractFrontend import AbstractFrontend, FrontendUserInfo
 from .jinja_env import env
 
 from brain.DJ_Brain import UserBanned, UserRequestQuotaReached, DownloadFailed, PermissionDenied, DjBrain
@@ -76,6 +76,7 @@ class DiscordFrontend(AbstractFrontend):
         self.logger.setLevel(getattr(logging, self.config.get("discord", "verbosity", fallback="warning").upper()))
 
         self.core: Optional[DjBrain] = None
+        self.master = None
         self.bot: discord.Client = discord_client
 
         self.interval = 0.1
@@ -110,6 +111,18 @@ class DiscordFrontend(AbstractFrontend):
         self.core = core
         self.bot_init()
 
+    def bind_master(self, master):
+        self.master = master
+
+    def get_user_info(self, core_user_id: int) -> Optional[FrontendUserInfo]:
+        try:
+            ds_user: DiscordUser = DiscordUser.get(core_id=core_user_id)
+        except peewee.DoesNotExist:
+            return None
+        # noinspection PyTypeChecker
+        return FrontendUserInfo("Discord", ds_user.username, ds_user.discord_id)
+
+
     def bot_init(self):
         # discord.opus.load_opus()
         # if not discord.opus.is_loaded():
@@ -128,7 +141,7 @@ class DiscordFrontend(AbstractFrontend):
 
     async def on_ready(self):
         self.logger.info(f'{self.bot.user} has connected to Discord!')
-        self.core.loop.create_task(self.greet_guilds())
+        # self.core.loop.create_task(self.greet_guilds())
 
     async def greet_guilds(self):
         for guild in self.bot.guilds:

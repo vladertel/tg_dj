@@ -1,3 +1,5 @@
+from typing import Dict, List, Optional
+
 import telebot
 import concurrent.futures
 from concurrent.futures import CancelledError
@@ -8,14 +10,14 @@ import math
 import traceback
 import logging
 
-from .AbstractFrontend import AbstractFrontend
+from brain.models import UserInfo, Song, Request, User
+from .AbstractFrontend import AbstractFrontend, FrontendUserInfo
 from .jinja_env import env
 import asyncio
 from prometheus_client import Counter
 
 from brain.DJ_Brain import UserBanned, UserRequestQuotaReached, DownloadFailed, PermissionDenied
 from downloader.exceptions import NotAccepted
-
 
 compiled_regex = re.compile(r"^\d+")
 
@@ -31,7 +33,6 @@ help_message = """Привет!
 Если встроенный поиск не находит то, что нужно, то, возможно, эти треки были удалены по требованию правообладателя. Попробуй поискать на YouTube.
 """
 
-
 db = peewee.SqliteDatabase("db/telegram_bot.db")
 
 
@@ -40,7 +41,7 @@ class BaseModel(peewee.Model):
         database = db
 
 
-class User(BaseModel):
+class TgUser(BaseModel):
     tg_id = peewee.IntegerField(unique=True)
     core_id = peewee.IntegerField()
     login = peewee.CharField(null=True)
@@ -73,6 +74,7 @@ class TgFrontend(AbstractFrontend):
 
         self.core = None
         self.bot = None
+        self.master = None  # type: frontend.MasterFrontend.MasterFrontend
 
         self.bamboozled_users = []
 
@@ -94,7 +96,27 @@ class TgFrontend(AbstractFrontend):
         self.bot = telebot.TeleBot(self.config.get("telegram", "token"))
         self.bot_init()
 
-# INIT #####
+    def bind_master(self, master):
+        self.master = master
+
+    def get_user_info(self, core_user_id: int) -> Optional[FrontendUserInfo]:
+        try:
+            tg_user: TgUser = TgUser.get(core_id=core_user_id)
+        except peewee.DoesNotExist:
+            return None
+
+        login = tg_user.login
+        if login is None:
+            try:
+                login = self.bot.get_chat(tg_user.tg_id).username
+            except KeyError:
+                pass
+
+        # noinspection PyTypeChecker
+        return FrontendUserInfo("Telegram", login, tg_user.tg_id)
+
+
+    # INIT #####
     def bot_init(self):
         self.logger.info("Starting polling...")
         self.telegram_polling_task = self.core.loop.create_task(self.bot_polling())
@@ -340,12 +362,12 @@ class TgFrontend(AbstractFrontend):
     async def command(self, message, user):
 
         handlers = {
-           'start': self.start_handler,
-           'broadcast': self.broadcast_to_all_users,
-           'stop_playback': self.stop_playback,
-           'stop_playing': self.stop_playback,
-           'skip_song': self.skip_song,
-           'skip': self.skip_song,
+            'start': self.start_handler,
+            'broadcast': self.broadcast_to_all_users,
+            'stop_playback': self.stop_playback,
+            'stop_playing': self.stop_playback,
+            'skip_song': self.skip_song,
+            'skip': self.skip_song,
         }
 
         for e in message.entities:
@@ -409,7 +431,7 @@ class TgFrontend(AbstractFrontend):
         except UserRequestQuotaReached:
             self._show_quota_reached_msg(user)
 
-# MENU RELATED #####
+    # MENU RELATED #####
 
     def remove_old_menu(self, user):
 
@@ -497,10 +519,10 @@ class TgFrontend(AbstractFrontend):
         self._send_text_message(user, message_text)
 
     def send_menu_my_tracks(self, user):
-        data = self.core.get_user_info_minimal(user.core_id)
+        user_info_minimal = self.core.get_user_info_minimal(user.core_id)
 
-        message_text = env.get_template("my_tracks_text.tmpl").render(**data)
-        kb_text = env.get_template("my_tracks_keyboard.tmpl").render(**data)
+        message_text = env.get_template("my_tracks_text.tmpl").render(user_info_minimal.__dict__)
+        kb_text = env.get_template("my_tracks_keyboard.tmpl").render(user_info_minimal.__dict__)
         kb = self.build_markup(kb_text)
 
         self.remove_old_menu(user)
@@ -510,7 +532,7 @@ class TgFrontend(AbstractFrontend):
         data = self.core.get_song_info(user.core_id, song_id)
         data["user"] = user
         if data["song"] is not None:
-            data["author"] = self.core.get_user_info_minimal(data["song"].user_id)["info"]
+            data["author"] = self.core.get_user_info_minimal(data["song"].user_id).info
             data["list_offset"] = ((data["global_position"] - 1) // self.songs_per_page) * self.songs_per_page
         else:
             data["list_offset"] = 0
@@ -538,20 +560,18 @@ class TgFrontend(AbstractFrontend):
         self.remove_old_menu(user)
         self._send_text_message(user, message_text, reply_markup=kb)
 
+    class ExtendedUserInfo(UserInfo):
+        def __init__(self, user_info: UserInfo):
+            super().__init__(user_info.info, user_info.songs_in_queue, user_info.total_requests,
+                             user_info.last_requests)
+            self.frontend_user_infos: Optional[List[FrontendUserInfo]] = None
+
     def send_menu_admin_user(self, user, handled_user_id):
-        data = self.core.get_user_info(user.core_id, handled_user_id)
+        user_info = TgFrontend.ExtendedUserInfo(self.core.get_user_info(user.core_id, handled_user_id))
+        user_info.frontend_user_infos = self.master.get_user_infos(handled_user_id)
 
-        try:
-            about_user_tg = User.get(User.core_id == handled_user_id)
-            if about_user_tg.login is None:
-                login = self.bot.get_chat(about_user_tg.tg_id).username
-                about_user_tg.login = login
-            data["about_user_tg"] = about_user_tg
-        except KeyError:
-            data["about_user_tg"] = None
-
-        message_text = env.get_template("user_info_text.tmpl").render(**data)
-        kb_text = env.get_template("user_info_keyboard.tmpl").render(**data)
+        message_text = env.get_template("user_info_text.tmpl").render(user_info.__dict__)
+        kb_text = env.get_template("user_info_keyboard.tmpl").render(user_info.__dict__)
         kb = self.build_markup(kb_text)
 
         self.remove_old_menu(user)
@@ -559,7 +579,7 @@ class TgFrontend(AbstractFrontend):
 
     def accept_user(self, core_user_id: int) -> bool:
         try:
-            user = User.get(User.core_id == core_user_id)
+            user = TgUser.get(TgUser.core_id == core_user_id)
             if user is not None:
                 return True
         except peewee.DoesNotExist:
@@ -569,13 +589,13 @@ class TgFrontend(AbstractFrontend):
     def notify_user(self, uid: int, message: str):
         self.logger.debug("Trying to notify user#%d" % uid)
         try:
-            user: User = User.get(User.core_id == uid)
+            user: TgUser = TgUser.get(TgUser.core_id == uid)
         except peewee.DoesNotExist:
             self.logger.warning("Trying to notify nonexistent user#%d" % uid)
             return
         self._send_text_message(user, message)
 
-    def _send_text_message(self, user: User, message: str, reply_markup=None):
+    def _send_text_message(self, user: TgUser, message: str, reply_markup=None):
         try:
             return self.bot.send_message(user.tg_id, message, reply_markup=reply_markup)
         except telebot.apihelper.ApiException as e:
@@ -596,24 +616,25 @@ class TgFrontend(AbstractFrontend):
         except telebot.apihelper.ApiException as e:
             self.logger.warning("Can't edit message #%d in chat #%d: %s", message_id, chat_id, str(e))
 
-    def _update_or_send_text_message(self, user: User, reply: telebot.types.Message, new_text: str, new_markup=None) -> telebot.types.Message:
+    def _update_or_send_text_message(self, user: TgUser, reply: telebot.types.Message, new_text: str,
+                                     new_markup=None) -> telebot.types.Message:
         if reply is None:
             return self._send_text_message(user, new_text, new_markup)
         else:
             self._update_text_message(reply.chat.id, reply.message_id, new_text, new_markup)
             return reply
 
-    def _send_greeting_message(self, user: User):
+    def _send_greeting_message(self, user: TgUser):
         try:
             self.bot.send_message(user.tg_id, help_message, disable_web_page_preview=True)
         except telebot.apihelper.ApiException as e:
             self.logger.warning("Can't send message to user %d: %s", user.tg_id, str(e))
 
-    def _send_song_added_message(self, user: User, reply: telebot.types.Message, position: int, track):
+    def _send_song_added_message(self, user: TgUser, reply: telebot.types.Message, position: int, track):
         data = {
             "position": position,
             "track": track,
-            "tracks_list": self.core.get_user_info_minimal(user.core_id)["songs_in_queue"],
+            "tracks_list": self.core.get_user_info_minimal(user.core_id).songs_in_queue,
         }
 
         message_text = env.get_template("song_added_msg_text.tmpl").render(**data)
@@ -656,7 +677,7 @@ class TgFrontend(AbstractFrontend):
                     "Can't edit message markup #%d in chat #%d: %s", reply.message_id, reply.chat.id, str(e)
                 )
 
-# COMMANDS HANDLERS #####
+    # COMMANDS HANDLERS #####
 
     def broadcast_to_all_users(self, message, user):
         text = message.text.replace("/broadcast", "").strip()
@@ -675,11 +696,11 @@ class TgFrontend(AbstractFrontend):
         self._send_greeting_message(user)
         self.send_menu_main(user)
 
-# USER INITIALIZATION #####
+    # USER INITIALIZATION #####
 
     def init_user(self, user_info):
         try:
-            user = User.get(User.tg_id == user_info.id)
+            user = TgUser.get(TgUser.tg_id == user_info.id)
             if user.first_name != user_info.first_name or user.last_name != user_info.last_name:
                 user.first_name = user_info.first_name
                 user.last_name = user_info.last_name
@@ -689,7 +710,7 @@ class TgFrontend(AbstractFrontend):
             return user
         except peewee.DoesNotExist:
             core_id = self.core.user_init_action()
-            user = User.create(
+            user = TgUser.create(
                 tg_id=user_info.id,
                 core_id=core_id,
                 login=user_info.username,
@@ -700,7 +721,7 @@ class TgFrontend(AbstractFrontend):
             self._send_greeting_message(user)
             return user
 
-# USER MESSAGES HANDLERS #####
+    # USER MESSAGES HANDLERS #####
 
     def file_handler(self, message):
         try:

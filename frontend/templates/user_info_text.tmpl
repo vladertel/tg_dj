@@ -1,11 +1,11 @@
 👤 {{ info.name }}
 
-{% if about_user_tg is not none %}
-Telegram ID: {{ about_user_tg.tg_id }}
-{% if about_user_tg.login is not none %}
-Login: @{{ about_user_tg.login }}
+{% for frontend_user_info in frontend_user_infos %}
+{{ frontend_user_info.frontend_name }}: {{ frontend_user_info.id }}
+{% if frontend_user_info.login is not none %}
+Login: @{{ frontend_user_info.login }}
 {% endif %}
-{% endif %}
+{% endfor %}
 
 Всего запросов: {{ total_requests }}
 {% if last_requests | length %}
