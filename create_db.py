@@ -1,6 +1,6 @@
 from brain.models import User, Request, db as brain_db
-from frontend.TelegramFrontend import User as TgUser, db as tg_bot_db
-from frontend.DiscordFrontend import DiscordUser as DiscordUser, GuildChannel, db as discord_bot_db
+from frontend.TelegramFrontend import TgUser, db as tg_bot_db
+from frontend.DiscordFrontend import DiscordUser, GuildChannel, db as discord_bot_db
 import peewee
 
 # connect actually happens in brain.DJ_Brain file, and connects when imported
