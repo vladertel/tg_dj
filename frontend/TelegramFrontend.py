@@ -566,16 +566,16 @@ class TgFrontend(AbstractFrontend):
             return False
         return True
 
-    def notify_user(self, uid, message):
+    def notify_user(self, uid: int, message: str):
         self.logger.debug("Trying to notify user#%d" % uid)
         try:
-            user = User.get(User.core_id == uid)
+            user: User = User.get(User.core_id == uid)
         except peewee.DoesNotExist:
             self.logger.warning("Trying to notify nonexistent user#%d" % uid)
             return
         self._send_text_message(user, message)
 
-    def _send_text_message(self, user, message, reply_markup=None):
+    def _send_text_message(self, user: User, message: str, reply_markup=None):
         try:
             return self.bot.send_message(user.tg_id, message, reply_markup=reply_markup)
         except telebot.apihelper.ApiException as e:
@@ -596,20 +596,20 @@ class TgFrontend(AbstractFrontend):
         except telebot.apihelper.ApiException as e:
             self.logger.warning("Can't edit message #%d in chat #%d: %s", message_id, chat_id, str(e))
 
-    def _update_or_send_text_message(self, user, reply, new_text, new_markup=None):
+    def _update_or_send_text_message(self, user: User, reply: telebot.types.Message, new_text: str, new_markup=None) -> telebot.types.Message:
         if reply is None:
             return self._send_text_message(user, new_text, new_markup)
         else:
             self._update_text_message(reply.chat.id, reply.message_id, new_text, new_markup)
             return reply
 
-    def _send_greeting_message(self, user):
+    def _send_greeting_message(self, user: User):
         try:
             self.bot.send_message(user.tg_id, help_message, disable_web_page_preview=True)
         except telebot.apihelper.ApiException as e:
             self.logger.warning("Can't send message to user %d: %s", user.tg_id, str(e))
 
-    def _send_song_added_message(self, user, reply, position, track):
+    def _send_song_added_message(self, user: User, reply: telebot.types.Message, position: int, track):
         data = {
             "position": position,
             "track": track,

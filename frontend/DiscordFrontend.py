@@ -39,15 +39,6 @@ class DiscordUser(BaseModel):
     def mention(self):
         return f"<@{self.discord_id}>"
 
-    # menu_message_id = peewee.IntegerField(null=True)
-    # menu_chat_id = peewee.IntegerField(null=True)
-    #
-    # def full_name(self):
-    #     if self.last_name is None:
-    #         return self.first_name
-    #     else:
-    #         return str(self.first_name) + " " + str(self.last_name)
-
 
 db.connect()
 

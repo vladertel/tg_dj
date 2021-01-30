@@ -14,6 +14,8 @@ class TelnetWrapper(Telnet):
         return self.read_eager()
 
 
+# noinspection PyUnresolvedReferences,PyStatementEffect
+obsolete and unsupported
 class LiquidStreamer:
     def __init__(self, config):
         self.config = config

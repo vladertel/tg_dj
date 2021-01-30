@@ -109,7 +109,7 @@ class StatusWebServer:
         progress = self.core.backend.get_song_progress()
         return track_dict, progress
 
-    def update_state(self, track):
+    def update_state(self, track: Song):
         if track is not None:
             self.broadcast_update(track.to_dict())
         else:
