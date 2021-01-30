@@ -1,7 +1,5 @@
 import logging
 
-from brain.DJ_Brain import DjBrain
-
 
 class ShouldNotBeCalled(Exception):
     pass
@@ -16,7 +14,10 @@ class AbstractStreamer:
         self.logger = logging.getLogger("tg_dj.streamer.abstract")
         self.logger.setLevel(getattr(logging, self.config.get("streamer", "verbosity", fallback="warning").upper()))
 
-    def bind_core(self, core: DjBrain):
+    def bind_core(self, core):
+        """
+        :param brain.DJ_Brain.DjBrain core
+        """
         raise ShouldNotBeCalled()
 
     def get_current_song(self):
