@@ -18,7 +18,7 @@ from downloader.MasterDownloader import MasterDownloader
 from frontend.AbstractFrontend import AbstractFrontend
 from streamer.AbstractStreamer import AbstractStreamer
 from .scheduler import Scheduler
-from .models import User, Request, Song
+from .models import User, Request, Song, UserInfoMinimal, UserInfo
 
 
 class UserQuotaReached(Exception):
@@ -371,7 +371,7 @@ class DjBrain:
         tracks = self.scheduler.get_queue_tracks(offset, limit)
         first_tracks = self.scheduler.get_queue_tracks(0, users_cnt)
         for track in chain(tracks, first_tracks):
-            track.author = self.get_user_info_minimal(track.user_id)["info"]
+            track.author = self.get_user_info_minimal(track.user_id).info
 
         return {
             "first_tracks": first_tracks,
@@ -423,7 +423,6 @@ class DjBrain:
     async def watch_queue_rating(self):
         while True:
             await asyncio.sleep(30)
-            # FIXME: song is not a song! it's user_id
             for song in self.scheduler.get_queue_tracks():
                 if self.check_song_rating(song):
                     continue
@@ -466,7 +465,7 @@ class DjBrain:
             "cnt": users_cnt,
         }
 
-    def get_user_info(self, user_id: int, handled_user_id: int):
+    def get_user_info(self, user_id: int, handled_user_id: int) -> UserInfo:
         user = self.get_user(user_id)
 
         if not user.superuser:
@@ -482,23 +481,13 @@ class DjBrain:
             counter = Request.select().filter(Request.user == handled_user).count()
 
         tracks = self.scheduler.get_user_tracks(handled_user_id)
-        # todo: use UserInfo
-        return {
-            "info": handled_user,
-            "last_requests": [r for r in requests],
-            "total_requests": counter,
-            "songs_in_queue": {self.scheduler.get_track_position(t)[1]: t for t in tracks},
-        }
+        return UserInfo(handled_user, {self.scheduler.get_track_position(t)[1]: t for t in tracks}, counter, [r for r in requests])
 
-    def get_user_info_minimal(self, handled_user_id):
+    def get_user_info_minimal(self, handled_user_id: int) -> UserInfoMinimal:
         if handled_user_id == -1:
-            handled_user = self.stud_board_user
+            handled_user: User = self.stud_board_user
         else:
-            handled_user = User.get(id=handled_user_id)
+            handled_user: User = User.get(id=handled_user_id)
 
         tracks = self.scheduler.get_user_tracks(handled_user_id)
-        # todo: use UserInfoMinimal
-        return {
-            "info": handled_user,
-            "songs_in_queue": {self.scheduler.get_track_position(t)[1]: t for t in tracks},
-        }
+        return UserInfoMinimal(handled_user, {self.scheduler.get_track_position(t)[1]: t for t in tracks})
