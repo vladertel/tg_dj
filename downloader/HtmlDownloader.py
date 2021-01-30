@@ -50,22 +50,6 @@ class HtmlDownloader(AbstractDownloader):
             "Pragma": "no-cache"
         }
 
-    @staticmethod
-    def get_headers_extended(referer: str):
-        ua = generate_user_agent()
-        return {
-            "User-Agent": ua,
-            "Pragma": "no-cache",
-            'referer': referer,
-            # ':method': 'GET',
-            'user-Agent': ua,
-            'sec-ch-ua': '"Google Chrome";v = "87", " Not;A Brand";v = "99", "Chromium";v = "87"',
-            'sec-ch-ua-mobile': '?0',
-            'sec-fetch-dest': 'document',
-            'sec-fetch-mode': 'navigate',
-            'sec-fetch-site': 'same-site'
-        }
-
     def search(self, query, user_message=lambda text: True, limit=1000):
         self.logger.debug("Search query: " + query)
 
