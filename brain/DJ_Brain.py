@@ -415,7 +415,8 @@ class DjBrain:
     async def watch_queue_rating(self):
         while True:
             await asyncio.sleep(30)
-            for song in self.scheduler.get_queue()[:]:
+            # FIXME: song is not a song! it's user_id
+            for song in self.scheduler.get_queue_tracks():
                 if self.check_song_rating(song):
                     continue
 
