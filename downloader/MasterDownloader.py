@@ -80,10 +80,12 @@ class MasterDownloader:
 
             accepted = True
             try:
+                self.logger.info(f"Downloading: {query}")
                 start_time = time.time()
                 result = downloader.download(query, user_message=callback)
                 end_time = time.time()
                 mon_download_duration.labels(handler_name).observe(end_time - start_time)
+                self.logger.info(f"Downloaded: {query}")
                 self._filter_storage()
                 return result
             except MediaIsTooLong as e:
