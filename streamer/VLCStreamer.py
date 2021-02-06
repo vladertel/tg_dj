@@ -2,8 +2,12 @@ import time
 import vlc
 from prometheus_client import Gauge
 
+from brain.models import Song
+from streamer.AbstractStreamer import AbstractStreamer
 
-class VLCStreamer:
+
+# noinspection PyMissingConstructor
+class VLCStreamer(AbstractStreamer):
     def __init__(self, config):
         self.config = config
 
@@ -38,7 +42,7 @@ class VLCStreamer:
     def get_current_song(self):
         return self.now_playing
 
-    def get_song_progress(self):
+    def get_song_progress(self) -> int:
         return int(time.time() - self.song_start_time)
 
     def stop(self):
@@ -46,7 +50,7 @@ class VLCStreamer:
         self.is_playing = False
         self.now_playing = None
 
-    def switch_track(self, track):
+    def switch_track(self, track: Song):
         uri = track.media
         vlc_options = self.config.get("streamer_vlc", "vlc_options")
         media = self.vlc_instance.media_new(uri, vlc_options, "sout-keep")

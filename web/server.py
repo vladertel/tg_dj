@@ -95,7 +95,7 @@ class StatusWebServer:
         self.mon_web_ws_clients = Gauge('dj_web_ws_clients', 'Number of websocket connections')
         self.mon_web_ws_clients.set_function(lambda: len(self.ws_clients))
 
-        self.stream_url = self.config.get("web_server", "stream_url")
+        self.stream_url = self.config.get("web_server", "stream_url", fallback="/stream")
         self.ws_url = self.config.get("web_server", "ws_url", fallback="auto")
 
     def bind_core(self, core):
@@ -109,7 +109,7 @@ class StatusWebServer:
         progress = self.core.backend.get_song_progress()
         return track_dict, progress
 
-    def update_state(self, track):
+    def update_state(self, track: Song):
         if track is not None:
             self.broadcast_update(track.to_dict())
         else:

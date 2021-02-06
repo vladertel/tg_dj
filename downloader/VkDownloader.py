@@ -14,7 +14,7 @@ from utils import sanitize_file_name, remove_links
 class CaptchaNeeded(ApiError):
     pass
 
-
+# obsolete. Not used for now
 class VkDownloader(AbstractDownloader):
     name = "vk downloader"
 
@@ -47,7 +47,7 @@ class VkDownloader(AbstractDownloader):
             "page": 0
         }
 
-    def search(self, query, user_message=lambda text: True):
+    def search(self, query, user_message=lambda text: True, limit=1000):
         self.logger.debug("Search query: " + query)
 
         if len(query.strip()) == 0:

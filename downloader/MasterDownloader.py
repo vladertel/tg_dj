@@ -1,15 +1,12 @@
 import concurrent.futures
-from collections import OrderedDict
+import logging
 import os
 import time
-import logging
+from collections import OrderedDict
+from typing import Dict
 from prometheus_client import Gauge, Summary
 
-
-from .YoutubeDownloader import YoutubeDownloader
-from .HtmlDownloader import HtmlDownloader
-from .FileDownloader import FileDownloader
-from .LinkDownloader import LinkDownloader
+from .AbstractDownloader import AbstractDownloader
 from .exceptions import *
 
 # noinspection PyArgumentList
@@ -21,7 +18,7 @@ mon_search_duration = Summary('dj_search_duration', 'Time spent in search', ['ha
 
 
 class MasterDownloader:
-    def __init__(self, config):
+    def __init__(self, config, downloaders: Dict[str, AbstractDownloader]):
         """
         :param configparser.ConfigParser config:
         """
@@ -31,12 +28,7 @@ class MasterDownloader:
             getattr(logging, self.config.get("downloader", "verbosity", fallback="warning").upper())
         )
 
-        self.handlers = OrderedDict([
-            ("yt", YoutubeDownloader(config)),
-            ("file", FileDownloader(config)),
-            ("html", HtmlDownloader(config)),
-            ("link", LinkDownloader(config)),
-        ])
+        self.handlers = downloaders
 
         self.thread_pool = concurrent.futures.ThreadPoolExecutor()
         self.core = None
@@ -88,10 +80,12 @@ class MasterDownloader:
 
             accepted = True
             try:
+                self.logger.info(f"Downloading: {query}")
                 start_time = time.time()
                 result = downloader.download(query, user_message=callback)
                 end_time = time.time()
                 mon_download_duration.labels(handler_name).observe(end_time - start_time)
+                self.logger.info(f"Downloaded: {query}")
                 self._filter_storage()
                 return result
             except MediaIsTooLong as e:
@@ -119,7 +113,7 @@ class MasterDownloader:
             raise NotAccepted()
 
     @mon_searches_in_progress.track_inprogress()
-    def thread_search(self, query, callback):
+    def thread_search(self, query, callback, limit):
         results_limit = self.config.getint("downloader", "search_max_results", fallback=10)
 
         for dwnld_name in self.handlers:
@@ -131,6 +125,7 @@ class MasterDownloader:
                 search_results = downloader.search(
                     query,
                     user_message=callback,
+                    limit=limit
                 )
                 start_time = time.time()
                 search_results = search_results[0:min(results_limit, len(search_results))]
@@ -158,6 +153,6 @@ class MasterDownloader:
         self.logger.info("Download action")
         return await self.core.loop.run_in_executor(self.thread_pool, self.thread_download, kind, query, callback)
 
-    async def search(self, query, callback):
+    async def search(self, query, callback, limit):
         self.logger.info("Search action")
-        return await self.core.loop.run_in_executor(self.thread_pool, self.thread_search, query, callback)
+        return await self.core.loop.run_in_executor(self.thread_pool, self.thread_search, query, callback, limit)

@@ -33,7 +33,7 @@ class AbstractDownloader():
         except OSError:
             self.logger.warning("Touched unexistent path")
 
-    def search(self, task, user_message=lambda text: True):
+    def search(self, task, user_message=lambda text: True, limit=1000):
         raise ShouldNotBeCalled(
             "this method should not be called from abstract class")
 
@@ -44,9 +44,9 @@ class AbstractDownloader():
     def is_in_cache(self, file_path):
         return os.path.exists(file_path) and os.path.getsize(file_path) > 0
 
-    def get_file(self, url, file_path, percent_callback=lambda x: True, file_size=None):
+    def get_file(self, url, file_path, percent_callback=lambda x: True, file_size=None, headers=None):
         try:
-            response = requests.get(url, allow_redirects=True, stream=True)
+            response = requests.get(url, allow_redirects=True, stream=True, headers=headers)
         except requests.exceptions.ConnectionError as e:
             raise UrlOrNetworkProblem(e)
         if response.status_code != 200:
