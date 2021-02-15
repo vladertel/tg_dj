@@ -140,11 +140,6 @@ class TextDownloaderQuery(DownloaderQuery):
         self.progress_callback = progress_callback
 
 
-# class SearchDownloaderQuery:
-#     def __init__(self):
-#         self.
-
-
 class UserInfoMinimal():
     def __init__(self, info: User, songs_in_queue: Dict[int, Song]):
         self.info = info

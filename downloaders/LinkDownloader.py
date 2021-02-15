@@ -5,8 +5,8 @@ import logging
 
 from urllib import parse
 
-from .AbstractDownloader import AbstractDownloader
-from .exceptions import *
+from core.AbstractDownloader import AbstractDownloader, UrlOrNetworkProblem, MediaIsTooLong, MediaIsTooBig, \
+    MediaSizeUnspecified, BadReturnStatus, UnappropriateArgument
 from utils import get_mp3_info, sanitize_file_name, remove_links
 
 
@@ -25,6 +25,9 @@ class LinkDownloader(AbstractDownloader):
             r"(?:https?://)?([0-9]{1,3}\.){3}([0-9]{1,3})\/.*[a-zA-Z0-9_\?\&\=\-]*",
             flags=re.IGNORECASE)
         self.name = "links downloader"
+
+    def get_name(self):
+        return "link"
 
     def is_acceptable(self, kind, query):
         if kind == "text":

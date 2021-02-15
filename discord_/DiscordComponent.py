@@ -11,11 +11,13 @@ import traceback
 
 import peewee
 
-from .AbstractFrontend import AbstractFrontend, FrontendUserInfo
-from .jinja_env import env
+from core.AbstractFrontend import AbstractFrontend, FrontendUserInfo
+from core.AbstractRadioEmitter import AbstractRadioEmitter
+from core.models import Song
+from discord_.jinja_env import env
 
-from brain.DJ_Brain import UserBanned, UserRequestQuotaReached, DownloadFailed, PermissionDenied, DjBrain
-from downloader.exceptions import NotAccepted
+from core.Core import UserBanned, UserRequestQuotaReached, DownloadFailed, PermissionDenied, Core
+from core.AbstractDownloader import NotAccepted
 
 db = peewee.SqliteDatabase("db/discord_bot.db")
 
@@ -66,7 +68,7 @@ choice_emoji = ["1️⃣", "2️⃣", "3️⃣", "4️⃣", "5️⃣", "6️⃣"
 
 
 # noinspection PyMissingConstructor
-class DiscordFrontend(AbstractFrontend):
+class DiscordComponent(AbstractFrontend, AbstractRadioEmitter):
     def __init__(self, config, discord_client: discord.Client):
         """
         :param configparser.ConfigParser config:
@@ -75,7 +77,7 @@ class DiscordFrontend(AbstractFrontend):
         self.logger = logging.getLogger('discord.bot')
         self.logger.setLevel(getattr(logging, self.config.get("discord", "verbosity", fallback="warning").upper()))
 
-        self.core: Optional[DjBrain] = None
+        self.core: Optional[Core] = None
         self.master = None
         self.bot: discord.Client = discord_client
 
@@ -97,7 +99,8 @@ class DiscordFrontend(AbstractFrontend):
         self.thread_pool = concurrent.futures.ThreadPoolExecutor()
         self.discord_starting_task = None
 
-        self.help_message = help_message.format(self.command_prefix, "\n".join([self.command_prefix + k for k in self.commands]))
+        self.help_message = help_message.format(self.command_prefix,
+                                                "\n".join([self.command_prefix + k for k in self.commands]))
 
         self.startup_notifications = {}
 
@@ -107,7 +110,10 @@ class DiscordFrontend(AbstractFrontend):
         # noinspection PyArgumentList
         # self.mon_tg_api_errors = Counter('dj_tg_api_errors', 'Telegram API errors')
 
-    def bind_core(self, core: DjBrain):
+    def get_name(self):
+        return "discord"
+
+    def bind_core(self, core: Core):
         self.core = core
         self.bot_init()
 
@@ -121,7 +127,6 @@ class DiscordFrontend(AbstractFrontend):
             return None
         # noinspection PyTypeChecker
         return FrontendUserInfo("Discord", ds_user.username, ds_user.discord_id)
-
 
     def bot_init(self):
         # discord.opus.load_opus()
@@ -220,7 +225,8 @@ class DiscordFrontend(AbstractFrontend):
         def progress_callback(new_progress_msg_text):
             asyncio.run_coroutine_threadsafe(progress_message.edit(content=new_progress_msg_text), self.core.loop)
 
-        song, lp, global_position = await self.core.download_action(user.core_id, text=text, progress_callback=progress_callback)
+        song, lp, global_position = await self.core.download_action(user.core_id, text=text,
+                                                                    progress_callback=progress_callback)
         await self._send_song_added_message(message.channel, user, global_position)
 
     async def skip_command(self, message: discord.Message, user: DiscordUser):
@@ -295,7 +301,6 @@ class DiscordFrontend(AbstractFrontend):
             progress_callback=progress_callback
         )
         await self._send_song_added_message(channel, discord_user, global_position)
-
 
     async def set_text_channel_command(self, message: discord.Message, user: DiscordUser):
         permission = message.channel.permissions_for(message.author)
@@ -382,5 +387,19 @@ class DiscordFrontend(AbstractFrontend):
             self.core.set_user_name(core_id, user.username)
             return user
 
-    async def _send_song_added_message(self, channel: discord.TextChannel, discord_user: DiscordUser, global_position: int):
+    # noinspection PyMethodMayBeStatic
+    async def _send_song_added_message(self, channel: discord.TextChannel, discord_user: DiscordUser,
+                                       global_position: int):
         await channel.send(f"{discord_user.mention()} Песня добавлена в очередь: {global_position}")
+
+    def get_current_song(self) -> Song:
+        return Song("Fake", "Fake", "Fake", 100, 0)
+
+    def get_song_progress(self) -> int:
+        return 10
+
+    def stop(self):
+        return
+
+    def switch_track(self, track: Song):
+        return

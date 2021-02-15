@@ -20,14 +20,14 @@ def get_files_in_dir(directory):
 UID = int
 
 
-class Scheduler:
+class QueueManager:
     def __init__(self, config):
         """
         :param configparser.ConfigParser config:
         """
         self.config = config
-        self.logger = logging.getLogger("tg_dj.scheduler")
-        self.logger.setLevel(getattr(logging, self.config.get("scheduler", "verbosity", fallback="warning").upper()))
+        self.logger = logging.getLogger("tg_dj.queueManager")
+        self.logger.setLevel(getattr(logging, self.config.get("queue_manager", "verbosity", fallback="warning").upper()))
 
         self.is_media_playing = False
         self.playlists: Dict[UID, List[Song]] = {}
@@ -54,7 +54,7 @@ class Scheduler:
 
     def load_init(self):
         try:
-            queue_file = self.config.get("scheduler", "queue_file", fallback="queue.json")
+            queue_file = self.config.get("queue_manager", "queue_file", fallback="queue.json")
             with open(queue_file) as f:
                 data = json.loads(f.read())
                 self.queue = data["queue"]
@@ -75,7 +75,7 @@ class Scheduler:
             pass
 
     def populate_backlog(self):
-        path = os.path.abspath(self.config.get("scheduler", "fallback_media_dir", fallback="media_fallback"))
+        path = os.path.abspath(self.config.get("queue_manager", "fallback_media_dir", fallback="media_fallback"))
         files = get_files_in_dir(path)
         add_to_end = []
         for file in files:
@@ -108,7 +108,7 @@ class Scheduler:
             } for user_id, tracks in self.playlists.items()],
             "backlog_played_media": [a.media for a in self.backlog_played]
         }
-        queue_file = self.config.get("scheduler", "queue_file", fallback="queue.json")
+        queue_file = self.config.get("queue_manager", "queue_file", fallback="queue.json")
         with open(queue_file, "w") as f:
             f.write(json.dumps(out_dict, ensure_ascii=False))
             self.logger.info("Queue has been saved to file \"%s\"" % queue_file)

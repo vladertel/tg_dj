@@ -3,13 +3,11 @@ import os
 import time
 import requests
 import logging
-from .exceptions import UrlOrNetworkProblem, BadReturnStatus
 
-class ShouldNotBeCalled(Exception):
-    pass
+from core.AbstractComponent import AbstractComponent, ShouldNotBeCalled
 
 
-class AbstractDownloader():
+class AbstractDownloader(AbstractComponent):
     """docstring for AbstractDownloader"""
 
     _default_max_duration = 400  # seconds
@@ -24,22 +22,19 @@ class AbstractDownloader():
         self.logger.setLevel(getattr(logging, self.config.get("downloader", "verbosity", fallback="warning").upper()))
 
     def is_acceptable(self, kind, query):
-        raise ShouldNotBeCalled(
-            "this method should not be called from abstract class")
+        raise ShouldNotBeCalled("this method should not be called from abstract class")
 
     def touch_without_creation(self, fname):
         try:
             os.utime(fname, None)
         except OSError:
-            self.logger.warning("Touched unexistent path")
+            self.logger.warning("Touched nonexistent path")
 
     def search(self, task, user_message=lambda text: True, limit=1000):
-        raise ShouldNotBeCalled(
-            "this method should not be called from abstract class")
+        raise ShouldNotBeCalled("this method should not be called from abstract class")
 
     def download(self, task, user_message=lambda text: True):
-        raise ShouldNotBeCalled(
-            "this method should not be called from abstract class")
+        raise ShouldNotBeCalled("this method should not be called from abstract class")
 
     def is_in_cache(self, file_path):
         return os.path.exists(file_path) and os.path.getsize(file_path) > 0
@@ -72,3 +67,51 @@ class AbstractDownloader():
                     if new_time > last_update + 3:
                         last_update = new_time
                         percent_callback(100 * done / content_length)
+
+
+class DownloaderException(Exception):
+    pass
+
+
+class UrlOrNetworkProblem(DownloaderException):
+    pass
+
+
+class UrlProblem(DownloaderException):
+    pass
+
+
+class MediaIsTooLong(DownloaderException):
+    pass
+
+
+class MediaIsTooBig(DownloaderException):
+    pass
+
+
+class MediaSizeUnspecified(DownloaderException):
+    pass
+
+
+class BadReturnStatus(DownloaderException):
+    pass
+
+
+class NothingFound(DownloaderException):
+    pass
+
+
+class UnappropriateArgument(DownloaderException):
+    pass
+
+
+class MultipleChoice(DownloaderException):
+    pass
+
+
+class ApiError(DownloaderException):
+    pass
+
+
+class NotAccepted(DownloaderException):
+    pass

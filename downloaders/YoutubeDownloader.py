@@ -8,8 +8,8 @@ from urllib.error import HTTPError
 
 from pytube import YouTube
 
-from .AbstractDownloader import AbstractDownloader
-from .exceptions import *
+from core.AbstractDownloader import AbstractDownloader, UrlProblem, MediaIsTooLong, MediaIsTooBig, BadReturnStatus, \
+    UnappropriateArgument, ApiError
 from utils import sanitize_file_name, remove_links
 
 
@@ -25,6 +25,9 @@ class YoutubeDownloader(AbstractDownloader):
         self.yt_regex = re.compile(r"((?:https?://)?(?:www\.)?(?:m\.)?youtube\.com/watch\?v=[a-zA-Z0-9_-]{11})|((?:https?://)?(?:www\.)?(?:m\.)?youtu\.be/[a-zA-Z0-9_-]{11})", flags=re.IGNORECASE)
 
         self.download_status = {}
+
+    def get_name(self):
+        return "yt"
 
     def is_acceptable(self, kind, query):
         if kind == "text":

@@ -1,6 +1,6 @@
 #!/usr/bin/python3
 # -*- coding: UTF-8 -*-
-from typing import Optional, Callable, List, Tuple, NoReturn
+from typing import Optional, Callable, List, Tuple, NoReturn, Union
 
 import peewee
 import asyncio
@@ -14,10 +14,12 @@ from itertools import chain
 
 from prometheus_client import Gauge
 
-from downloader.MasterDownloader import MasterDownloader
-from frontend.AbstractFrontend import AbstractFrontend
-from streamer.AbstractStreamer import AbstractStreamer
-from .scheduler import Scheduler
+from downloaders.MasterDownloader import MasterDownloader
+from core.AbstractFrontend import AbstractFrontend, FrontendUserInfo
+from core.AbstractRadioEmitter import AbstractRadioEmitter
+from .AbstractComponent import AbstractComponent
+from .AbstractDownloader import AbstractDownloader
+from .QueueManager import QueueManager
 from .models import User, Request, Song, UserInfoMinimal, UserInfo
 
 
@@ -41,14 +43,12 @@ class DownloadFailed(Exception):
     pass
 
 
-class DjBrain:
+class Core:
 
-    def __init__(self, config, frontend: AbstractFrontend, downloader: MasterDownloader, backend: AbstractStreamer, loop=asyncio.get_event_loop()):
+    def __init__(self, config, components: List[Union[AbstractComponent]], downloader: MasterDownloader, loop=asyncio.get_event_loop()):
         """
         :param configparser.ConfigParser config:
-        :param frontend:
         :param downloader:
-        :param backend:
         """
         self.config = config
         self.logger = logging.getLogger('tg_dj.core')
@@ -57,17 +57,41 @@ class DjBrain:
         self.isWindows = False
         if platform.system() == "Windows":
             self.isWindows = True
-        self.frontend = frontend
-        self.downloader = downloader
-        self.backend = backend
 
-        self.scheduler = Scheduler(config)
+        # noinspection PyTypeChecker
+        self.frontends: List[AbstractFrontend] = []
+        self.downloader: MasterDownloader = downloader
+        # noinspection PyTypeChecker
+        self.backend: AbstractRadioEmitter = None
+
+        self.queueManager = QueueManager(config)
 
         self.loop = loop
 
-        self.frontend.bind_core(self)
-        self.downloader.bind_core(self)
-        self.backend.bind_core(self)
+        for component in components:
+            component_added = False
+            if issubclass(type(component), AbstractFrontend):
+                # noinspection PyTypeChecker
+                self.frontends.append(component)
+                component_added = True
+
+            if issubclass(type(component), AbstractRadioEmitter):
+                if self.backend is not None:
+                    raise ValueError("Currently I don't support multiple steamer")
+                # noinspection PyTypeChecker
+                self.backend: AbstractRadioEmitter = component
+                component_added = True
+
+            if issubclass(type(component), AbstractDownloader):
+                    raise ValueError("Currently I don't downloaders passed with components, use MasterDownloader")
+
+            if not component_added:
+                raise ValueError(f"Type of component ({component.__repr__()}) is not specified. Subclass at least one")
+
+            component.bind_core(self)
+
+        if self.downloader is None:
+            raise ValueError("MasterDownloader was not passed in")
 
         self.state_update_callbacks: List[Callable] = []
         self.play_next_track()
@@ -79,13 +103,33 @@ class DjBrain:
 
         self.stud_board_user = User(id=-1, name=config.get("core", "fallback_user_name", fallback="Студсовет"))
 
+    def _notify_user(self, core_user_id: int, text: str):
+        for frontend in self.frontends:
+            if frontend.accept_user(core_user_id):
+                self._notify_user(core_user_id, text)
+
+    def get_user_infos(self, core_id: int) -> List[FrontendUserInfo]:
+        user_infos = []
+        for frontend in self.frontends:
+            user_info = frontend.get_user_info(core_id)
+            if user_info is not None:
+                user_infos.append(user_info)
+        return user_infos
+
     def cleanup(self):
         self.logger.debug("Cleaning up...")
         self.queue_rating_check_task.cancel()
+        # todo: think about multiple backends
         current_track = self.backend.get_current_song()
         if current_track is not None:
-            self.scheduler.play_next(current_track)
-        self.scheduler.cleanup()
+            self.queueManager.play_next(current_track)
+        self.queueManager.cleanup()
+        # noinspection PyTypeChecker
+        for module in self.frontends + [self.downloader, self.backend]:
+            try:
+                module.cleanup()
+            except AttributeError:
+                traceback.print_exc()
 
     def user_init_action(self):
         u = User.create()
@@ -190,13 +234,13 @@ class DjBrain:
         if not author.superuser and not self.check_requests_quota(author):
             raise UserRequestQuotaReached
 
-        track = self.scheduler.add_track(file_path, title, artist, duration, user_id)
+        track = self.queueManager.add_track(file_path, title, artist, duration, user_id)
         self.store_user_activity(user)
 
-        if not self.scheduler.is_in_queue(user_id):
-            self.scheduler.add_to_queue(user_id)
+        if not self.queueManager.is_in_queue(user_id):
+            self.queueManager.add_to_queue(user_id)
 
-        local_position, global_position = self.scheduler.get_track_position(track)
+        local_position, global_position = self.queueManager.get_track_position(track)
 
         return track, local_position, global_position
 
@@ -212,7 +256,7 @@ class DjBrain:
         active_users_cnt = active_users.count()
 
         while True:
-            track = self.scheduler.pop_first_track()
+            track = self.queueManager.pop_first_track()
             if track is None:
                 self.backend.stop()
                 return
@@ -222,7 +266,7 @@ class DjBrain:
                 break
 
             self.logger.info("Song #%d (%s) have been skipped" % (track.id, track.full_title()))
-            self.frontend.notify_user(
+            self._notify_user(
                 track.user_id,
                 "⚠️ Ваш трек удалён из очереди, так как он не нравится другим пользователям:\n%s"
                 % track.full_title(),
@@ -230,7 +274,7 @@ class DjBrain:
 
         self.logger.debug("New track rating: %d" % len(track.haters))
 
-        next_track = self.scheduler.get_first_track()
+        next_track = self.queueManager.get_first_track()
 
         self.backend.switch_track(track)
 
@@ -243,15 +287,15 @@ class DjBrain:
             user_next_id = None
 
         if user_curr_id is not None and user_next_id is not None and user_curr_id == user_next_id:
-            self.frontend.notify_user(
+            self._notify_user(
                 user_curr_id,
                 "🎶 Запускаю ваш трек:\n%s\n\n🕓 Следующий тоже ваш:\n%s" % (track.full_title(), next_track.full_title()),
             )
         else:
             if user_next_id is not None:
-                self.frontend.notify_user(user_next_id, "🕓 Следующий трек ваш:\n%s" % next_track.full_title())
+                self._notify_user(user_next_id, "🕓 Следующий трек ваш:\n%s" % next_track.full_title())
             if user_curr_id is not None:
-                self.frontend.notify_user(user_curr_id, "🎶 Запускаю ваш трек:\n%s" % track.full_title())
+                self._notify_user(user_curr_id, "🎶 Запускаю ваш трек:\n%s" % track.full_title())
 
         for fn in self.state_update_callbacks:
             fn(track)
@@ -280,11 +324,11 @@ class DjBrain:
         user = self.get_user(user_id)
 
         if not user.superuser:
-            song = self.scheduler.get_track(song_id)
+            song = self.queueManager.get_track(song_id)
             if user.id != song.user_id:
                 raise PermissionDenied()
 
-        position = self.scheduler.remove_track(song_id)
+        position = self.queueManager.remove_track(song_id)
 
         return position
 
@@ -292,11 +336,11 @@ class DjBrain:
         user = self.get_user(user_id)
 
         if not user.superuser:
-            track = self.scheduler.get_track(track_id)
+            track = self.queueManager.get_track(track_id)
             if user.id != track.user_id:
                 raise PermissionDenied()
 
-        self.scheduler.raise_track(track_id)
+        self.queueManager.raise_track(track_id)
 
     def raise_user(self, user_id: int, handled_user_id: int):
         user = self.get_user(user_id)
@@ -304,7 +348,7 @@ class DjBrain:
         if not user.superuser:
             raise PermissionDenied()
 
-        self.scheduler.raise_user_in_queue(handled_user_id)
+        self.queueManager.raise_user_in_queue(handled_user_id)
 
     def stop_playback(self, user_id):
         user = self.get_user(user_id)
@@ -312,7 +356,7 @@ class DjBrain:
         if not user.superuser:
             raise PermissionDenied()
 
-        self.scheduler.play_next(self.backend.get_current_song())
+        self.queueManager.play_next(self.backend.get_current_song())
         self.backend.stop()
 
         for fn in self.state_update_callbacks:
@@ -351,25 +395,25 @@ class DjBrain:
     def get_state(self, user_id):
         user = self.get_user(user_id)
         current_song = self.backend.get_current_song()
-        next_song = self.scheduler.get_first_track()
-        user_tracks = self.scheduler.get_user_tracks(user_id)
+        next_song = self.queueManager.get_first_track()
+        user_tracks = self.queueManager.get_user_tracks(user_id)
         return {
-            "queue_len": self.scheduler.get_users_queue_length(),
+            "queue_len": self.queueManager.get_users_queue_length(),
             "current_song": current_song,
             "current_user": self.get_user(current_song.user_id) if current_song else None,
             "current_song_progress": self.backend.get_song_progress(),
             "next_song": next_song,
             "next_user": self.get_user(next_song.user_id) if next_song else None,
-            "my_songs": {self.scheduler.get_track_position(t)[1]: t for t in user_tracks},
+            "my_songs": {self.queueManager.get_track_position(t)[1]: t for t in user_tracks},
             "superuser": user.superuser,
             "me": user,
         }
 
     def get_queue(self, user_id, offset=0, limit=0):
-        users_cnt = self.scheduler.get_users_queue_length()
+        users_cnt = self.queueManager.get_users_queue_length()
 
-        tracks = self.scheduler.get_queue_tracks(offset, limit)
-        first_tracks = self.scheduler.get_queue_tracks(0, users_cnt)
+        tracks = self.queueManager.get_queue_tracks(offset, limit)
+        first_tracks = self.queueManager.get_queue_tracks(0, users_cnt)
         for track in chain(tracks, first_tracks):
             track.author = self.get_user_info_minimal(track.user_id).info
 
@@ -377,15 +421,15 @@ class DjBrain:
             "first_tracks": first_tracks,
             "list": tracks,
             "users_cnt": users_cnt,
-            "tracks_cnt": self.scheduler.get_tracks_queue_length(),
+            "tracks_cnt": self.queueManager.get_tracks_queue_length(),
             "is_own_tracks": any(track.user_id == user_id for track in tracks)
         }
 
     def get_song_info(self, user_id, song_id):
         user = self.get_user(user_id)
 
-        track = self.scheduler.get_track(song_id)
-        local_position, global_position = self.scheduler.get_track_position(track)
+        track = self.queueManager.get_track(song_id)
+        local_position, global_position = self.queueManager.get_track_position(track)
 
         # TODO: Return extra info for superuser
 
@@ -398,13 +442,13 @@ class DjBrain:
         }
 
     def enqueue(self, user_id):
-        position = self.scheduler.add_to_queue(user_id)
+        position = self.queueManager.add_to_queue(user_id)
         if position is None:
-            self.frontend.notify_user(
+            self._notify_user(
                 user_id, "Прежде, чем вставать в очередь, нужно добавить в плейлист хотя бы один трек"
             )
         else:
-            self.frontend.notify_user(
+            self._notify_user(
                 user_id, "Ваша позиция в очереди: %d" % position
             )
         return position
@@ -412,9 +456,9 @@ class DjBrain:
     def vote_song(self, user_id, sign, song_id):
         user = self.get_user(user_id)
         if sign == "up":
-            self.scheduler.vote_up(user_id, song_id)
+            self.queueManager.vote_up(user_id, song_id)
         elif sign == "down":
-            self.scheduler.vote_down(user_id, song_id)
+            self.queueManager.vote_down(user_id, song_id)
         else:
             raise ValueError("Sign value should be either 'up' or 'down'")
 
@@ -423,13 +467,13 @@ class DjBrain:
     async def watch_queue_rating(self):
         while True:
             await asyncio.sleep(30)
-            for song in self.scheduler.get_queue_tracks():
+            for song in self.queueManager.get_queue_tracks():
                 if self.check_song_rating(song):
                     continue
 
-                self.scheduler.remove_from_queue(song.id)
+                self.queueManager.remove_from_queue(song.id)
                 self.logger.info("Song #%d (%s) have been removed from queue", song.id, song.full_title())
-                self.frontend.notify_user(
+                self._notify_user(
                     song.user_id,
                     "⚠️ Ваш трек удалён из очереди, так как он не нравится другим пользователям:\n%s"
                     % song.full_title(),
@@ -443,7 +487,7 @@ class DjBrain:
 
         users = User.select()
         for user in users:
-            self.frontend.notify_user(user.id, "✉️ Сообщение от администратора\n\n%s" % message)
+            self._notify_user(user.id, "✉️ Сообщение от администратора\n\n%s" % message)
 
     def get_users(self, user_id, offset=0, limit=0):
         user = self.get_user(user_id)
@@ -480,8 +524,8 @@ class DjBrain:
             requests = Request.select().filter(Request.user == handled_user).order_by(-Request.time).limit(10)
             counter = Request.select().filter(Request.user == handled_user).count()
 
-        tracks = self.scheduler.get_user_tracks(handled_user_id)
-        return UserInfo(handled_user, {self.scheduler.get_track_position(t)[1]: t for t in tracks}, counter, [r for r in requests])
+        tracks = self.queueManager.get_user_tracks(handled_user_id)
+        return UserInfo(handled_user, {self.queueManager.get_track_position(t)[1]: t for t in tracks}, counter, [r for r in requests])
 
     def get_user_info_minimal(self, handled_user_id: int) -> UserInfoMinimal:
         if handled_user_id == -1:
@@ -489,5 +533,5 @@ class DjBrain:
         else:
             handled_user: User = User.get(id=handled_user_id)
 
-        tracks = self.scheduler.get_user_tracks(handled_user_id)
-        return UserInfoMinimal(handled_user, {self.scheduler.get_track_position(t)[1]: t for t in tracks})
+        tracks = self.queueManager.get_user_tracks(handled_user_id)
+        return UserInfoMinimal(handled_user, {self.queueManager.get_track_position(t)[1]: t for t in tracks})

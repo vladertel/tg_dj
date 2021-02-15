@@ -6,8 +6,7 @@ import logging
 
 from user_agent import generate_user_agent
 
-from .AbstractDownloader import AbstractDownloader
-from .exceptions import *
+from core.AbstractDownloader import AbstractDownloader, MediaIsTooBig, BadReturnStatus, NothingFound, ApiError
 from utils import sanitize_file_name, remove_links
 
 

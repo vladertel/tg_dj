@@ -8,7 +8,7 @@ import asyncio
 import logging
 from prometheus_client import Gauge
 
-from brain.models import Song
+from core.models import Song
 
 
 # noinspection PyAbstractClass,PyAttributeOutsideInit

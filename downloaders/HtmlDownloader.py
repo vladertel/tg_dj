@@ -7,8 +7,8 @@ import logging
 
 from user_agent import generate_user_agent
 
-from .AbstractDownloader import AbstractDownloader
-from .exceptions import *
+from core.AbstractDownloader import AbstractDownloader, DownloaderException, MediaIsTooLong, MediaIsTooBig, \
+    BadReturnStatus, NothingFound, ApiError
 from utils import sanitize_file_name
 
 # #DEBUG requests
@@ -41,6 +41,9 @@ class HtmlDownloader(AbstractDownloader):
 
     def is_acceptable(self, kind, query):
         return kind == "search" or kind == "search_result"
+
+    def get_name(self):
+        return "html"
 
     @staticmethod
     def get_headers():
