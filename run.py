@@ -74,8 +74,7 @@ downloader = MasterDownloader(config, [
             LinkDownloader(config),
         ])
 modules = [DiscordComponent(config, discord_client), TgFrontend(config)]
-
-# VLCStreamer(config)
+# modules = [VLCStreamer(config), TgFrontend(config)]
 
 core = Core(config, components=modules, downloader=downloader, loop=main_loop)
 web = StatusWebServer(config)

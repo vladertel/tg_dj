@@ -103,10 +103,10 @@ class StatusWebServer:
         self.core.add_state_update_callback(self.update_state)
 
     def get_current_state(self):
-        track = self.core.backend.get_current_song()
+        track = self.core.get_current_song()
         track_dict = Song.to_dict(track)
 
-        progress = self.core.backend.get_song_progress()
+        progress = self.core.get_song_progress()
         return track_dict, progress
 
     def update_state(self, track: Song):

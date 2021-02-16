@@ -22,7 +22,6 @@ class VLCStreamer(AbstractRadioEmitter):
 
         self.vlc_instance = vlc.Instance()
         self.player = self.vlc_instance.media_player_new()
-        self.init_handlers()
 
     def bind_core(self, core):
         self.core = core
@@ -30,23 +29,8 @@ class VLCStreamer(AbstractRadioEmitter):
     def get_name(self):
         return "vlc"
 
-    def init_handlers(self):
-        events = self.player.event_manager()
-        events.event_attach(vlc.EventType.MediaPlayerEndReached, self.vlc_song_finished)
-
     def cleanup(self):
         self.player.stop()
-
-    def vlc_song_finished(self, _event):
-        self.is_playing = False
-        self.now_playing = None
-        self.core.loop.call_soon_threadsafe(self.core.track_end_event)
-
-    def get_current_song(self):
-        return self.now_playing
-
-    def get_song_progress(self) -> int:
-        return int(time.time() - self.song_start_time)
 
     def stop(self):
         self.player.stop()

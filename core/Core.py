@@ -1,5 +1,7 @@
 #!/usr/bin/python3
 # -*- coding: UTF-8 -*-
+import time
+from asyncio.events import AbstractEventLoop
 from typing import Optional, Callable, List, Tuple, NoReturn, Union
 
 import peewee
@@ -48,7 +50,6 @@ class Core:
     def __init__(self, config, components: List[Union[AbstractComponent]], downloader: MasterDownloader, loop=asyncio.get_event_loop()):
         """
         :param configparser.ConfigParser config:
-        :param downloader:
         """
         self.config = config
         self.logger = logging.getLogger('tg_dj.core')
@@ -64,10 +65,11 @@ class Core:
         # noinspection PyTypeChecker
         self.backend: AbstractRadioEmitter = None
 
-        self.queueManager = QueueManager(config)
-
         self.loop = loop
+        self.current_track: Optional[Song] = None
 
+        self.queueManager = QueueManager(config)
+        self.song_start_time = time.time()
         for component in components:
             component_added = False
             if issubclass(type(component), AbstractFrontend):
@@ -83,7 +85,7 @@ class Core:
                 component_added = True
 
             if issubclass(type(component), AbstractDownloader):
-                    raise ValueError("Currently I don't downloaders passed with components, use MasterDownloader")
+                raise ValueError("Currently I don't support downloaders passed with components, use MasterDownloader")
 
             if not component_added:
                 raise ValueError(f"Type of component ({component.__repr__()}) is not specified. Subclass at least one")
@@ -94,6 +96,7 @@ class Core:
             raise ValueError("MasterDownloader was not passed in")
 
         self.state_update_callbacks: List[Callable] = []
+        self.wait_task = None
         self.play_next_track()
         self.queue_rating_check_task = self.loop.create_task(self.watch_queue_rating())
 
@@ -119,10 +122,8 @@ class Core:
     def cleanup(self):
         self.logger.debug("Cleaning up...")
         self.queue_rating_check_task.cancel()
-        # todo: think about multiple backends
-        current_track = self.backend.get_current_song()
-        if current_track is not None:
-            self.queueManager.play_next(current_track)
+        if self.current_track is not None:
+            self.queueManager.play_next(self.current_track)
         self.queueManager.cleanup()
         # noinspection PyTypeChecker
         for module in self.frontends + [self.downloader, self.backend]:
@@ -251,7 +252,21 @@ class Core:
         self.logger.debug("New search query \"%s\" from user#%d (%s)" % (query, user.id, user.name))
         return await self.downloader.search(query, message_callback, limit)
 
+    async def wait_till_track_end(self, track: Song):
+        # fixme: magic number?!
+        await asyncio.sleep(track.duration - 0.3)
+        self.play_next_track()
+
+    def get_song_progress(self) -> int:
+        return int(time.time() - self.song_start_time)
+
+    def get_current_song(self) -> Song:
+        return self.current_track
+
     def play_next_track(self):
+        if self.wait_task is not None:
+            self.wait_task.cancel()
+
         active_users = User.filter(User.last_activity > datetime.datetime.now() - datetime.timedelta(minutes=60))
         active_users_cnt = active_users.count()
 
@@ -278,6 +293,9 @@ class Core:
 
         self.backend.switch_track(track)
 
+        self.current_track = track
+        self.song_start_time = time.time()
+
         user_curr_id = track.user_id
         if user_curr_id == -1:
             user_curr_id = None
@@ -302,18 +320,20 @@ class Core:
 
         track.fetch_lyrics()
 
+        self.wait_task = self.loop.create_task(self.wait_till_track_end(track))
+
         return track, next_track
 
-    def track_end_event(self):
-        # noinspection PyBroadException
-        try:
-            self.play_next_track()
-        except Exception:
-            traceback.print_exc()
+    # def track_end_event(self):
+    #     # noinspection PyBroadException
+    #     try:
+    #         self.play_next_track()
+    #     except Exception:
+    #         traceback.print_exc()
 
     def switch_track(self, user_id):
         user = self.get_user(user_id)
-        current_song = self.backend.get_current_song()
+        current_song = self.current_track
 
         if not user.superuser and not (current_song is not None and user_id == current_song.user_id):
             raise PermissionDenied()
@@ -356,7 +376,7 @@ class Core:
         if not user.superuser:
             raise PermissionDenied()
 
-        self.queueManager.play_next(self.backend.get_current_song())
+        self.queueManager.play_next(self.current_track)
         self.backend.stop()
 
         for fn in self.state_update_callbacks:
@@ -394,14 +414,14 @@ class Core:
 
     def get_state(self, user_id):
         user = self.get_user(user_id)
-        current_song = self.backend.get_current_song()
+        current_song = self.current_track
         next_song = self.queueManager.get_first_track()
         user_tracks = self.queueManager.get_user_tracks(user_id)
         return {
             "queue_len": self.queueManager.get_users_queue_length(),
             "current_song": current_song,
             "current_user": self.get_user(current_song.user_id) if current_song else None,
-            "current_song_progress": self.backend.get_song_progress(),
+            "current_song_progress": self.get_song_progress(),
             "next_song": next_song,
             "next_user": self.get_user(next_song.user_id) if next_song else None,
             "my_songs": {self.queueManager.get_track_position(t)[1]: t for t in user_tracks},

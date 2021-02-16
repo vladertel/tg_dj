@@ -17,11 +17,5 @@ class AbstractFrontend(AbstractComponent):
     def accept_user(self, core_user_id: int) -> bool:
         raise ShouldNotBeCalled()
 
-    def bind_core(self, core):
-        """
-        :param core.DJ_Brain.DjBrain core:
-        """
-        raise ShouldNotBeCalled()
-
     def get_user_info(self, core_user_id: int) -> Optional[FrontendUserInfo]:
         raise ShouldNotBeCalled()

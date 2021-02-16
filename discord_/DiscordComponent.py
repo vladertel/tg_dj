@@ -30,6 +30,7 @@ class BaseModel(peewee.Model):
 class GuildChannel(BaseModel):
     guild_id = peewee.IntegerField(unique=True)
     channel_id = peewee.IntegerField(null=True)
+    voice_channel_id = peewee.IntegerField(null=True)
 
 
 class DiscordUser(BaseModel):
@@ -103,6 +104,7 @@ class DiscordComponent(AbstractFrontend, AbstractRadioEmitter):
                                                 "\n".join([self.command_prefix + k for k in self.commands]))
 
         self.startup_notifications = {}
+        # self.
 
         # noinspection PyArgumentList
         # self.mon_tg_updates = Counter('dj_tg_updates', 'Telegram updates counter')
@@ -392,14 +394,10 @@ class DiscordComponent(AbstractFrontend, AbstractRadioEmitter):
                                        global_position: int):
         await channel.send(f"{discord_user.mention()} Песня добавлена в очередь: {global_position}")
 
-    def get_current_song(self) -> Song:
-        return Song("Fake", "Fake", "Fake", 100, 0)
-
-    def get_song_progress(self) -> int:
-        return 10
-
     def stop(self):
         return
 
     def switch_track(self, track: Song):
+        discord.PCMVolumeTransformer
+        track
         return
