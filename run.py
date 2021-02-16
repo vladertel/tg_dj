@@ -65,20 +65,18 @@ logger.setLevel(getattr(logging, config.get(config.default_section, "verbosity",
 
 main_loop = asyncio.get_event_loop()
 
-discord_client = discord.Client(loop=main_loop)
-
 downloader = MasterDownloader(config, [
             YoutubeDownloader(config),
             FileDownloader(config),
             HtmlDownloader(config),
             LinkDownloader(config),
         ])
-modules = [DiscordComponent(config, discord_client), TgFrontend(config)]
+modules = [DiscordComponent(config, discord.Client(loop=main_loop)), TgFrontend(config)]
 # modules = [VLCStreamer(config), TgFrontend(config)]
 
 core = Core(config, components=modules, downloader=downloader, loop=main_loop)
-web = StatusWebServer(config)
-web.bind_core(core)
+# web = StatusWebServer(config)
+# web.bind_core(core)
 
 # Start prometheus server
 prometheus_client.start_http_server(8910)

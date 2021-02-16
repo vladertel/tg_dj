@@ -1,0 +1,13 @@
+{% if songs_cnt == 0 %}
+Очередь воспроизведения пуста
+{% else %}
+Очередь воспроизведения
+Пользователей в очереди: {{ users_cnt }}
+
+{% for track in first_tracks %}
+🎶 {{track.full_title()}}
+⏱ {{ track.duration | format_duration }}    👤 {{ track.author.name }}
+
+{% endfor %}
+{% endif %}
+... и ещё {{ tracks_cnt - users_cnt }} треков

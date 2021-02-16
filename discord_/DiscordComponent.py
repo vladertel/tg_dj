@@ -94,7 +94,9 @@ class DiscordComponent(AbstractFrontend, AbstractRadioEmitter):
             "link": self.link_command,
             "skip": self.skip_command,
             "search": self.search_command,
-            "set_text_channel": self.set_text_channel_command
+            "queue": self.queue_command,
+            "set_text_channel": self.set_text_channel_command,
+            "set_voice_channel": self.set_voice_channel_command
         }
 
         self.thread_pool = concurrent.futures.ThreadPoolExecutor()
@@ -104,7 +106,7 @@ class DiscordComponent(AbstractFrontend, AbstractRadioEmitter):
                                                 "\n".join([self.command_prefix + k for k in self.commands]))
 
         self.startup_notifications = {}
-        # self.
+        self.voice_channel: Optional[discord.VoiceClient] = None
 
         # noinspection PyArgumentList
         # self.mon_tg_updates = Counter('dj_tg_updates', 'Telegram updates counter')
@@ -148,7 +150,14 @@ class DiscordComponent(AbstractFrontend, AbstractRadioEmitter):
 
     async def on_ready(self):
         self.logger.info(f'{self.bot.user} has connected to Discord!')
-        # self.core.loop.create_task(self.greet_guilds())
+
+        for guild_channel in GuildChannel.select():
+            if guild_channel.voice_channel_id is not None:
+                voice_channel = self.bot.get_channel(guild_channel.voice_channel_id)
+                if voice_channel is not None:
+                    await self.join_voice(voice_channel)
+                    break
+        self.switch_track(self.core.get_current_song())
 
     async def greet_guilds(self):
         for guild in self.bot.guilds:
@@ -234,6 +243,11 @@ class DiscordComponent(AbstractFrontend, AbstractRadioEmitter):
     async def skip_command(self, message: discord.Message, user: DiscordUser):
         self.core.switch_track(user.core_id)
 
+    async def queue_command(self, message: discord.Message, user: DiscordUser):
+        data = self.core.get_queue(user.core_id)
+        message_text = env.get_template("queue_text.tmpl").render(**data)
+        await message.channel.send(message_text)
+
     async def search_command(self, message: discord.Message, user: DiscordUser):
         query = remove_prefix(message.content.lstrip(), f"{self.command_prefix}search ")
 
@@ -304,6 +318,36 @@ class DiscordComponent(AbstractFrontend, AbstractRadioEmitter):
         )
         await self._send_song_added_message(channel, discord_user, global_position)
 
+    async def set_voice_channel_command(self, message: discord.Message, user: DiscordUser):
+        permission = message.channel.permissions_for(message.author)
+        if permission.administrator:
+            voice_channel: Optional[discord.VoiceChannel] = message.author.voice.channel
+
+            if voice_channel is None:
+                await message.channel.send("В канал зайди сначала")
+                return
+
+            try:
+                guild_channel: GuildChannel = GuildChannel.get(guild_id=message.guild.id)
+            except peewee.DoesNotExist:
+                await message.channel.send("Каким-то образом случилось не случаемое. Помогите")
+                return
+
+            if guild_channel.voice_channel_id == voice_channel.id:
+                await message.channel.send("Я и так здесь буду петь")
+                return
+
+            guild_channel.voice_channel_id = voice_channel.id
+            guild_channel.save()
+            self.logger.info(f'guild {message.guild.name} updated voice channel: {message.channel.name}')
+
+            await message.channel.send(f'Теперь буду петь в {voice_channel.name}')
+            if self.voice_channel is not None:
+                await self.voice_channel.disconnect()
+            await self.join_voice(voice_channel)
+        else:
+            await message.channel.send(f'You have no power here! He-he')
+
     async def set_text_channel_command(self, message: discord.Message, user: DiscordUser):
         permission = message.channel.permissions_for(message.author)
         if permission.administrator:
@@ -316,24 +360,22 @@ class DiscordComponent(AbstractFrontend, AbstractRadioEmitter):
             except peewee.DoesNotExist:
                 guild_channel = GuildChannel.create(guild_id=message.guild.id, channel_id=message.channel.id)
                 guild_channel.save()
-                self.logger.info(f'guild {message.guild.name} updated text channel: {message.channel.name}')
+                self.logger.info(f'guild {message.guild.name} created text channel: {message.channel.name}')
 
             await message.channel.send(f'Теперь я работаю в этом канале. Ура')
-            return guild_channel
         else:
             await message.channel.send(f'You have no power here! He-he')
-            return None
 
     async def start_bot(self, token: str):
-        while True:
-            try:
-                await self.core.loop.create_task(self.bot.start(token))
-            except CancelledError:
-                self.logger.info("Starting task have been canceled")
-                break
-            except Exception as e:
-                self.logger.error("Starting exception: %s", str(e))
-                traceback.print_exc()
+        try:
+            await self.core.loop.create_task(self.bot.start(token))
+        except CancelledError:
+            self.logger.info("Starting task have been canceled")
+        except Exception as e:
+            self.logger.error("Starting exception: %s", str(e))
+            traceback.print_exc()
+            await asyncio.sleep(3)
+            self.discord_starting_task = self.core.loop.create_task(self.start_bot(self.config.get("discord", "token")))
 
     def cleanup(self):
         self.logger.info("Destroying discord polling loop...")
@@ -395,9 +437,18 @@ class DiscordComponent(AbstractFrontend, AbstractRadioEmitter):
         await channel.send(f"{discord_user.mention()} Песня добавлена в очередь: {global_position}")
 
     def stop(self):
-        return
+        self.voice_channel.stop()
 
     def switch_track(self, track: Song):
-        discord.PCMVolumeTransformer
-        track
-        return
+        if self.voice_channel is not None:
+            # todo: change to discord.FFmpegOpusAudio
+            if self.voice_channel.is_playing():
+                self.voice_channel.stop()
+            self.voice_channel.play(discord.FFmpegPCMAudio(track.media))
+
+    async def join_voice(self, voice_channel: discord.VoiceChannel):
+        self.voice_channel = await voice_channel.connect()
+        # self.voice_channels[voice_channel] = voice_protocol
+
+
+

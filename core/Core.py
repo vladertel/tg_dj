@@ -62,6 +62,7 @@ class Core:
         # noinspection PyTypeChecker
         self.frontends: List[AbstractFrontend] = []
         self.downloader: MasterDownloader = downloader
+        self.downloader.bind_core(self)
         # noinspection PyTypeChecker
         self.backend: AbstractRadioEmitter = None
 
