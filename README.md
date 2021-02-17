@@ -23,7 +23,7 @@ Also every parameter can be set with env variable.
 Env variables have more priority over .ini file values
 
 Env variables should be in this format in order to work:
-`DJ_<config.ini section>_<parameter_name>`
+`DJ_<config.ini_section>_<parameter_name>`
 For example: `DJ_web_server_listen_port`
 
 To launch this bot in a docker it's advised to use
@@ -48,9 +48,12 @@ To make some user an admin you must:
 
 ## Launching
 
-Before first launch you must create databses by running `create_db.py`.
+Before first launch you must create databases by running `create_db.py`.
 
 To launch this bot simply run `run.py` with some standard configuration.
 
 To launch in docker simply run `docker-compose up`
- 
+
+## Contributing
+
+You are welcome!
