@@ -1,27 +1,33 @@
-# Telegram DJ
+# DJ Bot
 
-Бот для стриминга музыки с управлением через Телеграм.
+A bot for music streaming where users in charge of what is playing!
 
-## Конфигурация
-Конфигурирование выполняется с помощью ini-файла, путь к 
-которому передаётся в параметре `-f` (`--config-file`).
-По-умолчанию читается файл `config.ini` в рабочей директории.
+This bot can:
+1) Take orders from: Telegram and/or Discord
+2) Stream music to: http stream and/or Discord
+3) Download tracks from: YouTube, direct links, search request
+4) Fetch lyrics from: lyrics.wikia.com
+5) Export some prometheus metrics
+6) Moderate users with telegram admin
 
-Кроме того, параметры можно задавать переменными окружения.
-Переменные окружения имеют больший приоритет, нежели 
-значения из конфигурационного файла.
+You can also access web page with music stream (look for `nginx.conf`)
 
-Названия переменных окружения начинаются с префикса `DJ_`,
-затем следует название секции (как в конфигурационном файле)
-и ключ, разделённые символом подчёркивания. Например, 
-порт, на котором будет доступен веб-интерфейс, можно задать
-с помощью переменной окружения `DJ_web_server_listen_port`.
+## Configuration
 
-Для запуска бота требуется задать как минимум значение 
-параметра `token` в секции `telegram`.
+Note: In order for Telegram bot to work you must enable inline mode and set inline feedback to 100
 
-При запуске в докере рекомендуется использовать файл 
-`docker-compose.override.yml`. Пример файла:
+Configuration is done via .ini file and `--config-file` (`-f`) option. 
+By default `config.ini` from working directory is taken .
+
+Also every parameter can be set with env variable. 
+Env variables have more priority over .ini file values
+
+Env variables should be in this format in order to work:
+`DJ_<config.ini section>_<parameter_name>`
+For example: `DJ_web_server_listen_port`
+
+To launch this bot in a docker it's advised to use
+`docker-compose.override.yml`. Exampl of file:
 ```yaml
 version: '2'
 services:
@@ -33,10 +39,18 @@ services:
       - 8080:80
 ```
 
-## Запуск
-Для запуска требуется выполнить скрипт `run.py`. 
-Перед первым запуском нужно создать базы данных, запустив
-`create_db.py`
+## Moderation
 
-Для запуска в докере достаточно выполнить `docker-compose up`
+To make some user an admin you must:
+1) Interact at least once with Telegram or Discord
+2) Open the `dj_brain.db`
+3) Edit the user.superuser field
+
+## Launching
+
+Before first launch you must create databses by running `create_db.py`.
+
+To launch this bot simply run `run.py` with some standard configuration.
+
+To launch in docker simply run `docker-compose up`
  
