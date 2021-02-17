@@ -45,6 +45,7 @@ To make some user an admin you must:
 1) Interact at least once with Telegram or Discord
 2) Open the `dj_brain.db`
 3) Edit the user.superuser field
+Later on you have access to admin menus in telegram
 
 ## Launching
 
