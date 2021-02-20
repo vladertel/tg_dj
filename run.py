@@ -71,12 +71,11 @@ downloader = MasterDownloader(config, [
             HtmlDownloader(config),
             LinkDownloader(config),
         ])
-modules = [DiscordComponent(config, discord.Client(loop=main_loop)), TgFrontend(config)]
+# modules = [DiscordComponent(config, discord.Client(loop=main_loop)), TgFrontend(config)]
+modules = [DiscordComponent(config, discord.Client(loop=main_loop)), StatusWebServer(config)]
 # modules = [VLCStreamer(config), TgFrontend(config)]
 
 core = Core(config, components=modules, downloader=downloader, loop=main_loop)
-# web = StatusWebServer(config)
-# web.bind_core(core)
 
 # Start prometheus server
 prometheus_client.start_http_server(8910)

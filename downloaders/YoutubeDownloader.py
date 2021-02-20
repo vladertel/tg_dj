@@ -19,9 +19,7 @@ class YoutubeDownloader(AbstractDownloader):
     def __init__(self, config):
         super().__init__(config)
         self.logger = logging.getLogger("tg_dj.downloader.youtube")
-        self.logger.setLevel(
-            getattr(logging, self.config.get("downloader_youtube", "verbosity", fallback="warning").upper())
-        )
+        self.logger.setLevel(self.config.get("downloader_youtube", "verbosity", fallback="warning").upper())
         self.yt_regex = re.compile(r"((?:https?://)?(?:www\.)?(?:m\.)?youtube\.com/watch\?v=[a-zA-Z0-9_-]{11})|((?:https?://)?(?:www\.)?(?:m\.)?youtu\.be/[a-zA-Z0-9_-]{11})", flags=re.IGNORECASE)
 
         self.download_status = {}
@@ -62,7 +60,6 @@ class YoutubeDownloader(AbstractDownloader):
         user_message("Загружаем информацию о видео...")
 
         media_dir = self.config.get("downloader", "media_dir", fallback="media")
-        # api_key = self.config.get("downloader_youtube", "api_key")
 
         try:
             video = YouTube(url, on_progress_callback=self.video_download_progress)

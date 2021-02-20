@@ -68,6 +68,7 @@ class Core:
 
         self.loop = loop
         self.current_track: Optional[Song] = None
+        self.state_update_callbacks: List[Callable] = []
 
         self.queueManager = QueueManager(config)
         self.song_start_time = time.time()
@@ -89,14 +90,13 @@ class Core:
                 raise ValueError("Currently I don't support downloaders passed with components, use MasterDownloader")
 
             if not component_added:
-                raise ValueError(f"Type of component ({component.__repr__()}) is not specified. Subclass at least one")
+                self.logger.warning(f"Type of component ({component.__repr__()}) is not specified. You might want to subclass one")
 
             component.bind_core(self)
 
         if self.downloader is None:
             raise ValueError("MasterDownloader was not passed in")
 
-        self.state_update_callbacks: List[Callable] = []
         self.wait_task = None
         self.play_next_track()
         self.queue_rating_check_task = self.loop.create_task(self.watch_queue_rating())
@@ -110,7 +110,7 @@ class Core:
     def _notify_user(self, core_user_id: int, text: str):
         for frontend in self.frontends:
             if frontend.accept_user(core_user_id):
-                self._notify_user(core_user_id, text)
+                frontend.notify_user(core_user_id, text)
 
     def get_user_infos(self, core_id: int) -> List[FrontendUserInfo]:
         user_infos = []
