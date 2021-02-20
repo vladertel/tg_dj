@@ -1,24 +1,20 @@
 #!/usr/bin/python3
 # -*- coding: UTF-8 -*-
+import asyncio
+import datetime
+import logging
+import platform
 import time
-from asyncio.events import AbstractEventLoop
+import traceback
+from itertools import chain
 from typing import Optional, Callable, List, Tuple, NoReturn, Union
 
 import peewee
-import asyncio
-
-import datetime
-import platform
-import traceback
-import logging
-
-from itertools import chain
-
 from prometheus_client import Gauge
 
-from downloaders.MasterDownloader import MasterDownloader
 from core.AbstractFrontend import AbstractFrontend, FrontendUserInfo
 from core.AbstractRadioEmitter import AbstractRadioEmitter
+from downloaders.MasterDownloader import MasterDownloader
 from .AbstractComponent import AbstractComponent
 from .AbstractDownloader import AbstractDownloader
 from .QueueManager import QueueManager
@@ -50,6 +46,8 @@ class Core:
     def __init__(self, config, components: List[Union[AbstractComponent]], downloader: MasterDownloader, loop=asyncio.get_event_loop()):
         """
         :param configparser.ConfigParser config:
+        :param MasterDownloader downloader:
+        :param asyncio.AbstractEventLoop loop:
         """
         self.config = config
         self.logger = logging.getLogger('tg_dj.core')
@@ -253,7 +251,7 @@ class Core:
         self.logger.debug("New search query \"%s\" from user#%d (%s)" % (query, user.id, user.name))
         return await self.downloader.search(query, message_callback, limit)
 
-    async def wait_till_track_end(self, track: Song):
+    async def wait_until_track_end(self, track: Song):
         # fixme: magic number?!
         await asyncio.sleep(track.duration - 0.3)
         self.play_next_track()
@@ -321,7 +319,7 @@ class Core:
 
         track.fetch_lyrics()
 
-        self.wait_task = self.loop.create_task(self.wait_till_track_end(track))
+        self.wait_task = self.loop.create_task(self.wait_until_track_end(track))
 
         return track, next_track
 

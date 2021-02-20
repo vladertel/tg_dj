@@ -1,10 +1,10 @@
-import asyncio
 import threading
 import json
+import logging
 import os
 import random
-import logging
-from typing import Optional, List, Mapping, Dict, Tuple
+import threading
+from typing import Optional, List, Dict, Tuple
 
 from mutagen.mp3 import HeaderNotFoundError
 from prometheus_client import Gauge

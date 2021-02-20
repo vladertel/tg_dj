@@ -330,7 +330,7 @@ class DiscordComponent(AbstractFrontend, AbstractRadioEmitter):
             try:
                 guild_channel: GuildChannel = GuildChannel.get(guild_id=message.guild.id)
             except peewee.DoesNotExist:
-                await message.channel.send("Каким-то образом случилось не случаемое. Помогите")
+                self.logger.error(f"GuildChannel with guild_id={message.guild.id} is not found")
                 return
 
             if guild_channel.voice_channel_id == voice_channel.id:
