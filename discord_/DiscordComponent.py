@@ -11,11 +11,13 @@ import traceback
 
 import peewee
 
-from .AbstractFrontend import AbstractFrontend, FrontendUserInfo
-from .jinja_env import env
+from core.AbstractFrontend import AbstractFrontend, FrontendUserInfo
+from core.AbstractRadioEmitter import AbstractRadioEmitter
+from core.models import Song
+from discord_.jinja_env import env
 
-from brain.DJ_Brain import UserBanned, UserRequestQuotaReached, DownloadFailed, PermissionDenied, DjBrain
-from downloader.exceptions import NotAccepted
+from core.Core import UserBanned, UserRequestQuotaReached, DownloadFailed, PermissionDenied, Core
+from core.AbstractDownloader import NotAccepted
 
 db = peewee.SqliteDatabase("db/discord_bot.db")
 
@@ -28,6 +30,7 @@ class BaseModel(peewee.Model):
 class GuildChannel(BaseModel):
     guild_id = peewee.IntegerField(unique=True)
     channel_id = peewee.IntegerField(null=True)
+    voice_channel_id = peewee.IntegerField(null=True)
 
 
 class DiscordUser(BaseModel):
@@ -66,7 +69,7 @@ choice_emoji = ["1️⃣", "2️⃣", "3️⃣", "4️⃣", "5️⃣", "6️⃣"
 
 
 # noinspection PyMissingConstructor
-class DiscordFrontend(AbstractFrontend):
+class DiscordComponent(AbstractFrontend, AbstractRadioEmitter):
     def __init__(self, config, discord_client: discord.Client):
         """
         :param configparser.ConfigParser config:
@@ -75,7 +78,7 @@ class DiscordFrontend(AbstractFrontend):
         self.logger = logging.getLogger('discord.bot')
         self.logger.setLevel(getattr(logging, self.config.get("discord", "verbosity", fallback="warning").upper()))
 
-        self.core: Optional[DjBrain] = None
+        self.core: Optional[Core] = None
         self.master = None
         self.bot: discord.Client = discord_client
 
@@ -91,15 +94,19 @@ class DiscordFrontend(AbstractFrontend):
             "link": self.link_command,
             "skip": self.skip_command,
             "search": self.search_command,
-            "set_text_channel": self.set_text_channel_command
+            "queue": self.queue_command,
+            "set_text_channel": self.set_text_channel_command,
+            "set_voice_channel": self.set_voice_channel_command
         }
 
         self.thread_pool = concurrent.futures.ThreadPoolExecutor()
         self.discord_starting_task = None
 
-        self.help_message = help_message.format(self.command_prefix, "\n".join([self.command_prefix + k for k in self.commands]))
+        self.help_message = help_message.format(self.command_prefix,
+                                                "\n".join([self.command_prefix + k for k in self.commands]))
 
         self.startup_notifications = {}
+        self.voice_channel: Optional[discord.VoiceClient] = None
 
         # noinspection PyArgumentList
         # self.mon_tg_updates = Counter('dj_tg_updates', 'Telegram updates counter')
@@ -107,7 +114,10 @@ class DiscordFrontend(AbstractFrontend):
         # noinspection PyArgumentList
         # self.mon_tg_api_errors = Counter('dj_tg_api_errors', 'Telegram API errors')
 
-    def bind_core(self, core: DjBrain):
+    def get_name(self):
+        return "discord"
+
+    def bind_core(self, core: Core):
         self.core = core
         self.bot_init()
 
@@ -121,7 +131,6 @@ class DiscordFrontend(AbstractFrontend):
             return None
         # noinspection PyTypeChecker
         return FrontendUserInfo("Discord", ds_user.username, ds_user.discord_id)
-
 
     def bot_init(self):
         # discord.opus.load_opus()
@@ -141,7 +150,14 @@ class DiscordFrontend(AbstractFrontend):
 
     async def on_ready(self):
         self.logger.info(f'{self.bot.user} has connected to Discord!')
-        # self.core.loop.create_task(self.greet_guilds())
+
+        for guild_channel in GuildChannel.select():
+            if guild_channel.voice_channel_id is not None:
+                voice_channel = self.bot.get_channel(guild_channel.voice_channel_id)
+                if voice_channel is not None:
+                    await self.join_voice(voice_channel)
+                    break
+        self.switch_track(self.core.get_current_song())
 
     async def greet_guilds(self):
         for guild in self.bot.guilds:
@@ -220,11 +236,17 @@ class DiscordFrontend(AbstractFrontend):
         def progress_callback(new_progress_msg_text):
             asyncio.run_coroutine_threadsafe(progress_message.edit(content=new_progress_msg_text), self.core.loop)
 
-        song, lp, global_position = await self.core.download_action(user.core_id, text=text, progress_callback=progress_callback)
+        song, lp, global_position = await self.core.download_action(user.core_id, text=text,
+                                                                    progress_callback=progress_callback)
         await self._send_song_added_message(message.channel, user, global_position)
 
     async def skip_command(self, message: discord.Message, user: DiscordUser):
         self.core.switch_track(user.core_id)
+
+    async def queue_command(self, message: discord.Message, user: DiscordUser):
+        data = self.core.get_queue(user.core_id)
+        message_text = env.get_template("queue_text.tmpl").render(**data)
+        await message.channel.send(message_text)
 
     async def search_command(self, message: discord.Message, user: DiscordUser):
         query = remove_prefix(message.content.lstrip(), f"{self.command_prefix}search ")
@@ -296,6 +318,35 @@ class DiscordFrontend(AbstractFrontend):
         )
         await self._send_song_added_message(channel, discord_user, global_position)
 
+    async def set_voice_channel_command(self, message: discord.Message, user: DiscordUser):
+        permission = message.channel.permissions_for(message.author)
+        if permission.administrator:
+            voice_channel: Optional[discord.VoiceChannel] = message.author.voice.channel
+
+            if voice_channel is None:
+                await message.channel.send("В канал зайди сначала")
+                return
+
+            try:
+                guild_channel: GuildChannel = GuildChannel.get(guild_id=message.guild.id)
+            except peewee.DoesNotExist:
+                self.logger.error(f"GuildChannel with guild_id={message.guild.id} is not found")
+                return
+
+            if guild_channel.voice_channel_id == voice_channel.id:
+                await message.channel.send("Я и так здесь буду петь")
+                return
+
+            guild_channel.voice_channel_id = voice_channel.id
+            guild_channel.save()
+            self.logger.info(f'guild {message.guild.name} updated voice channel: {message.channel.name}')
+
+            await message.channel.send(f'Теперь буду петь в {voice_channel.name}')
+            if self.voice_channel is not None:
+                await self.voice_channel.disconnect()
+            await self.join_voice(voice_channel)
+        else:
+            await message.channel.send(f'You have no power here! He-he')
 
     async def set_text_channel_command(self, message: discord.Message, user: DiscordUser):
         permission = message.channel.permissions_for(message.author)
@@ -309,24 +360,22 @@ class DiscordFrontend(AbstractFrontend):
             except peewee.DoesNotExist:
                 guild_channel = GuildChannel.create(guild_id=message.guild.id, channel_id=message.channel.id)
                 guild_channel.save()
-                self.logger.info(f'guild {message.guild.name} updated text channel: {message.channel.name}')
+                self.logger.info(f'guild {message.guild.name} created text channel: {message.channel.name}')
 
             await message.channel.send(f'Теперь я работаю в этом канале. Ура')
-            return guild_channel
         else:
             await message.channel.send(f'You have no power here! He-he')
-            return None
 
     async def start_bot(self, token: str):
-        while True:
-            try:
-                await self.core.loop.create_task(self.bot.start(token))
-            except CancelledError:
-                self.logger.info("Starting task have been canceled")
-                break
-            except Exception as e:
-                self.logger.error("Starting exception: %s", str(e))
-                traceback.print_exc()
+        try:
+            await self.core.loop.create_task(self.bot.start(token))
+        except CancelledError:
+            self.logger.info("Starting task have been canceled")
+        except Exception as e:
+            self.logger.error("Starting exception: %s", str(e))
+            traceback.print_exc()
+            await asyncio.sleep(3)
+            self.discord_starting_task = self.core.loop.create_task(self.start_bot(self.config.get("discord", "token")))
 
     def cleanup(self):
         self.logger.info("Destroying discord polling loop...")
@@ -382,5 +431,24 @@ class DiscordFrontend(AbstractFrontend):
             self.core.set_user_name(core_id, user.username)
             return user
 
-    async def _send_song_added_message(self, channel: discord.TextChannel, discord_user: DiscordUser, global_position: int):
+    # noinspection PyMethodMayBeStatic
+    async def _send_song_added_message(self, channel: discord.TextChannel, discord_user: DiscordUser,
+                                       global_position: int):
         await channel.send(f"{discord_user.mention()} Песня добавлена в очередь: {global_position}")
+
+    def stop(self):
+        self.voice_channel.stop()
+
+    def switch_track(self, track: Song):
+        if self.voice_channel is not None:
+            # todo: change to discord.FFmpegOpusAudio
+            if self.voice_channel.is_playing():
+                self.voice_channel.stop()
+            self.voice_channel.play(discord.FFmpegPCMAudio(track.media))
+
+    async def join_voice(self, voice_channel: discord.VoiceChannel):
+        self.voice_channel = await voice_channel.connect()
+        # self.voice_channels[voice_channel] = voice_protocol
+
+
+

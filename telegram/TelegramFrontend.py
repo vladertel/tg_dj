@@ -1,4 +1,4 @@
-from typing import Dict, List, Optional
+from typing import List, Optional
 
 import telebot
 import concurrent.futures
@@ -10,14 +10,14 @@ import math
 import traceback
 import logging
 
-from brain.models import UserInfo, Song, Request, User
-from .AbstractFrontend import AbstractFrontend, FrontendUserInfo
-from .jinja_env import env
+from core.models import UserInfo
+from core.AbstractFrontend import AbstractFrontend, FrontendUserInfo
+from telegram.jinja_env import env
 import asyncio
 from prometheus_client import Counter
 
-from brain.DJ_Brain import UserBanned, UserRequestQuotaReached, DownloadFailed, PermissionDenied
-from downloader.exceptions import NotAccepted
+from core.Core import UserBanned, UserRequestQuotaReached, DownloadFailed, PermissionDenied
+from core.AbstractDownloader import NotAccepted
 
 compiled_regex = re.compile(r"^\d+")
 
@@ -95,6 +95,9 @@ class TgFrontend(AbstractFrontend):
 
         self.bot = telebot.TeleBot(self.config.get("telegram", "token"))
         self.bot_init()
+
+    def get_name(self):
+        return "telegram"
 
     def bind_master(self, master):
         self.master = master
@@ -568,7 +571,7 @@ class TgFrontend(AbstractFrontend):
 
     def send_menu_admin_user(self, user, handled_user_id):
         user_info = TgFrontend.ExtendedUserInfo(self.core.get_user_info(user.core_id, handled_user_id))
-        user_info.frontend_user_infos = self.master.get_user_infos(handled_user_id)
+        user_info.frontend_user_infos = self.core.get_user_infos(handled_user_id)
 
         message_text = env.get_template("user_info_text.tmpl").render(user_info.__dict__)
         kb_text = env.get_template("user_info_keyboard.tmpl").render(user_info.__dict__)

@@ -1,9 +1,8 @@
-from brain.models import User, Request, db as brain_db
-from frontend.TelegramFrontend import TgUser, db as tg_bot_db
-from frontend.DiscordFrontend import DiscordUser, GuildChannel, db as discord_bot_db
-import peewee
+from core.models import User, Request, db as brain_db
+from telegram.TelegramFrontend import TgUser, db as tg_bot_db
+from discord_.DiscordComponent import DiscordUser, GuildChannel, db as discord_bot_db
 
-# connect actually happens in brain.DJ_Brain file, and connects when imported
+# connect actually happens in core.DJ_Brain file, and connects when imported
 brain_db.connect(reuse_if_open=True)
 brain_db.create_tables([User, Request])
 

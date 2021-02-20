@@ -4,22 +4,20 @@ import argparse
 import configparser
 import logging
 import signal
-from collections import OrderedDict
 
 import discord
 import prometheus_client
 import os
 
-from brain.DJ_Brain import DjBrain
-from downloader.FileDownloader import FileDownloader
-from downloader.HtmlDownloader import HtmlDownloader
-from downloader.LinkDownloader import LinkDownloader
-from downloader.YoutubeDownloader import YoutubeDownloader
-from frontend.MasterFrontend import MasterFrontend
-from streamer.VLCStreamer import VLCStreamer
-from downloader.MasterDownloader import MasterDownloader
-from frontend.TelegramFrontend import TgFrontend
-from frontend.DiscordFrontend import DiscordFrontend
+from core.Core import Core
+from downloaders.FileDownloader import FileDownloader
+from downloaders.HtmlDownloader import HtmlDownloader
+from downloaders.LinkDownloader import LinkDownloader
+from downloaders.YoutubeDownloader import YoutubeDownloader
+from VLC.VLCRadioEmitter import VLCStreamer
+from downloaders.MasterDownloader import MasterDownloader
+from telegram.TelegramFrontend import TgFrontend
+from discord_.DiscordComponent import DiscordComponent
 from web.server import StatusWebServer
 
 # Parse arguments
@@ -67,20 +65,17 @@ logger.setLevel(getattr(logging, config.get(config.default_section, "verbosity",
 
 main_loop = asyncio.get_event_loop()
 
-discord_client = discord.Client(loop=main_loop)
+downloader = MasterDownloader(config, [
+            YoutubeDownloader(config),
+            FileDownloader(config),
+            HtmlDownloader(config),
+            LinkDownloader(config),
+        ])
+# modules = [DiscordComponent(config, discord.Client(loop=main_loop)), TgFrontend(config)]
+modules = [DiscordComponent(config, discord.Client(loop=main_loop)), StatusWebServer(config)]
+# modules = [VLCStreamer(config), TgFrontend(config)]
 
-frontend = MasterFrontend(config, DiscordFrontend(config, discord_client), TgFrontend(config))
-
-downloader = MasterDownloader(config, OrderedDict([
-            ("yt", YoutubeDownloader(config)),
-            ("file", FileDownloader(config)),
-            ("html", HtmlDownloader(config)),
-            ("link", LinkDownloader(config)),
-        ]))
-modules = [frontend, downloader, VLCStreamer(config)]
-brain = DjBrain(config, *modules, loop=main_loop)
-web = StatusWebServer(config)
-web.bind_core(brain)
+core = Core(config, components=modules, downloader=downloader, loop=main_loop)
 
 # Start prometheus server
 prometheus_client.start_http_server(8910)
@@ -92,13 +87,8 @@ except (KeyboardInterrupt, SystemExit):
     pass
 logger.info("Main event loop has ended")
 logger.debug("Cleaning...")
-for module in modules:
-    try:
-        module.cleanup()
-    except AttributeError:
-        traceback.print_exc()
 try:
-    brain.cleanup()
+    core.cleanup()
 except AttributeError:
     traceback.print_exc()
 

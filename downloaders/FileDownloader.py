@@ -1,8 +1,7 @@
 import os
 import logging
 
-from .AbstractDownloader import AbstractDownloader
-from .exceptions import *
+from core.AbstractDownloader import AbstractDownloader, MediaIsTooLong, MediaIsTooBig
 from utils import remove_links
 
 
@@ -15,6 +14,9 @@ class FileDownloader(AbstractDownloader):
         self.logger.setLevel(
             getattr(logging, self.config.get("downloader_file", "verbosity", fallback="warning").upper())
         )
+
+    def get_name(self):
+        return "file"
 
     def is_acceptable(self, kind, query):
         return kind == "file"

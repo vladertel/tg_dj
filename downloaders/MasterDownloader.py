@@ -3,11 +3,11 @@ import logging
 import os
 import time
 from collections import OrderedDict
-from typing import Dict
+from typing import Dict, List
 from prometheus_client import Gauge, Summary
 
-from .AbstractDownloader import AbstractDownloader
-from .exceptions import *
+from core.AbstractDownloader import AbstractDownloader, DownloaderException, UrlOrNetworkProblem, UrlProblem, \
+    MediaIsTooLong, MediaIsTooBig, MediaSizeUnspecified, BadReturnStatus, NothingFound, ApiError, NotAccepted
 
 # noinspection PyArgumentList
 mon_downloads_in_progress = Gauge('dj_downloads_in_progress', 'Downloads in progress')
@@ -18,7 +18,7 @@ mon_search_duration = Summary('dj_search_duration', 'Time spent in search', ['ha
 
 
 class MasterDownloader:
-    def __init__(self, config, downloaders: Dict[str, AbstractDownloader]):
+    def __init__(self, config, downloaders: List[AbstractDownloader]):
         """
         :param configparser.ConfigParser config:
         """
@@ -28,7 +28,7 @@ class MasterDownloader:
             getattr(logging, self.config.get("downloader", "verbosity", fallback="warning").upper())
         )
 
-        self.handlers = downloaders
+        self.handlers = OrderedDict([(d.get_name(), d) for d in downloaders])
 
         self.thread_pool = concurrent.futures.ThreadPoolExecutor()
         self.core = None

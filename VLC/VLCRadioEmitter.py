@@ -2,12 +2,12 @@ import time
 import vlc
 from prometheus_client import Gauge
 
-from brain.models import Song
-from streamer.AbstractStreamer import AbstractStreamer
+from core.models import Song
+from core.AbstractRadioEmitter import AbstractRadioEmitter
 
 
 # noinspection PyMissingConstructor
-class VLCStreamer(AbstractStreamer):
+class VLCStreamer(AbstractRadioEmitter):
     def __init__(self, config):
         self.config = config
 
@@ -22,28 +22,15 @@ class VLCStreamer(AbstractStreamer):
 
         self.vlc_instance = vlc.Instance()
         self.player = self.vlc_instance.media_player_new()
-        self.init_handlers()
 
     def bind_core(self, core):
         self.core = core
 
-    def init_handlers(self):
-        events = self.player.event_manager()
-        events.event_attach(vlc.EventType.MediaPlayerEndReached, self.vlc_song_finished)
+    def get_name(self):
+        return "vlc"
 
     def cleanup(self):
         self.player.stop()
-
-    def vlc_song_finished(self, _event):
-        self.is_playing = False
-        self.now_playing = None
-        self.core.loop.call_soon_threadsafe(self.core.track_end_event)
-
-    def get_current_song(self):
-        return self.now_playing
-
-    def get_song_progress(self) -> int:
-        return int(time.time() - self.song_start_time)
 
     def stop(self):
         self.player.stop()
