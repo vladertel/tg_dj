@@ -93,7 +93,7 @@
         push();
         noFill();
         strokeWeight(5);
-        volume > 0.4 ? stroke(6,173,227,210) : stroke(127,125,161,210);
+        volume > 0.4 ? stroke(window.color2[0], window.color2[1], window.color2[2], 210) : stroke(window.color1[0], window.color1[1], window.color1[2], 210);
         beginShape();
         vertex(0, baseline_first);
         for (var i = 0; i < waveform_buffer_len; i ++) {
@@ -113,7 +113,7 @@
 
         push();
         noStroke();
-        fill(127,125,161,80);
+        fill(window.color1[0], window.color1[1], window.color1[2], 80);
         beginShape();
         vertex(0, baseline_second);
         for (var i = 0; i < wavelog_buffer_len; i ++) {
@@ -145,7 +145,7 @@
         push();
         strokeWeight(10);
         noFill();
-        stroke(127,125,161,210);
+        stroke(window.color1[0], window.color1[1], window.color1[2], 210);
         line(0, 5, map(song_progress, 0, 1, 0, windowWidth), 5);
         pop();
 
@@ -171,8 +171,8 @@
             size = volume * multiplier;
         }
 
-        this.color1 = color(127,125,161, map(this.ttl, 0, dot_ttl, 0, 255));
-        this.color2 = color(6,173,227, map(this.ttl, 0, dot_ttl, 0, 255));
+        this.color1 = color(window.color1[0], window.color1[1], window.color1[2], map(this.ttl, 0, dot_ttl, 0, 255));
+        this.color2 = color(window.color2[0], window.color2[1], window.color2[2], map(this.ttl, 0, dot_ttl, 0, 255));
 
         noStroke();
         volume > 0.4 ? fill(this.color2) : fill(this.color1);
@@ -183,11 +183,7 @@
         this.ttl -= 1;
         this.y += this.speedY;
 
-        if ( this.y > windowHeight || this.y < 0 || this.ttl < 0 ) {
-            return false
-        } else {
-            return true
-        }
+        return !(this.y > windowHeight || this.y < 0 || this.ttl < 0);
     };
 
     function windowResized() {

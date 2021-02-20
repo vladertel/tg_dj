@@ -5,15 +5,18 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>INBICST DJ</title>
     <link href="https://fonts.googleapis.com/css?family=Raleway:200,400,700,900" rel="stylesheet">
-    <link href="static/main.css" rel="stylesheet">
+    <link href="static/css/main.css" rel="stylesheet">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/0.7.2/p5.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/0.7.2/addons/p5.dom.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/0.7.2/addons/p5.sound.min.js"></script>
-
-    <script>var ws_addr = '{{ ws_url }}';</script>
-    <script src="static/wson.js"></script>
-    <script src="static/socket.js"></script>
-    <script src="static/aav.js"></script>
+    <script>
+        var ws_addr = '{{ ws_url }}';
+        var color1 = [127, 125, 161];
+        var color2 = [6, 173, 227];
+    </script>
+    <script src="static/scripts/wson.js"></script>
+    <script src="static/scripts/socket.js"></script>
+    <script src="static/scripts/aav.js"></script>
 </head>
 <body>
     <header>
@@ -24,17 +27,17 @@
     </section>
     <footer>
         <div id="code-box">
-            <img alt="qrcode" src="static/inbicst_dj_bot_qrcode.png">
+            <img alt="qrcode" src="static/images/inbicst_dj_bot_qrcode.png">
         </div>
         <div id="links-box">
             <div id="links">
-                <a href="https://t.me/inbicst_dj_bot" target="_blank">@inbicst_dj_bot</a>
+                <a href="https://t.me/{{ telegram_bot_name }}" target="_blank">@{{ telegram_bot_name }}</a>
             </div>
             <p>ИНБИКСТ МФТИ</p>
             <p><a href="https://inbicst.ru/">https://inbicst.ru/</a></p>
         </div>
         <div id="logo-box">
-            <img alt="logo" id="logo" src="static/squares_h_white.png" style="opacity: 0.5">
+            <img alt="logo" id="logo" src="static/images/squares_h_white.png" style="opacity: 0.5">
         </div>
     </footer>
     <div id="playback">

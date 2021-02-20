@@ -8,6 +8,7 @@ import asyncio
 import logging
 from prometheus_client import Gauge
 
+from core.AbstractComponent import AbstractComponent
 from core.models import Song
 
 
@@ -57,16 +58,16 @@ class WebSocketHandler(tornado.websocket.WebSocketHandler):
 class MainHandler(tornado.web.RequestHandler):
 
     def initialize(self, **kwargs):
-        self.server = kwargs.get("server")
+        self.server: StatusWebServer = kwargs.get("server")
 
     def get(self):
         song, progress = self.server.get_current_state()
         self.render(os.path.join(os.path.dirname(__file__), "index.html"), song_info=song, song_progress=progress,
-                    stream_url=self.server.stream_url + '?ts=' + str(time.time()), ws_url=self.server.ws_url)
+                    stream_url=self.server.stream_url + '?ts=' + str(time.time()), ws_url=self.server.ws_url,
+                    telegram_bot_name=self.server.telegram_bot_name)
 
 
-class StatusWebServer:
-
+class StatusWebServer(AbstractComponent):
     def __init__(self, config):
         self.config = config
         self.logger = logging.getLogger("tg_dj.web")
@@ -97,6 +98,10 @@ class StatusWebServer:
 
         self.stream_url = self.config.get("web_server", "stream_url", fallback="/stream")
         self.ws_url = self.config.get("web_server", "ws_url", fallback="auto")
+        self.telegram_bot_name = self.config.get("web_server", "telegram_bot_name", fallback="inbicst_dj_bot")
+
+    def get_name(self) -> str:
+        return "StatusWebServer"
 
     def bind_core(self, core):
         self.core = core
