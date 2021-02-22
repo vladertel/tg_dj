@@ -39,6 +39,8 @@ services:
       - 8080:80
 ```
 
+#### If You are interested in more granular configuration - see run.py
+
 ## Moderation
 
 To make some user an admin you must:
