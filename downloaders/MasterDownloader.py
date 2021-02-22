@@ -24,9 +24,7 @@ class MasterDownloader:
         """
         self.config = config
         self.logger = logging.getLogger("tg_dj.downloader.master")
-        self.logger.setLevel(
-            getattr(logging, self.config.get("downloader", "verbosity", fallback="warning").upper())
-        )
+        self.logger.setLevel(self.config.get("downloader", "verbosity", fallback="warning").upper())
 
         self.handlers = OrderedDict([(d.get_name(), d) for d in downloaders])
 

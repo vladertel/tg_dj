@@ -33,9 +33,7 @@ class HtmlDownloader(AbstractDownloader):
     def __init__(self, config):
         super().__init__(config)
         self.logger = logging.getLogger("tg_dj.downloader.html")
-        self.logger.setLevel(
-            getattr(logging, self.config.get("downloader_html", "verbosity", fallback="warning").upper())
-        )
+        self.logger.setLevel(self.config.get("downloader_html", "verbosity", fallback="warning").upper())
         self.songs_cache = {}
         self.skip_head = self.config.get("downloader_html", "skip_head", fallback=True)
 

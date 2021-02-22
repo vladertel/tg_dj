@@ -11,9 +11,7 @@ class FileDownloader(AbstractDownloader):
     def __init__(self, config):
         super().__init__(config)
         self.logger = logging.getLogger("tg_dj.downloader.file")
-        self.logger.setLevel(
-            getattr(logging, self.config.get("downloader_file", "verbosity", fallback="warning").upper())
-        )
+        self.logger.setLevel(self.config.get("downloader_file", "verbosity", fallback="warning").upper())
 
     def get_name(self):
         return "file"

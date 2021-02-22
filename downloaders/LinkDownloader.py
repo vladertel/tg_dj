@@ -15,9 +15,7 @@ class LinkDownloader(AbstractDownloader):
     def __init__(self, config):
         super().__init__(config)
         self.logger = logging.getLogger("tg_dj.downloader.link")
-        self.logger.setLevel(
-            getattr(logging, self.config.get("downloader_link", "verbosity", fallback="warning").upper())
-        )
+        self.logger.setLevel(self.config.get("downloader_link", "verbosity", fallback="warning").upper())
         self.mp3_dns_regex = re.compile(
             r"(?:https?://)?(?:www\.)?(?:[a-zA-Z0-9_-]{3,30}\.)+[a-zA-Z]{2,4}\/.*[a-zA-Z0-9_\?\&\=\-]*",
             flags=re.IGNORECASE)
