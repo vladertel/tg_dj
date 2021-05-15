@@ -20,80 +20,87 @@ from telegram.TelegramFrontend import TgFrontend
 from discord_.DiscordComponent import DiscordComponent
 from web.server import StatusWebServer
 
-# Parse arguments
-parser = argparse.ArgumentParser()
-parser.add_argument("-f", "--config-file", type=str, default="config.ini")
-args = parser.parse_args()
 
-config = configparser.ConfigParser()
-config.read(args.config_file)
+def read_config_and_environment(file_path) -> configparser.ConfigParser:
+    config = configparser.ConfigParser()
+    config.read(file_path)
 
-for name in os.environ:
-    if name[:3] != "DJ_":
-        continue
+    for name in os.environ:
+        if name[:3] != "DJ_":
+            continue
 
-    value = os.environ[name]
-    name = name[3:]
+        value = os.environ[name]
+        name = name[3:]
 
-    section = None
-    for s in config.sections() + [config.default_section]:
-        if s == name[:len(s)]:
-            section = s
-    if section is None:
-        continue
+        section = None
+        for s in config.sections() + [config.default_section]:
+            if s == name[:len(s)]:
+                section = s
+        if section is None:
+            continue
 
-    key = name[len(section) + 1:]
+        key = name[len(section) + 1:]
 
-    config.set(section, key, value)
+        config.set(section, key, value)
 
-
-# Reload config on sighup signal
-def hup_handler(_signum, _frame):
-    logging.info("Caught sighup signal. Reloading configuration...")
-    config.read(args.config_file)
-    logging.info("Config reloaded")
+    return config
 
 
-signal.signal(signal.SIGHUP, hup_handler)
+if __name__ == '__main__':
 
-# Setup logging
-logging.basicConfig(format='%(asctime)s %(levelname)s [%(name)s - %(funcName)s]: %(message)s')
-logger = logging.getLogger('tg_dj')
-logger.setLevel(getattr(logging, config.get(config.default_section, "verbosity", fallback="warning").upper()))
+    # Parse arguments
+    parser = argparse.ArgumentParser()
+    parser.add_argument("-f", "--config-file", type=str, default="config.ini")
+    args = parser.parse_args()
 
-# Start modules
+    config = read_config_and_environment(args.config_file)
 
-main_loop = asyncio.get_event_loop()
+    # Setup logging
+    logging.basicConfig(format='%(asctime)s %(levelname)s [%(name)s - %(funcName)s]: %(message)s')
+    logger = logging.getLogger('tg_dj')
+    logger.setLevel(config.get(config.default_section, "verbosity", fallback="warning").upper())
 
-downloader = MasterDownloader(config, [
-            YoutubeDownloader(config),
-            FileDownloader(config),
-            HtmlDownloader(config),
-            LinkDownloader(config),
-        ])
-# modules = [DiscordComponent(config, discord.Client(loop=main_loop)), TgFrontend(config)]
-modules = [DiscordComponent(config, discord.Client(loop=main_loop)), StatusWebServer(config)]
-# modules = [VLCStreamer(config), TgFrontend(config)]
+    # Start modules
+    main_loop = asyncio.get_event_loop()
 
-core = Core(config, components=modules, downloader=downloader, loop=main_loop)
+    downloader = MasterDownloader(config, [
+        YoutubeDownloader(config),
+        FileDownloader(config),
+        HtmlDownloader(config),
+        LinkDownloader(config),
+    ])
+    # modules = [DiscordComponent(config, discord.Client(loop=main_loop)), TgFrontend(config)]
+    modules = [DiscordComponent(config, discord.Client(loop=main_loop)), StatusWebServer(config)]
+    # modules = [VLCStreamer(config), TgFrontend(config)]
 
-# Start prometheus server
-prometheus_client.start_http_server(8910)
+    core = Core(config, components=modules, downloader=downloader, loop=main_loop)
 
-# Run event loop
-try:
-    main_loop.run_forever()
-except (KeyboardInterrupt, SystemExit):
-    pass
-logger.info("Main event loop has ended")
-logger.debug("Cleaning...")
-try:
-    core.cleanup()
-except AttributeError:
-    traceback.print_exc()
+    # Reload config on sighup signal
+    def hup_handler(_signum, _frame):
+        logging.info("Caught sighup signal. Reloading configuration...")
+        config.read(args.config_file)
+        core.update_config(config)
+        logging.info("Config reloaded")
 
-logger.info("Closing loop...")
-main_loop.run_until_complete(asyncio.sleep(1))
-main_loop.stop()
-main_loop.close()
-logger.debug("Exit")
+    signal.signal(signal.SIGHUP, hup_handler)
+
+    # Start prometheus server
+    prometheus_client.start_http_server(8910)
+
+    # Run event loop
+    try:
+        main_loop.run_forever()
+    except (KeyboardInterrupt, SystemExit):
+        pass
+    logger.info("Main event loop has ended")
+    logger.debug("Cleaning...")
+    try:
+        core.cleanup()
+    except AttributeError:
+        traceback.print_exc()
+
+    logger.info("Closing loop...")
+    main_loop.run_until_complete(asyncio.sleep(1))
+    main_loop.stop()
+    main_loop.close()
+    logger.debug("Exit")

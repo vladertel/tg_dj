@@ -105,6 +105,10 @@ class Core:
 
         self.stud_board_user = User(id=-1, name=config.get("core", "fallback_user_name", fallback="Студсовет"))
 
+    def update_config(self, config):
+        # todo: IMPLEMENT ME
+        pass
+
     def _notify_user(self, core_user_id: int, text: str):
         for frontend in self.frontends:
             if frontend.accept_user(core_user_id):

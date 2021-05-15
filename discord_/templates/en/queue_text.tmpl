@@ -1,0 +1,13 @@
+{% if songs_cnt == 0 %}
+Playlist is empty:
+{% else %}
+Playlist
+Users in queue: {{ users_cnt }}
+
+{% for track in first_tracks %}
+🎶 {{track.full_title()}}
+⏱ {{ track.duration | format_duration }}    👤 {{ track.author.name }}
+
+{% endfor %}
+{% endif %}
+... and {{ tracks_cnt - users_cnt }} tracks

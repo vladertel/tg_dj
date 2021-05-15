@@ -1,0 +1,5 @@
+test1 = "hello there";
+test2 = "hello" + " there";
+test3 = "hello" + $PARAM + " there";
+test4 = "hello" + " there" + $PARAM;
+test5 = "hello" + " there" + " 123 ";
