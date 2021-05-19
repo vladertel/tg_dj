@@ -1,7 +1,7 @@
 FROM python:3.8-buster
 
 RUN apt-get update && \
-    apt-get install -y vlc-bin vlc-plugin-base && \
+    apt-get install -y vlc-bin vlc-plugin-base pulseaudio && \
     rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt ./
